@@ -1,0 +1,27 @@
+[
+  {
+    "content": "Explore codebase & fetch yacht inventory PDF",
+    "status": "completed",
+    "activeForm": "Exploring codebase & fetching yacht inventory"
+  },
+  {
+    "content": "Create yacht database migration & seed data",
+    "status": "completed",
+    "activeForm": "Creating yacht database schema & seeding data"
+  },
+  {
+    "content": "Build matching API endpoint with scoring algorithm",
+    "status": "completed",
+    "activeForm": "Building matching API with scoring algorithm"
+  },
+  {
+    "content": "Build luxury matchmaker UI",
+    "status": "completed",
+    "activeForm": "Building luxury matchmaker UI"
+  },
+  {
+    "content": "Push & deploy",
+    "status": "in_progress",
+    "activeForm": "Pushing & deploying"
+  }
+]
