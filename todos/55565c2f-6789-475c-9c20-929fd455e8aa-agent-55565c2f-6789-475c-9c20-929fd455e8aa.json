@@ -1,0 +1,27 @@
+[
+  {
+    "content": "Explore existing codebase structure and Phase A/B code",
+    "status": "completed",
+    "activeForm": "Exploring existing codebase structure"
+  },
+  {
+    "content": "Create database migration for deal flow tables",
+    "status": "completed",
+    "activeForm": "Creating database migration for deal flow tables"
+  },
+  {
+    "content": "Build backend API routes for deal CRUD + analytics",
+    "status": "completed",
+    "activeForm": "Building backend API routes"
+  },
+  {
+    "content": "Build deal flow tracker admin UI with dashboard, pipeline, P&L, and charts",
+    "status": "completed",
+    "activeForm": "Building deal flow tracker admin UI"
+  },
+  {
+    "content": "Push and deploy",
+    "status": "in_progress",
+    "activeForm": "Pushing and deploying"
+  }
+]
