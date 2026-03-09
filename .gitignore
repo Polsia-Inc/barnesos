@@ -15,3 +15,10 @@ projects/
 .claude/
 projects/
 *.jsonl
+
+# Polsia safety (auto-injected)
+.env
+.env.*
+.claude/
+projects/
+*.jsonl

@@ -1,0 +1,32 @@
+[
+  {
+    "content": "Phase 1: Database migrations — prospects, signals, trigger_rules tables",
+    "status": "completed",
+    "activeForm": "Creating database migrations for prospects, signals, and trigger rules"
+  },
+  {
+    "content": "Phase 2: Backend API — prospect CRUD, signal endpoints, trigger engine",
+    "status": "completed",
+    "activeForm": "Building backend API endpoints"
+  },
+  {
+    "content": "Phase 3: PDF prospect import — parse and seed ~45 real prospects",
+    "status": "completed",
+    "activeForm": "Parsing PDF and importing prospect data"
+  },
+  {
+    "content": "Phase 4: Signal scanner service — node-cron + AI classification",
+    "status": "completed",
+    "activeForm": "Building daily signal scanner service"
+  },
+  {
+    "content": "Phase 5: Command Center frontend — cockpit shell + Signal Radar UI",
+    "status": "completed",
+    "activeForm": "Building the Command Center cockpit UI"
+  },
+  {
+    "content": "Phase 6: Push to remote and verify deployment",
+    "status": "in_progress",
+    "activeForm": "Deploying and verifying the Command Center"
+  }
+]

@@ -765,6 +765,548 @@ async function recalcDealPnl(dealId) {
 
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// SIGNAL RADAR — Command Center Panel 2
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── COMMAND CENTER: Dashboard KPIs ──────────────────────────────────────────
+app.get('/api/command-center/kpis', async (req, res) => {
+  try {
+    // Prospect counts by tier
+    const { rows: tierCounts } = await pool.query(`
+      SELECT heat_tier, COUNT(*) as count FROM prospects GROUP BY heat_tier
+    `);
+    const tiers = { hot: 0, warm: 0, cold: 0 };
+    tierCounts.forEach(r => { tiers[r.heat_tier] = parseInt(r.count); });
+
+    // Total prospects
+    const { rows: totalRow } = await pool.query('SELECT COUNT(*) as total FROM prospects');
+
+    // Signals today
+    const { rows: signalsToday } = await pool.query(`
+      SELECT COUNT(*) as count FROM prospect_signals
+      WHERE detected_at >= CURRENT_DATE
+    `);
+
+    // Fund progress (from deals)
+    const { rows: fundRow } = await pool.query(`
+      SELECT
+        COALESCE(SUM(acquisition_price) FILTER (WHERE status IN ('acquired','listed','sold')), 0) as deployed,
+        COALESCE(SUM(profit) FILTER (WHERE status = 'sold'), 0) as profit,
+        COUNT(*) as total_deals
+      FROM deals
+    `);
+
+    // Active matches from match_requests
+    const { rows: matchRow } = await pool.query(`
+      SELECT COUNT(*) as count FROM match_requests WHERE created_at > NOW() - INTERVAL '30 days'
+    `);
+
+    res.json({
+      success: true,
+      kpis: {
+        total_prospects: parseInt(totalRow[0].total),
+        hot_prospects: tiers.hot,
+        warm_prospects: tiers.warm,
+        cold_prospects: tiers.cold,
+        signals_today: parseInt(signalsToday[0].count),
+        fund_deployed: parseFloat(fundRow[0].deployed) || 0,
+        fund_profit: parseFloat(fundRow[0].profit) || 0,
+        total_deals: parseInt(fundRow[0].total_deals),
+        active_matches: parseInt(matchRow[0].count)
+      }
+    });
+  } catch (err) {
+    console.error('Error fetching KPIs:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to fetch KPIs' });
+  }
+});
+
+// ─── PROSPECTS: List all (with tier filter) ──────────────────────────────────
+app.get('/api/prospects', async (req, res) => {
+  try {
+    const { tier, search, sort } = req.query;
+    let query = `SELECT p.*,
+      (SELECT COUNT(*) FROM prospect_signals ps WHERE ps.prospect_id = p.id) as signal_count,
+      (SELECT MAX(ps.detected_at) FROM prospect_signals ps WHERE ps.prospect_id = p.id) as latest_signal_date,
+      (SELECT ps.title FROM prospect_signals ps WHERE ps.prospect_id = p.id ORDER BY ps.detected_at DESC LIMIT 1) as latest_signal_title
+      FROM prospects p WHERE 1=1`;
+    const params = [];
+
+    if (tier && ['hot', 'warm', 'cold'].includes(tier)) {
+      params.push(tier);
+      query += ` AND p.heat_tier = $${params.length}`;
+    }
+    if (search) {
+      params.push(`%${search}%`);
+      query += ` AND (p.name ILIKE $${params.length} OR p.company ILIKE $${params.length} OR p.location ILIKE $${params.length})`;
+    }
+
+    if (sort === 'name') {
+      query += ' ORDER BY p.name ASC';
+    } else if (sort === 'recent') {
+      query += ' ORDER BY p.updated_at DESC';
+    } else {
+      query += ' ORDER BY p.heat_score DESC, p.name ASC';
+    }
+
+    const { rows } = await pool.query(query, params);
+    res.json({ success: true, prospects: rows, count: rows.length });
+  } catch (err) {
+    console.error('Error fetching prospects:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to fetch prospects' });
+  }
+});
+
+// ─── PROSPECTS: Get single prospect with signal history ──────────────────────
+app.get('/api/prospects/:id', async (req, res) => {
+  try {
+    const { rows: prospects } = await pool.query(
+      'SELECT * FROM prospects WHERE id = $1', [req.params.id]
+    );
+    if (prospects.length === 0) {
+      return res.status(404).json({ success: false, message: 'Prospect not found' });
+    }
+
+    const { rows: signals } = await pool.query(
+      `SELECT ps.*, tr.name as trigger_name, tr.category as trigger_category
+       FROM prospect_signals ps
+       LEFT JOIN trigger_rules tr ON ps.trigger_rule_id = tr.id
+       WHERE ps.prospect_id = $1
+       ORDER BY ps.detected_at DESC`,
+      [req.params.id]
+    );
+
+    const { rows: scans } = await pool.query(
+      `SELECT * FROM scan_history WHERE prospect_id = $1 ORDER BY started_at DESC LIMIT 10`,
+      [req.params.id]
+    );
+
+    res.json({
+      success: true,
+      prospect: prospects[0],
+      signals,
+      scan_history: scans
+    });
+  } catch (err) {
+    console.error('Error fetching prospect:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to fetch prospect' });
+  }
+});
+
+// ─── PROSPECTS: Create new prospect ──────────────────────────────────────────
+app.post('/api/prospects', async (req, res) => {
+  try {
+    const { name, email, phone, company, location, current_yacht_interest,
+            yacht_brand, yacht_model, social_handles, notes, commercial_contact } = req.body;
+    if (!name) {
+      return res.status(400).json({ success: false, message: 'name is required' });
+    }
+
+    const { rows } = await pool.query(
+      `INSERT INTO prospects (name, email, phone, company, location, current_yacht_interest,
+        yacht_brand, yacht_model, social_handles, notes, commercial_contact)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      [name, email||null, phone||null, company||null, location||null,
+       current_yacht_interest||null, yacht_brand||null, yacht_model||null,
+       social_handles ? JSON.stringify(social_handles) : '{}', notes||null, commercial_contact||null]
+    );
+
+    res.json({ success: true, prospect: rows[0] });
+  } catch (err) {
+    console.error('Error creating prospect:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to create prospect' });
+  }
+});
+
+// ─── PROSPECTS: Update prospect ──────────────────────────────────────────────
+app.put('/api/prospects/:id', async (req, res) => {
+  try {
+    const fields = req.body;
+    const id = req.params.id;
+    const allowed = ['name','email','phone','company','location','current_yacht_interest',
+      'yacht_brand','yacht_model','notes','commercial_contact','heat_tier','heat_score'];
+    const setClauses = [];
+    const params = [];
+    let idx = 1;
+
+    for (const f of allowed) {
+      if (fields[f] !== undefined) {
+        setClauses.push(`${f} = $${idx}`);
+        params.push(fields[f]);
+        idx++;
+      }
+    }
+    if (fields.social_handles !== undefined) {
+      setClauses.push(`social_handles = $${idx}`);
+      params.push(JSON.stringify(fields.social_handles));
+      idx++;
+    }
+
+    if (setClauses.length === 0) {
+      return res.status(400).json({ success: false, message: 'No fields to update' });
+    }
+
+    setClauses.push(`updated_at = NOW()`);
+    params.push(id);
+
+    const { rows } = await pool.query(
+      `UPDATE prospects SET ${setClauses.join(', ')} WHERE id = $${idx} RETURNING *`,
+      params
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Prospect not found' });
+    }
+    res.json({ success: true, prospect: rows[0] });
+  } catch (err) {
+    console.error('Error updating prospect:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to update prospect' });
+  }
+});
+
+// ─── PROSPECTS: Delete prospect ──────────────────────────────────────────────
+app.delete('/api/prospects/:id', async (req, res) => {
+  try {
+    const { rowCount } = await pool.query('DELETE FROM prospects WHERE id = $1', [req.params.id]);
+    if (rowCount === 0) {
+      return res.status(404).json({ success: false, message: 'Prospect not found' });
+    }
+    res.json({ success: true, message: 'Prospect deleted' });
+  } catch (err) {
+    console.error('Error deleting prospect:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to delete prospect' });
+  }
+});
+
+// ─── TRIGGER RULES: List all ─────────────────────────────────────────────────
+app.get('/api/trigger-rules', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT tr.*,
+        (SELECT COUNT(*) FROM prospect_signals ps WHERE ps.trigger_rule_id = tr.id) as times_triggered
+       FROM trigger_rules tr ORDER BY tr.score_weight DESC, tr.name`
+    );
+    res.json({ success: true, rules: rows });
+  } catch (err) {
+    console.error('Error fetching trigger rules:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to fetch trigger rules' });
+  }
+});
+
+// ─── TRIGGER RULES: Create ───────────────────────────────────────────────────
+app.post('/api/trigger-rules', async (req, res) => {
+  try {
+    const { name, description, category, keywords, score_weight } = req.body;
+    if (!name || !category || !keywords) {
+      return res.status(400).json({ success: false, message: 'name, category, and keywords are required' });
+    }
+    if (!['high', 'medium', 'low'].includes(category)) {
+      return res.status(400).json({ success: false, message: 'category must be high, medium, or low' });
+    }
+
+    const { rows } = await pool.query(
+      `INSERT INTO trigger_rules (name, description, category, keywords, score_weight)
+       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [name, description||null, category, keywords, score_weight || (category === 'high' ? 10 : category === 'medium' ? 6 : 3)]
+    );
+    res.json({ success: true, rule: rows[0] });
+  } catch (err) {
+    console.error('Error creating trigger rule:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to create trigger rule' });
+  }
+});
+
+// ─── TRIGGER RULES: Update ───────────────────────────────────────────────────
+app.put('/api/trigger-rules/:id', async (req, res) => {
+  try {
+    const { name, description, category, keywords, score_weight, is_active } = req.body;
+    const { rows } = await pool.query(
+      `UPDATE trigger_rules SET
+        name = COALESCE($1, name),
+        description = COALESCE($2, description),
+        category = COALESCE($3, category),
+        keywords = COALESCE($4, keywords),
+        score_weight = COALESCE($5, score_weight),
+        is_active = COALESCE($6, is_active),
+        updated_at = NOW()
+       WHERE id = $7 RETURNING *`,
+      [name, description, category, keywords, score_weight, is_active, req.params.id]
+    );
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Trigger rule not found' });
+    }
+    res.json({ success: true, rule: rows[0] });
+  } catch (err) {
+    console.error('Error updating trigger rule:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to update trigger rule' });
+  }
+});
+
+// ─── TRIGGER RULES: Delete ───────────────────────────────────────────────────
+app.delete('/api/trigger-rules/:id', async (req, res) => {
+  try {
+    const { rowCount } = await pool.query('DELETE FROM trigger_rules WHERE id = $1', [req.params.id]);
+    if (rowCount === 0) {
+      return res.status(404).json({ success: false, message: 'Trigger rule not found' });
+    }
+    res.json({ success: true, message: 'Trigger rule deleted' });
+  } catch (err) {
+    console.error('Error deleting trigger rule:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to delete trigger rule' });
+  }
+});
+
+// ─── SIGNALS: Feed (all signals, ranked) ─────────────────────────────────────
+app.get('/api/signals/feed', async (req, res) => {
+  try {
+    const { limit, days } = req.query;
+    const maxResults = Math.min(parseInt(limit) || 50, 200);
+    const dayRange = parseInt(days) || 30;
+
+    const { rows } = await pool.query(
+      `SELECT ps.*, p.name as prospect_name, p.company as prospect_company,
+              p.heat_tier, p.location as prospect_location,
+              tr.name as trigger_name, tr.category as trigger_category
+       FROM prospect_signals ps
+       JOIN prospects p ON ps.prospect_id = p.id
+       LEFT JOIN trigger_rules tr ON ps.trigger_rule_id = tr.id
+       WHERE ps.detected_at >= NOW() - ($1 || ' days')::INTERVAL
+       ORDER BY ps.score DESC, ps.detected_at DESC
+       LIMIT $2`,
+      [dayRange.toString(), maxResults]
+    );
+
+    res.json({ success: true, signals: rows, count: rows.length });
+  } catch (err) {
+    console.error('Error fetching signal feed:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to fetch signal feed' });
+  }
+});
+
+// ─── SIGNALS: Daily digest summary ──────────────────────────────────────────
+app.get('/api/signals/digest', async (req, res) => {
+  try {
+    const date = req.query.date || new Date().toISOString().split('T')[0];
+
+    const { rows: signals } = await pool.query(
+      `SELECT ps.*, p.name as prospect_name, p.company as prospect_company,
+              p.heat_tier, tr.name as trigger_name, tr.category as trigger_category
+       FROM prospect_signals ps
+       JOIN prospects p ON ps.prospect_id = p.id
+       LEFT JOIN trigger_rules tr ON ps.trigger_rule_id = tr.id
+       WHERE DATE(ps.detected_at) = $1
+       ORDER BY ps.score DESC`,
+      [date]
+    );
+
+    const { rows: tierSummary } = await pool.query(
+      `SELECT p.heat_tier, COUNT(DISTINCT ps.id) as signal_count
+       FROM prospect_signals ps
+       JOIN prospects p ON ps.prospect_id = p.id
+       WHERE DATE(ps.detected_at) = $1
+       GROUP BY p.heat_tier`,
+      [date]
+    );
+
+    res.json({
+      success: true,
+      date,
+      signals,
+      summary: {
+        total: signals.length,
+        by_tier: tierSummary
+      }
+    });
+  } catch (err) {
+    console.error('Error fetching digest:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to fetch digest' });
+  }
+});
+
+// ─── SIGNALS: Manual signal creation (for testing/manual entry) ──────────────
+app.post('/api/signals', async (req, res) => {
+  try {
+    const { prospect_id, trigger_rule_id, signal_type, title, summary, source_url, source_name, score } = req.body;
+    if (!prospect_id || !signal_type || !title) {
+      return res.status(400).json({ success: false, message: 'prospect_id, signal_type, and title are required' });
+    }
+
+    const { rows } = await pool.query(
+      `INSERT INTO prospect_signals (prospect_id, trigger_rule_id, signal_type, title, summary, source_url, source_name, score)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+      [prospect_id, trigger_rule_id||null, signal_type, title, summary||null, source_url||null, source_name||null, score||0]
+    );
+
+    // Recalculate prospect heat
+    await recalcProspectHeat(prospect_id);
+
+    res.json({ success: true, signal: rows[0] });
+  } catch (err) {
+    console.error('Error creating signal:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to create signal' });
+  }
+});
+
+// ─── SCANNER: Trigger manual scan for a prospect ────────────────────────────
+app.post('/api/scanner/scan/:id', async (req, res) => {
+  try {
+    const prospectId = req.params.id;
+    const { rows: prospects } = await pool.query('SELECT * FROM prospects WHERE id = $1', [prospectId]);
+    if (prospects.length === 0) {
+      return res.status(404).json({ success: false, message: 'Prospect not found' });
+    }
+
+    const result = await scanProspect(prospects[0]);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('Error scanning prospect:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to scan prospect' });
+  }
+});
+
+// ─── SCANNER: Trigger scan for all prospects ─────────────────────────────────
+app.post('/api/scanner/scan-all', async (req, res) => {
+  try {
+    const { rows: prospects } = await pool.query(
+      'SELECT * FROM prospects ORDER BY last_scanned_at ASC NULLS FIRST LIMIT 50'
+    );
+    const results = { scanned: 0, signals_found: 0, errors: 0 };
+
+    for (const prospect of prospects) {
+      try {
+        const result = await scanProspect(prospect);
+        results.scanned++;
+        results.signals_found += result.signals_found;
+      } catch (err) {
+        results.errors++;
+        console.error(`Scan error for ${prospect.name}:`, err.message);
+      }
+    }
+
+    res.json({ success: true, ...results });
+  } catch (err) {
+    console.error('Error in bulk scan:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to run bulk scan' });
+  }
+});
+
+// ─── Signal Scanner Engine ───────────────────────────────────────────────────
+async function scanProspect(prospect) {
+  const scanStart = new Date();
+  let signalsFound = 0;
+
+  try {
+    // Get active trigger rules
+    const { rows: rules } = await pool.query(
+      'SELECT * FROM trigger_rules WHERE is_active = TRUE'
+    );
+
+    // Build search queries for this prospect
+    const searchQueries = [
+      `"${prospect.name}" news`,
+      `"${prospect.name}" ${prospect.company || ''} business`,
+      `"${prospect.name}" yacht OR boat OR marine`,
+    ];
+
+    // For each query, simulate signal detection
+    // In production, this would use Google News API, Brave Search, or web scraping
+    // For now, we use keyword matching against the prospect's existing data + generate demo signals
+    for (const rule of rules) {
+      const keywords = rule.keywords || [];
+      const matchedKeywords = [];
+
+      // Check if any keywords match the prospect's notes or interests
+      for (const kw of keywords) {
+        const kwLower = kw.toLowerCase();
+        const searchText = `${prospect.notes || ''} ${prospect.current_yacht_interest || ''} ${prospect.company || ''}`.toLowerCase();
+        if (searchText.includes(kwLower)) {
+          matchedKeywords.push(kw);
+        }
+      }
+
+      if (matchedKeywords.length > 0) {
+        // Check if we already have a recent signal of this type
+        const { rows: existing } = await pool.query(
+          `SELECT id FROM prospect_signals
+           WHERE prospect_id = $1 AND trigger_rule_id = $2
+           AND detected_at > NOW() - INTERVAL '7 days'`,
+          [prospect.id, rule.id]
+        );
+
+        if (existing.length === 0) {
+          // Create new signal
+          await pool.query(
+            `INSERT INTO prospect_signals (prospect_id, trigger_rule_id, signal_type, title, summary, source_name, score)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+            [
+              prospect.id,
+              rule.id,
+              rule.category,
+              `${rule.name}: ${prospect.name}`,
+              `Keywords matched: ${matchedKeywords.join(', ')}. Source: prospect profile analysis.`,
+              'Profile Scan',
+              rule.score_weight
+            ]
+          );
+          signalsFound++;
+        }
+      }
+    }
+
+    // Update last scanned timestamp
+    await pool.query(
+      'UPDATE prospects SET last_scanned_at = NOW(), updated_at = NOW() WHERE id = $1',
+      [prospect.id]
+    );
+
+    // Recalculate heat
+    await recalcProspectHeat(prospect.id);
+
+    // Log the scan
+    await pool.query(
+      `INSERT INTO scan_history (prospect_id, scan_type, signals_found, search_queries, status, completed_at)
+       VALUES ($1, 'manual', $2, $3, 'completed', NOW())`,
+      [prospect.id, signalsFound, searchQueries]
+    );
+
+    return { prospect_id: prospect.id, prospect_name: prospect.name, signals_found: signalsFound };
+  } catch (err) {
+    // Log failed scan
+    await pool.query(
+      `INSERT INTO scan_history (prospect_id, scan_type, signals_found, status, error_message, completed_at)
+       VALUES ($1, 'manual', 0, 'failed', $2, NOW())`,
+      [prospect.id, err.message]
+    ).catch(() => {});
+    throw err;
+  }
+}
+
+// ─── Heat Score Recalculation ────────────────────────────────────────────────
+async function recalcProspectHeat(prospectId) {
+  try {
+    // Sum scores from recent signals (last 90 days)
+    const { rows } = await pool.query(
+      `SELECT COALESCE(SUM(score), 0) as total_score
+       FROM prospect_signals
+       WHERE prospect_id = $1 AND detected_at > NOW() - INTERVAL '90 days'`,
+      [prospectId]
+    );
+
+    const totalScore = parseInt(rows[0].total_score);
+    let tier = 'cold';
+    if (totalScore >= 10) tier = 'hot';
+    else if (totalScore >= 4) tier = 'warm';
+
+    await pool.query(
+      'UPDATE prospects SET heat_score = $1, heat_tier = $2, updated_at = NOW() WHERE id = $3',
+      [totalScore, tier, prospectId]
+    );
+  } catch (err) {
+    console.error('Error recalculating heat:', err.message);
+  }
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // PAGE SERVING
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -791,6 +1333,16 @@ app.get('/deals', (req, res) => {
   }
 });
 
+// Serve Command Center
+app.get('/command-center', (req, res) => {
+  const htmlPath = path.join(__dirname, 'public', 'command-center.html');
+  if (fs.existsSync(htmlPath)) {
+    res.type('html').sendFile(htmlPath);
+  } else {
+    res.status(404).json({ message: 'Command Center not found' });
+  }
+});
+
 app.listen(port, () => {
-  console.log(`BarnesOS Yacht Matchmaker running on port ${port}`);
+  console.log(`BarnesOS Command Center running on port ${port}`);
 });

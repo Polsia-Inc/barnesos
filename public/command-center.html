@@ -1,0 +1,1454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Barnes Command Center</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap" rel="stylesheet">
+<style>
+/* ===== RESET & BASE ===== */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html { font-size: 15px; scroll-behavior: smooth; }
+body {
+  font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+  background: #0a0e1a;
+  color: #e5e7eb;
+  min-height: 100vh;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: #c9a96e; text-decoration: none; }
+a:hover { color: #dfc08a; }
+button { cursor: pointer; font-family: inherit; }
+input, textarea, select { font-family: inherit; }
+
+/* ===== SCROLLBAR ===== */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: #0a0e1a; }
+::-webkit-scrollbar-thumb { background: #2a3352; border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: #3a4562; }
+
+/* ===== VARIABLES ===== */
+:root {
+  --bg-primary: #0a0e1a;
+  --bg-card: #111827;
+  --bg-card-hover: #1a2235;
+  --bg-input: #0d1321;
+  --border: #1e293b;
+  --border-light: #2a3352;
+  --gold: #c9a96e;
+  --gold-hover: #dfc08a;
+  --gold-dim: rgba(201,169,110,0.15);
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --hot: #ef4444;
+  --hot-bg: rgba(239,68,68,0.12);
+  --warm: #f97316;
+  --warm-bg: rgba(249,115,22,0.12);
+  --cold: #eab308;
+  --cold-bg: rgba(234,179,8,0.12);
+  --success: #22c55e;
+  --info: #3b82f6;
+  --radius: 10px;
+  --radius-sm: 6px;
+  --shadow: 0 4px 24px rgba(0,0,0,0.35);
+  --shadow-lg: 0 8px 40px rgba(0,0,0,0.5);
+  --transition: 0.2s ease;
+}
+
+/* ===== TOP NAV ===== */
+.top-nav {
+  position: sticky; top: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 28px; height: 60px;
+  background: rgba(17,24,39,0.92);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
+}
+.top-nav-logo {
+  display: flex; align-items: center; gap: 10px;
+  font-size: 1.15rem; font-weight: 700; color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+.top-nav-logo .logo-icon {
+  width: 28px; height: 28px; border-radius: 6px;
+  background: linear-gradient(135deg, var(--gold), #a8864a);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.75rem; font-weight: 800; color: #0a0e1a;
+}
+.nav-tabs { display: flex; gap: 2px; }
+.nav-tab {
+  padding: 8px 20px; border-radius: var(--radius-sm);
+  font-size: 0.875rem; font-weight: 500;
+  color: var(--text-secondary); background: transparent;
+  border: none; transition: all var(--transition);
+}
+.nav-tab:hover { color: var(--text-primary); background: rgba(255,255,255,0.04); }
+.nav-tab.active {
+  color: var(--gold); background: var(--gold-dim);
+  font-weight: 600;
+}
+.nav-date {
+  font-size: 0.8rem; color: var(--text-muted);
+  font-weight: 500; letter-spacing: 0.02em;
+}
+
+/* ===== KPI STRIP ===== */
+.kpi-strip {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;
+  padding: 20px 28px 0;
+}
+.kpi-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 18px 20px;
+  transition: border-color var(--transition);
+}
+.kpi-card:hover { border-color: var(--border-light); }
+.kpi-label {
+  font-size: 0.75rem; font-weight: 600; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;
+}
+.kpi-value {
+  font-size: 1.75rem; font-weight: 700; color: var(--text-primary);
+  line-height: 1.2;
+}
+.kpi-value .kpi-icon { font-size: 1.2rem; margin-left: 4px; }
+.kpi-sub {
+  font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;
+}
+
+/* ===== MAIN CONTENT ===== */
+.main-content { padding: 20px 28px 40px; }
+.panel { display: none; }
+.panel.active { display: block; }
+
+/* ===== PLACEHOLDER PANELS ===== */
+.placeholder-panel {
+  display: flex; flex-direction: column; align-items: center;
+  justify-content: center; min-height: 400px; gap: 16px;
+}
+.placeholder-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 48px 60px;
+  text-align: center; max-width: 480px;
+}
+.placeholder-card h2 {
+  font-size: 1.5rem; font-weight: 700; color: var(--text-primary);
+  margin-bottom: 8px;
+}
+.placeholder-card p { color: var(--text-secondary); margin-bottom: 16px; }
+.placeholder-stat {
+  font-size: 2.5rem; font-weight: 800; color: var(--gold);
+  margin-bottom: 4px;
+}
+.placeholder-stat-label { font-size: 0.8rem; color: var(--text-muted); margin-bottom: 20px; }
+.btn-gold {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 10px 24px; border-radius: var(--radius-sm);
+  background: linear-gradient(135deg, var(--gold), #b8944f);
+  color: #0a0e1a; font-weight: 600; font-size: 0.875rem;
+  border: none; transition: all var(--transition);
+  box-shadow: 0 2px 8px rgba(201,169,110,0.25);
+}
+.btn-gold:hover {
+  background: linear-gradient(135deg, var(--gold-hover), var(--gold));
+  transform: translateY(-1px); box-shadow: 0 4px 16px rgba(201,169,110,0.35);
+}
+.btn-outline {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 16px; border-radius: var(--radius-sm);
+  background: transparent; color: var(--gold);
+  border: 1px solid var(--gold); font-weight: 500; font-size: 0.8rem;
+  transition: all var(--transition);
+}
+.btn-outline:hover { background: var(--gold-dim); }
+.btn-sm {
+  padding: 5px 12px; font-size: 0.75rem; border-radius: 4px;
+}
+.btn-danger {
+  background: rgba(239,68,68,0.12); color: #ef4444;
+  border: 1px solid rgba(239,68,68,0.3);
+}
+.btn-danger:hover { background: rgba(239,68,68,0.22); }
+
+/* ===== SIGNAL RADAR PANEL ===== */
+.radar-layout {
+  display: grid;
+  grid-template-columns: 1fr 360px;
+  gap: 20px;
+}
+.radar-toolbar {
+  display: flex; align-items: center; gap: 12px;
+  margin-bottom: 16px; flex-wrap: wrap;
+}
+.search-box {
+  flex: 1; min-width: 200px; padding: 9px 14px 9px 36px;
+  background: var(--bg-input); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text-primary);
+  font-size: 0.875rem; transition: border-color var(--transition);
+  position: relative;
+}
+.search-box:focus { outline: none; border-color: var(--gold); }
+.search-wrap {
+  position: relative; flex: 1; min-width: 200px;
+}
+.search-wrap::before {
+  content: "\u26B2"; position: absolute; left: 12px; top: 50%;
+  transform: translateY(-50%); color: var(--text-muted); font-size: 0.9rem;
+  pointer-events: none;
+}
+.scan-all-btn {
+  padding: 9px 16px; border-radius: var(--radius-sm);
+  background: rgba(59,130,246,0.12); color: var(--info);
+  border: 1px solid rgba(59,130,246,0.3); font-weight: 500;
+  font-size: 0.8rem; transition: all var(--transition);
+}
+.scan-all-btn:hover { background: rgba(59,130,246,0.22); }
+
+/* ===== PROSPECT GRID ===== */
+.prospect-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px;
+}
+.tier-column {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden;
+}
+.tier-column.hot { border-top: 3px solid var(--hot); }
+.tier-column.warm { border-top: 3px solid var(--warm); }
+.tier-column.cold { border-top: 3px solid var(--cold); }
+.tier-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px; border-bottom: 1px solid var(--border);
+}
+.tier-title {
+  font-size: 0.8rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.tier-column.hot .tier-title { color: var(--hot); }
+.tier-column.warm .tier-title { color: var(--warm); }
+.tier-column.cold .tier-title { color: var(--cold); }
+.tier-count {
+  font-size: 0.7rem; font-weight: 600; padding: 2px 8px;
+  border-radius: 10px; background: rgba(255,255,255,0.06);
+  color: var(--text-muted);
+}
+.tier-body {
+  padding: 8px; max-height: 560px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 6px;
+}
+
+/* ===== PROSPECT CARD ===== */
+.prospect-card {
+  padding: 12px 14px; border-radius: var(--radius-sm);
+  background: var(--bg-primary); border: 1px solid var(--border);
+  cursor: pointer; transition: all var(--transition);
+}
+.prospect-card:hover {
+  border-color: var(--border-light); background: var(--bg-card-hover);
+  transform: translateY(-1px);
+}
+.prospect-name {
+  font-size: 0.875rem; font-weight: 600; color: var(--text-primary);
+  margin-bottom: 2px;
+}
+.prospect-company {
+  font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 6px;
+}
+.prospect-meta {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+}
+.prospect-location {
+  font-size: 0.7rem; color: var(--text-muted);
+}
+.prospect-score {
+  font-size: 0.7rem; font-weight: 700; padding: 1px 7px;
+  border-radius: 4px; margin-left: auto;
+}
+.prospect-score.hot { background: var(--hot-bg); color: var(--hot); }
+.prospect-score.warm { background: var(--warm-bg); color: var(--warm); }
+.prospect-score.cold { background: var(--cold-bg); color: var(--cold); }
+.prospect-signal {
+  font-size: 0.7rem; color: var(--text-muted); margin-top: 6px;
+  padding-top: 6px; border-top: 1px solid var(--border);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.prospect-scanned {
+  font-size: 0.65rem; color: var(--text-muted); margin-top: 4px;
+}
+
+/* ===== SIGNAL FEED ===== */
+.signal-feed {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); overflow: hidden;
+}
+.signal-feed-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px; border-bottom: 1px solid var(--border);
+}
+.signal-feed-title {
+  font-size: 0.85rem; font-weight: 700; color: var(--text-primary);
+}
+.signal-feed-body {
+  max-height: 640px; overflow-y: auto;
+}
+.signal-item {
+  padding: 12px 16px; border-bottom: 1px solid var(--border);
+  transition: background var(--transition);
+}
+.signal-item:last-child { border-bottom: none; }
+.signal-item:hover { background: rgba(255,255,255,0.02); }
+.signal-top {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 4px;
+}
+.signal-prospect-name {
+  font-size: 0.8rem; font-weight: 600; color: var(--text-primary);
+}
+.signal-badge {
+  font-size: 0.65rem; font-weight: 600; padding: 1px 7px;
+  border-radius: 4px; text-transform: uppercase; letter-spacing: 0.03em;
+}
+.signal-badge.high { background: var(--hot-bg); color: var(--hot); }
+.signal-badge.medium { background: var(--warm-bg); color: var(--warm); }
+.signal-badge.low { background: var(--cold-bg); color: var(--cold); }
+.signal-score {
+  font-size: 0.7rem; font-weight: 700; color: var(--gold);
+  margin-left: auto;
+}
+.signal-summary {
+  font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.signal-footer {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 0.65rem; color: var(--text-muted);
+}
+.signal-source {
+  padding: 1px 6px; border-radius: 3px;
+  background: rgba(255,255,255,0.05);
+}
+
+/* ===== ADMIN / TRIGGER RULES ===== */
+.admin-section {
+  margin-top: 20px; background: var(--bg-card);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  overflow: hidden;
+}
+.admin-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 16px; border-bottom: 1px solid var(--border);
+  cursor: pointer; user-select: none;
+  transition: background var(--transition);
+}
+.admin-header:hover { background: rgba(255,255,255,0.02); }
+.admin-header-left {
+  display: flex; align-items: center; gap: 8px;
+}
+.admin-title {
+  font-size: 0.85rem; font-weight: 700; color: var(--text-primary);
+}
+.admin-chevron {
+  font-size: 0.8rem; color: var(--text-muted);
+  transition: transform var(--transition);
+}
+.admin-chevron.open { transform: rotate(180deg); }
+.admin-body {
+  display: none; padding: 16px;
+}
+.admin-body.open { display: block; }
+.rules-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 12px;
+}
+.rule-card {
+  padding: 14px 16px; background: var(--bg-primary);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+}
+.rule-top {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+}
+.rule-name {
+  font-size: 0.85rem; font-weight: 600; color: var(--text-primary);
+}
+.rule-category {
+  font-size: 0.65rem; font-weight: 600; padding: 1px 7px;
+  border-radius: 4px; text-transform: uppercase;
+}
+.rule-category.high { background: var(--hot-bg); color: var(--hot); }
+.rule-category.medium { background: var(--warm-bg); color: var(--warm); }
+.rule-category.low { background: var(--cold-bg); color: var(--cold); }
+.rule-details {
+  font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 8px;
+}
+.rule-details span { color: var(--text-muted); }
+.rule-keywords {
+  display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px;
+}
+.rule-keyword {
+  font-size: 0.65rem; padding: 1px 7px; border-radius: 3px;
+  background: var(--gold-dim); color: var(--gold); font-weight: 500;
+}
+.rule-actions {
+  display: flex; gap: 6px; justify-content: flex-end;
+}
+
+/* ===== MODALS ===== */
+.modal-overlay {
+  display: none; position: fixed; inset: 0; z-index: 200;
+  background: rgba(0,0,0,0.65); backdrop-filter: blur(6px);
+  align-items: center; justify-content: center; padding: 20px;
+}
+.modal-overlay.active { display: flex; }
+.modal {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 12px; width: 100%; max-width: 560px;
+  max-height: 85vh; overflow-y: auto; box-shadow: var(--shadow-lg);
+}
+.modal.wide { max-width: 720px; }
+.modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 24px; border-bottom: 1px solid var(--border);
+}
+.modal-title {
+  font-size: 1.1rem; font-weight: 700; color: var(--text-primary);
+}
+.modal-close {
+  width: 32px; height: 32px; border-radius: 6px;
+  background: transparent; border: 1px solid var(--border);
+  color: var(--text-muted); font-size: 1rem;
+  display: flex; align-items: center; justify-content: center;
+  transition: all var(--transition);
+}
+.modal-close:hover { background: rgba(255,255,255,0.05); color: var(--text-primary); }
+.modal-body { padding: 24px; }
+.modal-footer {
+  display: flex; align-items: center; justify-content: flex-end; gap: 10px;
+  padding: 16px 24px; border-top: 1px solid var(--border);
+}
+
+/* ===== FORM ELEMENTS ===== */
+.form-group { margin-bottom: 16px; }
+.form-label {
+  display: block; font-size: 0.8rem; font-weight: 600;
+  color: var(--text-secondary); margin-bottom: 6px;
+}
+.form-label .required { color: var(--hot); }
+.form-input, .form-textarea, .form-select {
+  width: 100%; padding: 9px 14px; font-size: 0.875rem;
+  background: var(--bg-input); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text-primary);
+  transition: border-color var(--transition);
+}
+.form-input:focus, .form-textarea:focus, .form-select:focus {
+  outline: none; border-color: var(--gold);
+}
+.form-textarea { resize: vertical; min-height: 80px; }
+.form-select { appearance: none; cursor: pointer; }
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+/* ===== PROSPECT DETAIL MODAL ===== */
+.prospect-detail-header {
+  display: flex; align-items: flex-start; gap: 16px; margin-bottom: 20px;
+}
+.prospect-avatar {
+  width: 52px; height: 52px; border-radius: 10px;
+  background: var(--gold-dim); display: flex;
+  align-items: center; justify-content: center;
+  font-size: 1.25rem; font-weight: 700; color: var(--gold);
+  flex-shrink: 0;
+}
+.prospect-detail-info { flex: 1; }
+.prospect-detail-name {
+  font-size: 1.15rem; font-weight: 700; color: var(--text-primary);
+}
+.prospect-detail-company {
+  font-size: 0.85rem; color: var(--text-secondary);
+}
+.prospect-detail-meta {
+  display: flex; flex-wrap: wrap; gap: 12px; margin-top: 6px;
+}
+.prospect-detail-meta span {
+  font-size: 0.75rem; color: var(--text-muted);
+}
+.prospect-detail-actions {
+  display: flex; gap: 8px; flex-shrink: 0;
+}
+.detail-section-title {
+  font-size: 0.8rem; font-weight: 700; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.06em;
+  margin-bottom: 12px; padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.signal-timeline { display: flex; flex-direction: column; gap: 10px; }
+.timeline-item {
+  padding: 12px 14px; background: var(--bg-primary);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  border-left: 3px solid var(--border-light);
+}
+.timeline-item.high { border-left-color: var(--hot); }
+.timeline-item.medium { border-left-color: var(--warm); }
+.timeline-item.low { border-left-color: var(--cold); }
+.timeline-top {
+  display: flex; align-items: center; gap: 8px; margin-bottom: 4px;
+}
+.timeline-type {
+  font-size: 0.8rem; font-weight: 600; color: var(--text-primary);
+}
+.timeline-date {
+  font-size: 0.65rem; color: var(--text-muted); margin-left: auto;
+}
+.timeline-summary {
+  font-size: 0.75rem; color: var(--text-secondary);
+}
+.timeline-score {
+  font-size: 0.7rem; font-weight: 700; color: var(--gold);
+  margin-top: 4px;
+}
+.empty-state {
+  text-align: center; padding: 32px 16px;
+  color: var(--text-muted); font-size: 0.85rem;
+}
+
+/* ===== LOADING STATES ===== */
+.loading-shimmer {
+  background: linear-gradient(90deg, var(--bg-card) 25%, var(--bg-card-hover) 50%, var(--bg-card) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: var(--radius-sm);
+  height: 60px; margin-bottom: 8px;
+}
+@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+.toast {
+  position: fixed; bottom: 24px; right: 24px; z-index: 300;
+  padding: 12px 20px; border-radius: var(--radius-sm);
+  font-size: 0.85rem; font-weight: 500;
+  box-shadow: var(--shadow-lg); transform: translateY(100px);
+  opacity: 0; transition: all 0.3s ease;
+}
+.toast.show { transform: translateY(0); opacity: 1; }
+.toast.success { background: #065f46; color: #6ee7b7; border: 1px solid #10b981; }
+.toast.error { background: #7f1d1d; color: #fca5a5; border: 1px solid #ef4444; }
+.toast.info { background: #1e3a5f; color: #93c5fd; border: 1px solid #3b82f6; }
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 1100px) {
+  .radar-layout { grid-template-columns: 1fr; }
+  .signal-feed { margin-top: 0; }
+}
+@media (max-width: 900px) {
+  .prospect-grid { grid-template-columns: 1fr; }
+  .kpi-strip { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 640px) {
+  .kpi-strip { grid-template-columns: 1fr; }
+  .top-nav { padding: 0 16px; }
+  .main-content { padding: 16px; }
+  .nav-tabs { gap: 0; }
+  .nav-tab { padding: 8px 12px; font-size: 0.8rem; }
+  .form-row { grid-template-columns: 1fr; }
+  .rules-grid { grid-template-columns: 1fr; }
+}
+</style>
+</head>
+<body>
+
+<!-- ===== TOP NAV ===== -->
+<nav class="top-nav">
+  <div class="top-nav-logo">
+    <div class="logo-icon">B</div>
+    Barnes Command Center
+  </div>
+  <div class="nav-tabs">
+    <button class="nav-tab active" data-panel="matchmaker">Matchmaker</button>
+    <button class="nav-tab" data-panel="radar">Signal Radar</button>
+    <button class="nav-tab" data-panel="fund">Fund Tracker</button>
+  </div>
+  <div class="nav-date" id="navDate"></div>
+</nav>
+
+<!-- ===== KPI STRIP ===== -->
+<div class="kpi-strip">
+  <div class="kpi-card">
+    <div class="kpi-label">Total Prospects</div>
+    <div class="kpi-value" id="kpiProspects">--</div>
+    <div class="kpi-sub" id="kpiProspectsSub">Loading...</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Hot Signals Today</div>
+    <div class="kpi-value" id="kpiSignals">--<span class="kpi-icon">&#x1F525;</span></div>
+    <div class="kpi-sub" id="kpiSignalsSub">Loading...</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Fund Deployed</div>
+    <div class="kpi-value" id="kpiFund">--</div>
+    <div class="kpi-sub" id="kpiFundSub">Loading...</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Active Matches</div>
+    <div class="kpi-value" id="kpiMatches">--</div>
+    <div class="kpi-sub" id="kpiMatchesSub">Loading...</div>
+  </div>
+</div>
+
+<!-- ===== MAIN CONTENT ===== -->
+<div class="main-content">
+
+  <!-- PANEL: MATCHMAKER -->
+  <div class="panel active" id="panel-matchmaker">
+    <div class="placeholder-panel">
+      <div class="placeholder-card">
+        <h2>Matchmaker</h2>
+        <p>AI-powered yacht-to-buyer matching engine</p>
+        <div class="placeholder-stat" id="matchmakerYachtCount">--</div>
+        <div class="placeholder-stat-label">Available Yachts in Database</div>
+        <a href="/" class="btn-gold">Open Matchmaker &#x2192;</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- PANEL: SIGNAL RADAR -->
+  <div class="panel" id="panel-radar">
+    <!-- Toolbar -->
+    <div class="radar-toolbar">
+      <div class="search-wrap">
+        <input type="text" class="search-box" id="prospectSearch" placeholder="Search prospects by name, company, location...">
+      </div>
+      <button class="btn-gold" id="btnAddProspect">+ Add Prospect</button>
+      <button class="scan-all-btn" id="btnScanAll">&#x21BB; Scan All</button>
+    </div>
+
+    <div class="radar-layout">
+      <!-- LEFT: Prospect Grid -->
+      <div>
+        <div class="prospect-grid">
+          <div class="tier-column hot">
+            <div class="tier-header">
+              <div class="tier-title">&#x1F534; HOT</div>
+              <div class="tier-count" id="hotCount">0</div>
+            </div>
+            <div class="tier-body" id="hotProspects"></div>
+          </div>
+          <div class="tier-column warm">
+            <div class="tier-header">
+              <div class="tier-title">&#x1F7E0; WARM</div>
+              <div class="tier-count" id="warmCount">0</div>
+            </div>
+            <div class="tier-body" id="warmProspects"></div>
+          </div>
+          <div class="tier-column cold">
+            <div class="tier-header">
+              <div class="tier-title">&#x1F7E1; COLD</div>
+              <div class="tier-count" id="coldCount">0</div>
+            </div>
+            <div class="tier-body" id="coldProspects"></div>
+          </div>
+        </div>
+
+        <!-- Admin Section -->
+        <div class="admin-section" id="adminSection">
+          <div class="admin-header" id="adminToggle">
+            <div class="admin-header-left">
+              <span class="admin-title">&#x2699; Trigger Engine</span>
+              <span style="font-size:0.7rem;color:var(--text-muted);" id="ruleCountLabel">0 rules</span>
+            </div>
+            <span class="admin-chevron" id="adminChevron">&#x25BC;</span>
+          </div>
+          <div class="admin-body" id="adminBody">
+            <div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+              <button class="btn-gold btn-sm" id="btnAddRule">+ Add Rule</button>
+            </div>
+            <div class="rules-grid" id="rulesGrid"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Signal Feed -->
+      <div class="signal-feed">
+        <div class="signal-feed-header">
+          <div class="signal-feed-title">&#x1F4E1; Signal Feed</div>
+          <span style="font-size:0.7rem;color:var(--text-muted);" id="signalFeedCount">0 signals</span>
+        </div>
+        <div class="signal-feed-body" id="signalFeedBody"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PANEL: FUND TRACKER -->
+  <div class="panel" id="panel-fund">
+    <div class="placeholder-panel">
+      <div class="placeholder-card">
+        <h2>Fund Tracker</h2>
+        <p>Real-time fund deployment and deal pipeline analytics</p>
+        <div class="placeholder-stat" id="fundTotalDeployed">&euro;--</div>
+        <div class="placeholder-stat-label" id="fundDealsLabel">Loading fund data...</div>
+        <a href="/deals" class="btn-gold">Open Deal Pipeline &#x2192;</a>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ===== MODAL: ADD/EDIT PROSPECT ===== -->
+<div class="modal-overlay" id="modalProspect">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="prospectModalTitle">Add Prospect</div>
+      <button class="modal-close" onclick="closeModal('modalProspect')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form id="prospectForm">
+        <input type="hidden" id="prospectFormId">
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Name <span class="required">*</span></label>
+            <input type="text" class="form-input" id="pf_name" required placeholder="Full name">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Company</label>
+            <input type="text" class="form-input" id="pf_company" placeholder="Company name">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Email</label>
+            <input type="email" class="form-input" id="pf_email" placeholder="email@example.com">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Phone</label>
+            <input type="text" class="form-input" id="pf_phone" placeholder="+33 6 12 34 56 78">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Location</label>
+            <input type="text" class="form-input" id="pf_location" placeholder="Monaco, France">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Yacht Interest</label>
+            <input type="text" class="form-input" id="pf_yacht_interest" placeholder="50m+ motor yacht">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Notes</label>
+          <textarea class="form-textarea" id="pf_notes" placeholder="Additional notes about this prospect..."></textarea>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" onclick="closeModal('modalProspect')">Cancel</button>
+      <button class="btn-gold" id="btnSaveProspect">Save Prospect</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: PROSPECT DETAIL ===== -->
+<div class="modal-overlay" id="modalProspectDetail">
+  <div class="modal wide">
+    <div class="modal-header">
+      <div class="modal-title">Prospect Profile</div>
+      <button class="modal-close" onclick="closeModal('modalProspectDetail')">&times;</button>
+    </div>
+    <div class="modal-body" id="prospectDetailBody">
+      <!-- Dynamic content -->
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: ADD/EDIT TRIGGER RULE ===== -->
+<div class="modal-overlay" id="modalRule">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="ruleModalTitle">Add Trigger Rule</div>
+      <button class="modal-close" onclick="closeModal('modalRule')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <form id="ruleForm">
+        <input type="hidden" id="ruleFormId">
+        <div class="form-group">
+          <label class="form-label">Rule Name <span class="required">*</span></label>
+          <input type="text" class="form-input" id="rf_name" required placeholder="e.g. Yacht Purchase Intent">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Category <span class="required">*</span></label>
+            <select class="form-select" id="rf_category">
+              <option value="high">High</option>
+              <option value="medium">Medium</option>
+              <option value="low">Low</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Score Weight <span class="required">*</span></label>
+            <input type="number" class="form-input" id="rf_score" min="1" max="100" value="10" placeholder="1-100">
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Keywords <span style="font-weight:400;color:var(--text-muted)">(comma separated)</span></label>
+          <input type="text" class="form-input" id="rf_keywords" placeholder="yacht, superyacht, charter, buy">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Description</label>
+          <textarea class="form-textarea" id="rf_description" placeholder="Describe what this rule detects..."></textarea>
+        </div>
+      </form>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" onclick="closeModal('modalRule')">Cancel</button>
+      <button class="btn-gold" id="btnSaveRule">Save Rule</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== TOAST ===== -->
+<div class="toast" id="toast"></div>
+
+<script>
+/* ==========================================================================
+   BARNES COMMAND CENTER — CLIENT-SIDE APPLICATION
+   ========================================================================== */
+
+// ==================== STATE ====================
+const state = {
+  activePanel: 'matchmaker',
+  prospects: { hot: [], warm: [], cold: [] },
+  signals: [],
+  rules: [],
+  kpis: {},
+  searchQuery: '',
+  adminOpen: false,
+};
+
+// ==================== HELPERS ====================
+function $(sel) { return document.querySelector(sel); }
+function $$(sel) { return document.querySelectorAll(sel); }
+
+function formatDate(d) {
+  if (!d) return '--';
+  const dt = new Date(d);
+  return dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function formatDateTime(d) {
+  if (!d) return '--';
+  const dt = new Date(d);
+  return dt.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) + ' ' +
+         dt.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+}
+
+function formatCurrency(val) {
+  if (val == null || isNaN(val)) return '\u20AC--';
+  if (val >= 1e9) return '\u20AC' + (val / 1e9).toFixed(1) + 'B';
+  if (val >= 1e6) return '\u20AC' + (val / 1e6).toFixed(1) + 'M';
+  if (val >= 1e3) return '\u20AC' + (val / 1e3).toFixed(0) + 'K';
+  return '\u20AC' + Number(val).toLocaleString();
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function getInitials(name) {
+  if (!name) return '?';
+  return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+}
+
+function getTierClass(tier) {
+  if (!tier) return 'cold';
+  const t = tier.toLowerCase();
+  if (t === 'hot') return 'hot';
+  if (t === 'warm') return 'warm';
+  return 'cold';
+}
+
+function getCategoryClass(cat) {
+  if (!cat) return 'low';
+  const c = cat.toLowerCase();
+  if (c === 'high') return 'high';
+  if (c === 'medium') return 'medium';
+  return 'low';
+}
+
+// ==================== TOAST ====================
+let toastTimer = null;
+function showToast(msg, type = 'info') {
+  const t = $('#toast');
+  t.textContent = msg;
+  t.className = 'toast ' + type;
+  clearTimeout(toastTimer);
+  requestAnimationFrame(() => { t.classList.add('show'); });
+  toastTimer = setTimeout(() => { t.classList.remove('show'); }, 3500);
+}
+
+// ==================== API ====================
+async function api(url, opts = {}) {
+  try {
+    const res = await fetch(url, {
+      headers: { 'Content-Type': 'application/json', ...opts.headers },
+      ...opts,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.message || data.error || `HTTP ${res.status}`);
+    return data;
+  } catch (err) {
+    console.error(`API ${opts.method || 'GET'} ${url}:`, err);
+    throw err;
+  }
+}
+
+// ==================== MODAL HELPERS ====================
+function openModal(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.add('active');
+}
+function closeModal(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.remove('active');
+}
+
+// Close modals on overlay click
+document.addEventListener('click', (e) => {
+  if (e.target.classList.contains('modal-overlay') && e.target.classList.contains('active')) {
+    e.target.classList.remove('active');
+  }
+});
+
+// Close modals on Escape
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    $$('.modal-overlay.active').forEach(m => m.classList.remove('active'));
+  }
+});
+
+// ==================== NAV DATE ====================
+function setNavDate() {
+  const now = new Date();
+  $('#navDate').textContent = now.toLocaleDateString('en-GB', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+  });
+}
+
+// ==================== TAB SWITCHING ====================
+function initTabs() {
+  $$('.nav-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      const panel = tab.dataset.panel;
+      if (panel === state.activePanel) return;
+      $$('.nav-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      $$('.panel').forEach(p => p.classList.remove('active'));
+      const panelEl = document.getElementById('panel-' + panel);
+      if (panelEl) panelEl.classList.add('active');
+      state.activePanel = panel;
+
+      // Load panel-specific data
+      if (panel === 'radar') {
+        loadProspects();
+        loadSignals();
+        loadRules();
+      }
+    });
+  });
+}
+
+// ==================== KPI LOADING ====================
+async function loadKPIs() {
+  try {
+    const data = await api('/api/command-center/kpis');
+    state.kpis = data;
+
+    const kpis = data.kpis || data;
+    $('#kpiProspects').textContent = kpis.total_prospects ?? kpis.totalProspects ?? '--';
+    $('#kpiProspectsSub').textContent = kpis.prospects_sub || 'Across all tiers';
+
+    const hotSignals = kpis.hot_signals_today ?? kpis.hotSignalsToday ?? '--';
+    $('#kpiSignals').innerHTML = hotSignals + '<span class="kpi-icon">&#x1F525;</span>';
+    $('#kpiSignalsSub').textContent = kpis.signals_sub || 'High-priority signals';
+
+    const fund = kpis.fund_deployed ?? kpis.fundDeployed;
+    $('#kpiFund').textContent = fund != null ? formatCurrency(fund) : '\u20AC--';
+    $('#kpiFundSub').textContent = kpis.fund_sub || 'Total deployed capital';
+
+    $('#kpiMatches').textContent = kpis.active_matches ?? kpis.activeMatches ?? '--';
+    $('#kpiMatchesSub').textContent = kpis.matches_sub || 'Yacht-buyer pairs';
+  } catch (err) {
+    console.warn('KPI load failed:', err);
+    $('#kpiProspectsSub').textContent = 'Unable to load';
+    $('#kpiSignalsSub').textContent = 'Unable to load';
+    $('#kpiFundSub').textContent = 'Unable to load';
+    $('#kpiMatchesSub').textContent = 'Unable to load';
+  }
+}
+
+// ==================== MATCHMAKER PANEL ====================
+async function loadMatchmakerData() {
+  try {
+    const data = await api('/api/yachts');
+    const yachts = Array.isArray(data) ? data : (data.yachts || []);
+    $('#matchmakerYachtCount').textContent = yachts.length;
+  } catch (err) {
+    console.warn('Yacht count load failed:', err);
+    $('#matchmakerYachtCount').textContent = '--';
+  }
+}
+
+// ==================== FUND TRACKER PANEL ====================
+async function loadFundData() {
+  try {
+    const data = await api('/api/deals/analytics/fund');
+    const fund = data.fund || data;
+    const deployed = fund.total_deployed ?? fund.totalDeployed ?? fund.deployed;
+    $('#fundTotalDeployed').textContent = deployed != null ? formatCurrency(deployed) : '\u20AC--';
+    const deals = fund.total_deals ?? fund.totalDeals ?? fund.deals_count;
+    $('#fundDealsLabel').textContent = deals != null ? deals + ' deals in pipeline' : 'Fund analytics';
+  } catch (err) {
+    console.warn('Fund data load failed:', err);
+    $('#fundTotalDeployed').textContent = '\u20AC--';
+    $('#fundDealsLabel').textContent = 'Unable to load fund data';
+  }
+}
+
+// ==================== PROSPECTS ====================
+async function loadProspects() {
+  const search = state.searchQuery;
+  try {
+    const [hotData, warmData, coldData] = await Promise.all([
+      api('/api/prospects?tier=hot' + (search ? '&search=' + encodeURIComponent(search) : '')),
+      api('/api/prospects?tier=warm' + (search ? '&search=' + encodeURIComponent(search) : '')),
+      api('/api/prospects?tier=cold' + (search ? '&search=' + encodeURIComponent(search) : '')),
+    ]);
+
+    state.prospects.hot = Array.isArray(hotData) ? hotData : (hotData.prospects || []);
+    state.prospects.warm = Array.isArray(warmData) ? warmData : (warmData.prospects || []);
+    state.prospects.cold = Array.isArray(coldData) ? coldData : (coldData.prospects || []);
+
+    renderProspectTier('hot');
+    renderProspectTier('warm');
+    renderProspectTier('cold');
+  } catch (err) {
+    console.warn('Prospects load failed:', err);
+    ['hot', 'warm', 'cold'].forEach(tier => {
+      document.getElementById(tier + 'Prospects').innerHTML = '<div class="empty-state">Unable to load prospects</div>';
+    });
+  }
+}
+
+function renderProspectTier(tier) {
+  const container = document.getElementById(tier + 'Prospects');
+  const prospects = (state.prospects[tier] || []).sort((a, b) => (b.heat_score || 0) - (a.heat_score || 0));
+  document.getElementById(tier + 'Count').textContent = prospects.length;
+
+  if (prospects.length === 0) {
+    container.innerHTML = '<div class="empty-state">No ' + tier + ' prospects</div>';
+    return;
+  }
+
+  container.innerHTML = prospects.map(p => {
+    const tierClass = getTierClass(p.tier || tier);
+    const latestSignal = p.latest_signal || p.latestSignal || '';
+    const score = p.heat_score ?? p.heatScore ?? 0;
+    const scanned = p.last_scanned || p.lastScanned;
+    return `
+      <div class="prospect-card" onclick="openProspectDetail('${p.id}')">
+        <div class="prospect-name">${escapeHtml(p.name)}</div>
+        ${p.company ? `<div class="prospect-company">${escapeHtml(p.company)}</div>` : ''}
+        <div class="prospect-meta">
+          ${p.location ? `<span class="prospect-location">${escapeHtml(p.location)}</span>` : ''}
+          <span class="prospect-score ${tierClass}">${score}</span>
+        </div>
+        ${latestSignal ? `<div class="prospect-signal">${escapeHtml(latestSignal)}</div>` : ''}
+        ${scanned ? `<div class="prospect-scanned">Scanned ${formatDate(scanned)}</div>` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+// ==================== PROSPECT DETAIL ====================
+async function openProspectDetail(id) {
+  openModal('modalProspectDetail');
+  const body = $('#prospectDetailBody');
+  body.innerHTML = '<div class="loading-shimmer"></div><div class="loading-shimmer"></div>';
+
+  try {
+    const data = await api('/api/prospects/' + id);
+    const p = data.prospect || data;
+    const signals = p.signals || p.signal_history || [];
+    const tierClass = getTierClass(p.tier);
+    const score = p.heat_score ?? p.heatScore ?? 0;
+
+    body.innerHTML = `
+      <div class="prospect-detail-header">
+        <div class="prospect-avatar">${getInitials(p.name)}</div>
+        <div class="prospect-detail-info">
+          <div class="prospect-detail-name">${escapeHtml(p.name)}</div>
+          ${p.company ? `<div class="prospect-detail-company">${escapeHtml(p.company)}</div>` : ''}
+          <div class="prospect-detail-meta">
+            ${p.email ? `<span>&#x2709; ${escapeHtml(p.email)}</span>` : ''}
+            ${p.phone ? `<span>&#x260E; ${escapeHtml(p.phone)}</span>` : ''}
+            ${p.location ? `<span>&#x1F4CD; ${escapeHtml(p.location)}</span>` : ''}
+            <span class="prospect-score ${tierClass}" style="font-size:0.75rem;">${p.tier ? p.tier.toUpperCase() : 'COLD'} &middot; ${score}</span>
+          </div>
+        </div>
+        <div class="prospect-detail-actions">
+          <button class="btn-outline btn-sm" onclick="triggerScan('${p.id}')">&#x21BB; Scan</button>
+          <button class="btn-outline btn-sm" onclick="openEditProspect('${p.id}')">&#x270E; Edit</button>
+        </div>
+      </div>
+
+      ${p.yacht_interest ? `<div style="margin-bottom:16px;padding:10px 14px;background:var(--gold-dim);border-radius:var(--radius-sm);font-size:0.8rem;"><strong style="color:var(--gold);">Yacht Interest:</strong> <span style="color:var(--text-secondary);">${escapeHtml(p.yacht_interest)}</span></div>` : ''}
+      ${p.notes ? `<div style="margin-bottom:16px;font-size:0.8rem;color:var(--text-secondary);padding:10px 14px;background:var(--bg-primary);border-radius:var(--radius-sm);border:1px solid var(--border);">${escapeHtml(p.notes)}</div>` : ''}
+
+      <div class="detail-section-title">Signal History (${signals.length})</div>
+      <div class="signal-timeline">
+        ${signals.length === 0 ? '<div class="empty-state">No signals recorded yet. Click Scan to trigger analysis.</div>' :
+          signals.map(s => {
+            const cat = getCategoryClass(s.category);
+            return `
+              <div class="timeline-item ${cat}">
+                <div class="timeline-top">
+                  <span class="signal-badge ${cat}">${escapeHtml(s.signal_type || s.type || 'Signal')}</span>
+                  <span class="timeline-type">${escapeHtml(s.source || '')}</span>
+                  <span class="timeline-date">${formatDateTime(s.detected_at || s.created_at || s.date)}</span>
+                </div>
+                <div class="timeline-summary">${escapeHtml(s.summary || s.description || '')}</div>
+                <div class="timeline-score">Score: +${s.score ?? s.score_delta ?? 0}</div>
+              </div>
+            `;
+          }).join('')
+        }
+      </div>
+    `;
+  } catch (err) {
+    body.innerHTML = '<div class="empty-state">Unable to load prospect details.</div>';
+    showToast('Failed to load prospect', 'error');
+  }
+}
+
+// ==================== ADD/EDIT PROSPECT ====================
+function openAddProspect() {
+  $('#prospectModalTitle').textContent = 'Add Prospect';
+  $('#prospectFormId').value = '';
+  $('#prospectForm').reset();
+  openModal('modalProspect');
+}
+
+async function openEditProspect(id) {
+  closeModal('modalProspectDetail');
+  try {
+    const data = await api('/api/prospects/' + id);
+    const p = data.prospect || data;
+    $('#prospectModalTitle').textContent = 'Edit Prospect';
+    $('#prospectFormId').value = p.id;
+    $('#pf_name').value = p.name || '';
+    $('#pf_company').value = p.company || '';
+    $('#pf_email').value = p.email || '';
+    $('#pf_phone').value = p.phone || '';
+    $('#pf_location').value = p.location || '';
+    $('#pf_yacht_interest').value = p.yacht_interest || p.yachtInterest || '';
+    $('#pf_notes').value = p.notes || '';
+    openModal('modalProspect');
+  } catch (err) {
+    showToast('Failed to load prospect for editing', 'error');
+  }
+}
+
+async function saveProspect() {
+  const id = $('#prospectFormId').value;
+  const payload = {
+    name: $('#pf_name').value.trim(),
+    company: $('#pf_company').value.trim(),
+    email: $('#pf_email').value.trim(),
+    phone: $('#pf_phone').value.trim(),
+    location: $('#pf_location').value.trim(),
+    yacht_interest: $('#pf_yacht_interest').value.trim(),
+    notes: $('#pf_notes').value.trim(),
+  };
+
+  if (!payload.name) {
+    showToast('Name is required', 'error');
+    return;
+  }
+
+  try {
+    if (id) {
+      await api('/api/prospects/' + id, { method: 'PUT', body: JSON.stringify(payload) });
+      showToast('Prospect updated', 'success');
+    } else {
+      await api('/api/prospects', { method: 'POST', body: JSON.stringify(payload) });
+      showToast('Prospect added', 'success');
+    }
+    closeModal('modalProspect');
+    loadProspects();
+    loadKPIs();
+  } catch (err) {
+    showToast('Failed to save prospect: ' + err.message, 'error');
+  }
+}
+
+// ==================== SCAN ====================
+async function triggerScan(id) {
+  showToast('Scanning prospect...', 'info');
+  try {
+    await api('/api/scanner/scan/' + id, { method: 'POST' });
+    showToast('Scan complete', 'success');
+    // Refresh data
+    loadProspects();
+    loadSignals();
+    loadKPIs();
+    // Refresh detail if open
+    if ($('#modalProspectDetail').classList.contains('active')) {
+      openProspectDetail(id);
+    }
+  } catch (err) {
+    showToast('Scan failed: ' + err.message, 'error');
+  }
+}
+
+async function scanAll() {
+  showToast('Scanning all prospects...', 'info');
+  try {
+    await api('/api/scanner/scan-all', { method: 'POST' });
+    showToast('Full scan complete', 'success');
+    loadProspects();
+    loadSignals();
+    loadKPIs();
+  } catch (err) {
+    showToast('Scan failed: ' + err.message, 'error');
+  }
+}
+
+// ==================== SIGNALS ====================
+async function loadSignals() {
+  try {
+    const data = await api('/api/signals/feed?limit=50&days=30');
+    state.signals = Array.isArray(data) ? data : (data.signals || []);
+    renderSignalFeed();
+  } catch (err) {
+    console.warn('Signal feed load failed:', err);
+    $('#signalFeedBody').innerHTML = '<div class="empty-state">Unable to load signal feed</div>';
+  }
+}
+
+function renderSignalFeed() {
+  const container = $('#signalFeedBody');
+  const signals = state.signals;
+  $('#signalFeedCount').textContent = signals.length + ' signal' + (signals.length !== 1 ? 's' : '');
+
+  if (signals.length === 0) {
+    container.innerHTML = '<div class="empty-state">No signals detected yet.<br>Add prospects and run a scan.</div>';
+    return;
+  }
+
+  container.innerHTML = signals.map(s => {
+    const cat = getCategoryClass(s.category);
+    const prospectName = s.prospect_name || s.prospectName || 'Unknown';
+    return `
+      <div class="signal-item">
+        <div class="signal-top">
+          <span class="signal-prospect-name">${escapeHtml(prospectName)}</span>
+          <span class="signal-badge ${cat}">${escapeHtml(s.signal_type || s.type || 'Signal')}</span>
+          <span class="signal-score">+${s.score ?? 0}</span>
+        </div>
+        <div class="signal-summary">${escapeHtml(s.summary || s.description || '')}</div>
+        <div class="signal-footer">
+          <span class="signal-source">${escapeHtml(s.source || '--')}</span>
+          <span>${formatDateTime(s.detected_at || s.created_at || s.date)}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+// ==================== TRIGGER RULES ====================
+async function loadRules() {
+  try {
+    const data = await api('/api/trigger-rules');
+    state.rules = Array.isArray(data) ? data : (data.rules || []);
+    renderRules();
+  } catch (err) {
+    console.warn('Rules load failed:', err);
+    $('#rulesGrid').innerHTML = '<div class="empty-state">Unable to load trigger rules</div>';
+  }
+}
+
+function renderRules() {
+  const container = $('#rulesGrid');
+  const rules = state.rules;
+  $('#ruleCountLabel').textContent = rules.length + ' rule' + (rules.length !== 1 ? 's' : '');
+
+  if (rules.length === 0) {
+    container.innerHTML = '<div class="empty-state" style="grid-column:1/-1;">No trigger rules defined.<br>Add rules to power the signal engine.</div>';
+    return;
+  }
+
+  container.innerHTML = rules.map(r => {
+    const cat = getCategoryClass(r.category);
+    const keywords = r.keywords || [];
+    const keywordsList = Array.isArray(keywords) ? keywords : (typeof keywords === 'string' ? keywords.split(',').map(k => k.trim()) : []);
+    const triggered = r.times_triggered ?? r.timesTriggered ?? 0;
+    return `
+      <div class="rule-card">
+        <div class="rule-top">
+          <span class="rule-name">${escapeHtml(r.name)}</span>
+          <span class="rule-category ${cat}">${escapeHtml(r.category || 'low')}</span>
+        </div>
+        <div class="rule-details">
+          Score weight: <strong>${r.score_weight ?? r.scoreWeight ?? r.score ?? '--'}</strong>
+          &nbsp;&middot;&nbsp; Triggered: <strong>${triggered}</strong> time${triggered !== 1 ? 's' : ''}
+        </div>
+        ${keywordsList.length > 0 ? `
+          <div class="rule-keywords">
+            ${keywordsList.slice(0, 8).map(k => `<span class="rule-keyword">${escapeHtml(k)}</span>`).join('')}
+            ${keywordsList.length > 8 ? `<span class="rule-keyword">+${keywordsList.length - 8} more</span>` : ''}
+          </div>
+        ` : ''}
+        ${r.description ? `<div style="font-size:0.7rem;color:var(--text-muted);margin-bottom:8px;">${escapeHtml(r.description)}</div>` : ''}
+        <div class="rule-actions">
+          <button class="btn-outline btn-sm" onclick="openEditRule('${r.id}')">Edit</button>
+          <button class="btn-outline btn-sm btn-danger" onclick="deleteRule('${r.id}')">Delete</button>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function openAddRule() {
+  $('#ruleModalTitle').textContent = 'Add Trigger Rule';
+  $('#ruleFormId').value = '';
+  $('#ruleForm').reset();
+  $('#rf_score').value = 10;
+  openModal('modalRule');
+}
+
+function openEditRule(id) {
+  const rule = state.rules.find(r => String(r.id) === String(id));
+  if (!rule) { showToast('Rule not found', 'error'); return; }
+  $('#ruleModalTitle').textContent = 'Edit Trigger Rule';
+  $('#ruleFormId').value = rule.id;
+  $('#rf_name').value = rule.name || '';
+  $('#rf_category').value = rule.category || 'low';
+  $('#rf_score').value = rule.score_weight ?? rule.scoreWeight ?? rule.score ?? 10;
+  const kws = rule.keywords || [];
+  $('#rf_keywords').value = Array.isArray(kws) ? kws.join(', ') : kws;
+  $('#rf_description').value = rule.description || '';
+  openModal('modalRule');
+}
+
+async function saveRule() {
+  const id = $('#ruleFormId').value;
+  const keywordsRaw = $('#rf_keywords').value.trim();
+  const payload = {
+    name: $('#rf_name').value.trim(),
+    category: $('#rf_category').value,
+    score_weight: parseInt($('#rf_score').value, 10) || 10,
+    keywords: keywordsRaw ? keywordsRaw.split(',').map(k => k.trim()).filter(Boolean) : [],
+    description: $('#rf_description').value.trim(),
+  };
+
+  if (!payload.name) {
+    showToast('Rule name is required', 'error');
+    return;
+  }
+
+  try {
+    if (id) {
+      await api('/api/trigger-rules/' + id, { method: 'PUT', body: JSON.stringify(payload) });
+      showToast('Rule updated', 'success');
+    } else {
+      await api('/api/trigger-rules', { method: 'POST', body: JSON.stringify(payload) });
+      showToast('Rule created', 'success');
+    }
+    closeModal('modalRule');
+    loadRules();
+  } catch (err) {
+    showToast('Failed to save rule: ' + err.message, 'error');
+  }
+}
+
+async function deleteRule(id) {
+  if (!confirm('Delete this trigger rule?')) return;
+  try {
+    await api('/api/trigger-rules/' + id, { method: 'DELETE' });
+    showToast('Rule deleted', 'success');
+    loadRules();
+  } catch (err) {
+    showToast('Failed to delete rule: ' + err.message, 'error');
+  }
+}
+
+// ==================== SEARCH ====================
+let searchDebounce = null;
+function initSearch() {
+  $('#prospectSearch').addEventListener('input', (e) => {
+    clearTimeout(searchDebounce);
+    searchDebounce = setTimeout(() => {
+      state.searchQuery = e.target.value.trim();
+      loadProspects();
+    }, 350);
+  });
+}
+
+// ==================== ADMIN TOGGLE ====================
+function initAdmin() {
+  $('#adminToggle').addEventListener('click', () => {
+    state.adminOpen = !state.adminOpen;
+    const body = $('#adminBody');
+    const chevron = $('#adminChevron');
+    if (state.adminOpen) {
+      body.classList.add('open');
+      chevron.classList.add('open');
+    } else {
+      body.classList.remove('open');
+      chevron.classList.remove('open');
+    }
+  });
+}
+
+// ==================== EVENT BINDINGS ====================
+function initEvents() {
+  $('#btnAddProspect').addEventListener('click', openAddProspect);
+  $('#btnSaveProspect').addEventListener('click', saveProspect);
+  $('#btnScanAll').addEventListener('click', scanAll);
+  $('#btnAddRule').addEventListener('click', openAddRule);
+  $('#btnSaveRule').addEventListener('click', saveRule);
+}
+
+// ==================== SIGNAL FEED AUTO-REFRESH ====================
+let signalRefreshInterval = null;
+function startSignalRefresh() {
+  signalRefreshInterval = setInterval(() => {
+    if (state.activePanel === 'radar') {
+      loadSignals();
+    }
+  }, 60000); // Every 60s
+}
+
+// ==================== INIT ====================
+async function init() {
+  setNavDate();
+  initTabs();
+  initSearch();
+  initAdmin();
+  initEvents();
+
+  // Load initial data in parallel
+  await Promise.allSettled([
+    loadKPIs(),
+    loadMatchmakerData(),
+    loadFundData(),
+  ]);
+
+  // Start auto-refresh
+  startSignalRefresh();
+}
+
+document.addEventListener('DOMContentLoaded', init);
+</script>
+</body>
+</html>
