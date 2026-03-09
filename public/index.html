@@ -3,38 +3,841 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Welcome</title>
+    <title>Barnes Yachting | Yacht-Client Matchmaker</title>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,700;1,400&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --navy: #0a1628;
+            --deep: #0d1f3c;
+            --slate: #1a2d4a;
+            --gold: #c9a96e;
+            --gold-light: #dfc799;
+            --cream: #f5f0e8;
+            --white: #ffffff;
+            --mist: #8a9bb5;
+            --green: #4ade80;
+            --red: #f87171;
+        }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: 'DM Sans', sans-serif;
+            background: var(--navy);
+            color: var(--cream);
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+        .wave-bg {
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 0;
+            opacity: 0.03;
+            background: repeating-linear-gradient(-45deg, transparent, transparent 80px, rgba(201,169,110,0.3) 80px, rgba(201,169,110,0.3) 81px);
+        }
+        .container {
+            position: relative;
+            z-index: 1;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 32px;
+        }
+
+        /* ─── NAV ─────────────────────────── */
+        nav {
+            padding: 32px 0;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .logo {
+            font-family: 'Syne', sans-serif;
+            font-weight: 800;
+            font-size: 22px;
+            letter-spacing: 2px;
+            color: var(--gold);
+            text-transform: uppercase;
+        }
+        .logo span { color: var(--mist); font-weight: 400; font-size: 14px; letter-spacing: 1px; }
+        .nav-links { display: flex; gap: 32px; align-items: center; }
+        .nav-links a {
+            color: var(--mist);
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+            transition: color 0.2s;
+        }
+        .nav-links a:hover, .nav-links a.active { color: var(--gold); }
+
+        /* ─── HERO ────────────────────────── */
+        .hero {
+            padding: 80px 0 60px;
+            text-align: center;
+        }
+        .hero h1 {
+            font-family: 'Syne', sans-serif;
+            font-size: 48px;
+            font-weight: 800;
+            line-height: 1.1;
+            color: var(--white);
+            margin-bottom: 16px;
+        }
+        .hero h1 em { font-style: normal; color: var(--gold); }
+        .hero p {
+            font-size: 18px;
+            color: var(--mist);
+            max-width: 600px;
+            margin: 0 auto 40px;
+            line-height: 1.6;
+        }
+        .stats-bar {
+            display: flex;
+            justify-content: center;
+            gap: 48px;
+            margin-bottom: 48px;
+        }
+        .stat {
+            text-align: center;
+        }
+        .stat-value {
+            font-family: 'Syne', sans-serif;
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--gold);
+        }
+        .stat-label {
+            font-size: 13px;
+            color: var(--mist);
+            margin-top: 4px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* ─── SECTIONS ────────────────────── */
+        .section {
+            display: none;
+        }
+        .section.active {
+            display: block;
+        }
+
+        /* ─── MATCHMAKER FORM ─────────────── */
+        .match-card {
+            background: var(--deep);
+            border: 1px solid rgba(201,169,110,0.15);
+            border-radius: 16px;
+            padding: 40px;
+            max-width: 800px;
+            margin: 0 auto 48px;
+        }
+        .match-card h2 {
+            font-family: 'Syne', sans-serif;
+            font-size: 24px;
+            color: var(--white);
+            margin-bottom: 8px;
+        }
+        .match-card .subtitle {
+            color: var(--mist);
+            font-size: 15px;
+            margin-bottom: 32px;
+        }
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .form-group {
+            display: flex;
+            flex-direction: column;
+        }
+        .form-group.full-width {
+            grid-column: 1 / -1;
+        }
+        .form-group label {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: var(--mist);
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+        .form-group input, .form-group select {
+            background: var(--navy);
+            border: 1px solid rgba(201,169,110,0.2);
+            border-radius: 8px;
+            padding: 12px 16px;
+            color: var(--cream);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 15px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .form-group input:focus, .form-group select:focus {
+            border-color: var(--gold);
+        }
+        .form-group input::placeholder { color: var(--slate); }
+        .form-group select option { background: var(--navy); color: var(--cream); }
+
+        .chips-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .chip {
+            padding: 8px 16px;
+            border-radius: 20px;
+            border: 1px solid rgba(201,169,110,0.2);
+            background: transparent;
+            color: var(--mist);
+            font-size: 13px;
+            font-family: 'DM Sans', sans-serif;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .chip:hover { border-color: var(--gold); color: var(--gold-light); }
+        .chip.selected {
+            background: rgba(201,169,110,0.15);
+            border-color: var(--gold);
+            color: var(--gold);
+        }
+
+        .btn-match {
+            display: block;
+            width: 100%;
+            margin-top: 32px;
+            padding: 16px;
+            background: linear-gradient(135deg, var(--gold), var(--gold-light));
+            border: none;
+            border-radius: 10px;
+            color: var(--navy);
+            font-family: 'Syne', sans-serif;
+            font-size: 16px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .btn-match:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(201,169,110,0.3);
+        }
+        .btn-match:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* ─── RESULTS ─────────────────────── */
+        .results-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+        .results-header h2 {
+            font-family: 'Syne', sans-serif;
+            font-size: 24px;
+            color: var(--white);
+        }
+        .results-header .count {
+            color: var(--gold);
+            font-size: 14px;
+        }
+        .sort-controls {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .sort-controls label { font-size: 13px; color: var(--mist); }
+        .sort-controls select {
+            background: var(--deep);
+            border: 1px solid rgba(201,169,110,0.2);
+            border-radius: 6px;
+            padding: 6px 12px;
+            color: var(--cream);
+            font-family: 'DM Sans', sans-serif;
+            font-size: 13px;
+        }
+
+        .yacht-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 16px;
+            margin-bottom: 60px;
+        }
+        .yacht-card {
+            background: var(--deep);
+            border: 1px solid rgba(201,169,110,0.1);
+            border-radius: 12px;
+            padding: 28px 32px;
+            display: grid;
+            grid-template-columns: 1fr auto;
+            gap: 20px;
+            transition: border-color 0.2s, transform 0.2s;
+            cursor: default;
+        }
+        .yacht-card:hover {
+            border-color: rgba(201,169,110,0.3);
+            transform: translateY(-2px);
+        }
+        .yacht-main { display: flex; flex-direction: column; gap: 12px; }
+        .yacht-top {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .yacht-brand {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: var(--gold);
+            font-weight: 700;
+        }
+        .yacht-model {
+            font-family: 'Syne', sans-serif;
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--white);
+        }
+        .yacht-specs {
+            display: flex;
+            gap: 24px;
+            flex-wrap: wrap;
+        }
+        .spec {
+            display: flex;
+            flex-direction: column;
+        }
+        .spec-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--mist);
+            opacity: 0.7;
+        }
+        .spec-value {
+            font-size: 15px;
+            color: var(--cream);
+            font-weight: 500;
+        }
+        .yacht-tags {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .tag {
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 500;
+            letter-spacing: 0.5px;
+        }
+        .tag-discount {
+            background: rgba(74,222,128,0.12);
+            color: var(--green);
+        }
+        .tag-commission {
+            background: rgba(201,169,110,0.12);
+            color: var(--gold-light);
+        }
+        .tag-ready {
+            background: rgba(74,222,128,0.12);
+            color: var(--green);
+        }
+        .tag-new {
+            background: rgba(139,92,246,0.12);
+            color: #a78bfa;
+        }
+
+        .yacht-right {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-end;
+            justify-content: space-between;
+            min-width: 200px;
+        }
+        .relevance-badge {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .relevance-ring {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            min-height: 100vh;
-            background: #fafafa;
-            color: #1a1a1a;
+            font-family: 'Syne', sans-serif;
+            font-weight: 700;
+            font-size: 16px;
         }
-        .container {
+        .relevance-high {
+            background: rgba(74,222,128,0.15);
+            color: var(--green);
+            border: 2px solid var(--green);
+        }
+        .relevance-mid {
+            background: rgba(201,169,110,0.15);
+            color: var(--gold);
+            border: 2px solid var(--gold);
+        }
+        .relevance-low {
+            background: rgba(138,155,181,0.15);
+            color: var(--mist);
+            border: 2px solid var(--mist);
+        }
+        .relevance-label {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--mist);
+        }
+        .yacht-price {
+            font-family: 'Syne', sans-serif;
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--white);
+        }
+        .yacht-price-note {
+            font-size: 12px;
+            color: var(--mist);
+            text-align: right;
+        }
+
+        /* ─── MATCH REASONS ───────────────── */
+        .match-reasons {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin-top: 4px;
+        }
+        .reason {
+            font-size: 11px;
+            color: var(--gold-light);
+            background: rgba(201,169,110,0.08);
+            padding: 3px 10px;
+            border-radius: 10px;
+        }
+
+        /* ─── INVENTORY TABLE ─────────────── */
+        .inventory-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 60px;
+        }
+        .inventory-table th {
+            text-align: left;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: var(--mist);
+            padding: 12px 16px;
+            border-bottom: 1px solid rgba(201,169,110,0.15);
+        }
+        .inventory-table td {
+            padding: 16px;
+            font-size: 14px;
+            border-bottom: 1px solid rgba(201,169,110,0.06);
+            color: var(--cream);
+        }
+        .inventory-table tr:hover td {
+            background: rgba(201,169,110,0.03);
+        }
+        .inventory-table .brand-cell {
+            color: var(--gold);
+            font-weight: 700;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        /* ─── EMPTY STATE ─────────────────── */
+        .empty-state {
+            text-align: center;
+            padding: 80px 0;
+        }
+        .empty-state svg {
+            width: 64px;
+            height: 64px;
+            color: var(--mist);
+            opacity: 0.3;
+            margin-bottom: 16px;
+        }
+        .empty-state h3 {
+            font-family: 'Syne', sans-serif;
+            font-size: 20px;
+            color: var(--white);
+            margin-bottom: 8px;
+        }
+        .empty-state p { color: var(--mist); font-size: 15px; }
+
+        /* ─── LOADING ─────────────────────── */
+        .loading {
             text-align: center;
             padding: 40px;
         }
-        h1 { font-size: 2rem; margin-bottom: 16px; }
-        p { color: #666; font-size: 1.1rem; }
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid rgba(201,169,110,0.2);
+            border-top-color: var(--gold);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 16px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        /* ─── FOOTER ──────────────────────── */
+        footer {
+            padding: 40px 0;
+            text-align: center;
+            border-top: 1px solid rgba(201,169,110,0.08);
+            margin-top: 60px;
+        }
+        footer p {
+            font-size: 13px;
+            color: var(--mist);
+            opacity: 0.6;
+        }
+
+        /* ─── RESPONSIVE ──────────────────── */
+        @media (max-width: 768px) {
+            .hero h1 { font-size: 32px; }
+            .stats-bar { gap: 24px; flex-wrap: wrap; }
+            .form-grid { grid-template-columns: 1fr; }
+            .yacht-card { grid-template-columns: 1fr; }
+            .yacht-right { align-items: flex-start; flex-direction: row; min-width: auto; gap: 16px; }
+            .yacht-price { font-size: 18px; }
+            .nav-links { display: none; }
+        }
     </style>
 </head>
 <body>
+    <div class="wave-bg"></div>
     <div class="container">
-        <h1>Welcome to your app</h1>
-        <p>Built with Polsia</p>
+        <nav>
+            <div class="logo">BARNES <span>YACHTING</span></div>
+            <div class="nav-links">
+                <a href="#" class="active" onclick="showSection('matchmaker')">Matchmaker</a>
+                <a href="#" onclick="showSection('inventory')">Inventory</a>
+            </div>
+        </nav>
+
+        <!-- ─── HERO ─────────────────────── -->
+        <div class="hero">
+            <h1>Find the <em>Perfect Yacht</em><br>for Every Client</h1>
+            <p>Match UHNWI profiles against our live new-build inventory. 51 yachts from the world's finest shipyards, delivered with precision.</p>
+            <div class="stats-bar" id="statsBar">
+                <div class="stat"><div class="stat-value" id="statTotal">--</div><div class="stat-label">Yachts</div></div>
+                <div class="stat"><div class="stat-value" id="statBrands">--</div><div class="stat-label">Brands</div></div>
+                <div class="stat"><div class="stat-value" id="statMinPrice">--</div><div class="stat-label">From</div></div>
+                <div class="stat"><div class="stat-value" id="statMaxPrice">--</div><div class="stat-label">Up To</div></div>
+            </div>
+        </div>
+
+        <!-- ─── MATCHMAKER SECTION ────────── -->
+        <div class="section active" id="sectionMatchmaker">
+            <div class="match-card">
+                <h2>Client Preferences</h2>
+                <p class="subtitle">Define your client's ideal yacht. Our algorithm scores every vessel in inventory.</p>
+                <form id="matchForm" onsubmit="runMatch(event)">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Budget Min (EUR)</label>
+                            <input type="number" id="budgetMin" placeholder="e.g. 5000000" step="100000">
+                        </div>
+                        <div class="form-group">
+                            <label>Budget Max (EUR)</label>
+                            <input type="number" id="budgetMax" placeholder="e.g. 25000000" step="100000">
+                        </div>
+                        <div class="form-group">
+                            <label>Length Min (meters)</label>
+                            <input type="number" id="lengthMin" placeholder="e.g. 20" step="0.1">
+                        </div>
+                        <div class="form-group">
+                            <label>Length Max (meters)</label>
+                            <input type="number" id="lengthMax" placeholder="e.g. 45" step="0.1">
+                        </div>
+                        <div class="form-group">
+                            <label>Delivery Timeline</label>
+                            <select id="deliveryPref">
+                                <option value="">Any Timeline</option>
+                                <option value="immediate">Ready Now</option>
+                                <option value="2026">2026</option>
+                                <option value="2027">2027</option>
+                                <option value="2028">2028+</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Sort Results</label>
+                            <select id="sortBy">
+                                <option value="relevance">Best Match</option>
+                                <option value="price_asc">Price: Low to High</option>
+                                <option value="price_desc">Price: High to Low</option>
+                                <option value="length_desc">Length: Largest First</option>
+                                <option value="length_asc">Length: Smallest First</option>
+                            </select>
+                        </div>
+                        <div class="form-group full-width">
+                            <label>Preferred Brands</label>
+                            <div class="chips-container" id="brandChips"></div>
+                        </div>
+                        <div class="form-group full-width">
+                            <label>Preferred Build Location</label>
+                            <div class="chips-container" id="locationChips"></div>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn-match" id="matchBtn">Find Matching Yachts</button>
+                </form>
+            </div>
+
+            <div id="resultsArea"></div>
+        </div>
+
+        <!-- ─── INVENTORY SECTION ─────────── -->
+        <div class="section" id="sectionInventory">
+            <div style="margin-bottom: 24px">
+                <h2 style="font-family: 'Syne', sans-serif; font-size: 24px; color: var(--white); margin-bottom: 8px">Full Inventory</h2>
+                <p style="color: var(--mist); font-size: 15px">Complete new-build availability list — updated March 2026</p>
+            </div>
+            <div id="inventoryArea">
+                <div class="loading"><div class="spinner"></div><p style="color: var(--mist)">Loading inventory...</p></div>
+            </div>
+        </div>
+
+        <footer>
+            <p>Barnes Yachting &middot; Yacht-Client Matchmaker &middot; Powered by BarnesOS</p>
+        </footer>
     </div>
 
-    <!-- Polsia Analytics - tracks page views for your dashboard -->
+    <script>
+    // ─── STATE ────────────────────────────
+    let brands = [];
+    let locations = [];
+    let selectedBrands = new Set();
+    let selectedLocations = new Set();
+    let allYachts = [];
+
+    // ─── INIT ─────────────────────────────
+    async function init() {
+        try {
+            const res = await fetch('/api/yachts/filters');
+            const data = await res.json();
+            if (data.success) {
+                brands = data.brands;
+                locations = data.locations;
+                renderChips('brandChips', brands, selectedBrands);
+                renderChips('locationChips', locations, selectedLocations);
+
+                const s = data.stats;
+                document.getElementById('statTotal').textContent = s.total;
+                document.getElementById('statBrands').textContent = brands.length;
+                document.getElementById('statMinPrice').textContent = formatPriceShort(s.min_price);
+                document.getElementById('statMaxPrice').textContent = formatPriceShort(s.max_price);
+            }
+
+            // Pre-load inventory
+            const yRes = await fetch('/api/yachts');
+            const yData = await yRes.json();
+            if (yData.success) {
+                allYachts = yData.yachts;
+            }
+        } catch (e) {
+            console.error('Init error:', e);
+        }
+    }
+
+    // ─── RENDER CHIPS ─────────────────────
+    function renderChips(containerId, items, selectedSet) {
+        const container = document.getElementById(containerId);
+        container.innerHTML = items.map(item => {
+            const selected = selectedSet.has(item) ? ' selected' : '';
+            return '<button type="button" class="chip' + selected + '" onclick="toggleChip(this, \'' + containerId + '\', \'' + escapeHtml(item) + '\')">' + escapeHtml(item) + '</button>';
+        }).join('');
+    }
+
+    function toggleChip(el, containerId, value) {
+        const set = containerId === 'brandChips' ? selectedBrands : selectedLocations;
+        if (set.has(value)) {
+            set.delete(value);
+            el.classList.remove('selected');
+        } else {
+            set.add(value);
+            el.classList.add('selected');
+        }
+    }
+
+    // ─── RUN MATCH ────────────────────────
+    async function runMatch(e) {
+        e.preventDefault();
+        const btn = document.getElementById('matchBtn');
+        btn.disabled = true;
+        btn.textContent = 'Matching...';
+
+        const body = {
+            budget_min: document.getElementById('budgetMin').value || null,
+            budget_max: document.getElementById('budgetMax').value || null,
+            length_min: document.getElementById('lengthMin').value || null,
+            length_max: document.getElementById('lengthMax').value || null,
+            brands: Array.from(selectedBrands),
+            locations: Array.from(selectedLocations),
+            delivery_preference: document.getElementById('deliveryPref').value || null,
+            sort_by: document.getElementById('sortBy').value
+        };
+
+        try {
+            const res = await fetch('/api/match', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+            const data = await res.json();
+            if (data.success) {
+                renderResults(data.matches, data.total_available);
+            }
+        } catch (err) {
+            console.error('Match error:', err);
+        } finally {
+            btn.disabled = false;
+            btn.textContent = 'Find Matching Yachts';
+        }
+    }
+
+    // ─── RENDER RESULTS ───────────────────
+    function renderResults(matches, total) {
+        const area = document.getElementById('resultsArea');
+
+        if (matches.length === 0) {
+            area.innerHTML = '<div class="empty-state"><svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M21 21l-5.197-5.197m0 0A7.5 7.5 0 105.196 5.196a7.5 7.5 0 0010.607 10.607z"/></svg><h3>No Matches Found</h3><p>Try adjusting the filters for a broader search.</p></div>';
+            return;
+        }
+
+        let html = '<div class="results-header"><div><h2>Matched Yachts</h2><span class="count">' + matches.length + ' of ' + total + ' available vessels</span></div></div>';
+        html += '<div class="yacht-grid">';
+
+        for (const yacht of matches) {
+            const relClass = yacht.relevance_score >= 75 ? 'relevance-high' : (yacht.relevance_score >= 50 ? 'relevance-mid' : 'relevance-low');
+
+            let tags = '';
+            if (yacht.delivery === 'Ready') tags += '<span class="tag tag-ready">READY NOW</span>';
+            if (yacht.has_discount) tags += '<span class="tag tag-discount">' + yacht.discount_pct + '% OFF</span>';
+            if (yacht.broker_commission_pct > 0) tags += '<span class="tag tag-commission">' + yacht.broker_commission_pct + '% COMMISSION</span>';
+            if (yacht.model.includes('New Model') || yacht.model.includes('NEW')) tags += '<span class="tag tag-new">NEW MODEL</span>';
+
+            let reasons = '';
+            if (yacht.match_reasons && yacht.match_reasons.length > 0) {
+                reasons = '<div class="match-reasons">' + yacht.match_reasons.map(function(r) { return '<span class="reason">' + escapeHtml(r) + '</span>'; }).join('') + '</div>';
+            }
+
+            const noteSnippet = yacht.notes ? yacht.notes.substring(0, 80) + (yacht.notes.length > 80 ? '...' : '') : '';
+
+            html += '<div class="yacht-card">' +
+                '<div class="yacht-main">' +
+                    '<div class="yacht-top">' +
+                        '<span class="yacht-brand">' + escapeHtml(yacht.brand) + '</span>' +
+                        '<span class="yacht-model">' + escapeHtml(yacht.model) + '</span>' +
+                    '</div>' +
+                    '<div class="yacht-specs">' +
+                        '<div class="spec"><span class="spec-label">Length</span><span class="spec-value">' + yacht.length_m + 'm</span></div>' +
+                        '<div class="spec"><span class="spec-label">Delivery</span><span class="spec-value">' + escapeHtml(yacht.delivery || 'TBD') + '</span></div>' +
+                        '<div class="spec"><span class="spec-label">Location</span><span class="spec-value">' + escapeHtml(yacht.location || 'N/A') + '</span></div>' +
+                        '<div class="spec"><span class="spec-label">Type</span><span class="spec-value">' + (yacht.yacht_type === 'catamaran' ? 'Catamaran' : 'Motor Yacht') + '</span></div>' +
+                    '</div>' +
+                    '<div class="yacht-tags">' + tags + '</div>' +
+                    reasons +
+                    (noteSnippet ? '<div style="font-size:12px;color:var(--mist);opacity:0.7;margin-top:4px">' + escapeHtml(noteSnippet) + '</div>' : '') +
+                '</div>' +
+                '<div class="yacht-right">' +
+                    '<div class="relevance-badge">' +
+                        '<div class="relevance-ring ' + relClass + '">' + yacht.relevance_score + '</div>' +
+                        '<span class="relevance-label">Match</span>' +
+                    '</div>' +
+                    '<div>' +
+                        '<div class="yacht-price">' + formatPrice(yacht.price_eur) + '</div>' +
+                        (yacht.has_discount ? '<div class="yacht-price-note">Discount available</div>' : '') +
+                    '</div>' +
+                '</div>' +
+            '</div>';
+        }
+        html += '</div>';
+        area.innerHTML = html;
+        area.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    // ─── SHOW SECTION ─────────────────────
+    function showSection(name) {
+        document.querySelectorAll('.section').forEach(function(s) { s.classList.remove('active'); });
+        document.querySelectorAll('.nav-links a').forEach(function(a) { a.classList.remove('active'); });
+
+        if (name === 'inventory') {
+            document.getElementById('sectionInventory').classList.add('active');
+            document.querySelectorAll('.nav-links a')[1].classList.add('active');
+            renderInventory();
+        } else {
+            document.getElementById('sectionMatchmaker').classList.add('active');
+            document.querySelectorAll('.nav-links a')[0].classList.add('active');
+        }
+        return false;
+    }
+
+    // ─── RENDER INVENTORY TABLE ───────────
+    function renderInventory() {
+        const area = document.getElementById('inventoryArea');
+        if (allYachts.length === 0) {
+            area.innerHTML = '<div class="loading"><div class="spinner"></div><p style="color: var(--mist)">Loading...</p></div>';
+            return;
+        }
+        let html = '<div style="overflow-x:auto"><table class="inventory-table"><thead><tr>' +
+            '<th>Brand</th><th>Model</th><th>Length</th><th>Delivery</th><th>Location</th><th>Price (EUR)</th><th>Status</th>' +
+            '</tr></thead><tbody>';
+
+        for (const y of allYachts) {
+            const status = [];
+            if (y.delivery === 'Ready') status.push('<span class="tag tag-ready" style="display:inline">READY</span>');
+            if (y.has_discount) status.push('<span class="tag tag-discount" style="display:inline">' + y.discount_pct + '% OFF</span>');
+            if (y.broker_commission_pct > 0) status.push('<span class="tag tag-commission" style="display:inline">' + y.broker_commission_pct + '% COMM</span>');
+
+            html += '<tr>' +
+                '<td class="brand-cell">' + escapeHtml(y.brand) + '</td>' +
+                '<td style="color:var(--white);font-weight:500">' + escapeHtml(y.model) + '</td>' +
+                '<td>' + y.length_m + 'm</td>' +
+                '<td>' + escapeHtml(y.delivery || 'TBD') + '</td>' +
+                '<td>' + escapeHtml(y.location || 'N/A') + '</td>' +
+                '<td style="font-weight:700;color:var(--white)">' + formatPrice(y.price_eur) + '</td>' +
+                '<td>' + status.join(' ') + '</td>' +
+            '</tr>';
+        }
+        html += '</tbody></table></div>';
+        area.innerHTML = html;
+    }
+
+    // ─── UTILS ────────────────────────────
+    function formatPrice(eur) {
+        const n = Number(eur);
+        return '€' + n.toLocaleString('en-US');
+    }
+    function formatPriceShort(eur) {
+        const n = Number(eur);
+        if (n >= 1000000) return '€' + (n / 1000000).toFixed(1) + 'M';
+        if (n >= 1000) return '€' + (n / 1000).toFixed(0) + 'K';
+        return '€' + n;
+    }
+    function escapeHtml(str) {
+        if (!str) return '';
+        return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    // ─── BOOT ─────────────────────────────
+    init();
+    </script>
+
+    <!-- Polsia Analytics -->
     <script>
     (function() {
         var slug = 'barnesos';
         if (!slug || slug === '__POLSIA_' + 'SLUG__') return;
-
         var vid = localStorage.getItem('polsia_vid');
         if (!vid) {
             vid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
