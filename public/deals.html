@@ -1,0 +1,1225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Deal Flow Tracker | Barnes Yachting Trade-In Fund</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --navy: #0a1628;
+      --deep: #0d1f3c;
+      --slate: #1a2d4a;
+      --slate-light: #243b5e;
+      --gold: #c9a96e;
+      --gold-light: #dfc799;
+      --gold-dim: rgba(201,169,110,0.15);
+      --cream: #f5f0e8;
+      --white: #ffffff;
+      --mist: #8a9bb5;
+      --green: #4ade80;
+      --green-dim: rgba(74,222,128,0.15);
+      --red: #f87171;
+      --red-dim: rgba(248,113,113,0.15);
+      --blue: #60a5fa;
+      --blue-dim: rgba(96,165,250,0.15);
+      --orange: #fb923c;
+      --orange-dim: rgba(251,146,60,0.15);
+      --purple: #a78bfa;
+      --purple-dim: rgba(167,139,250,0.15);
+      --radius: 12px;
+      --radius-sm: 8px;
+      --shadow: 0 4px 24px rgba(0,0,0,0.3);
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--navy);
+      color: var(--cream);
+      min-height: 100vh;
+    }
+    h1, h2, h3, h4 { font-family: 'Syne', sans-serif; }
+
+    /* ── Layout ────────────────────────────────── */
+    .app-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 32px;
+      background: var(--deep);
+      border-bottom: 1px solid var(--slate);
+      position: sticky; top: 0; z-index: 100;
+    }
+    .logo { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 700; color: var(--gold); letter-spacing: 1px; text-decoration: none; }
+    .logo span { color: var(--mist); font-weight: 400; font-size: 13px; margin-left: 12px; letter-spacing: 0; }
+    .header-nav { display: flex; gap: 4px; }
+    .header-nav a {
+      color: var(--mist); text-decoration: none; font-size: 13px; font-weight: 500;
+      padding: 6px 14px; border-radius: 6px; transition: all 0.2s;
+    }
+    .header-nav a:hover, .header-nav a.active { color: var(--cream); background: var(--slate); }
+
+    .container { max-width: 1400px; margin: 0 auto; padding: 24px 32px; }
+
+    /* ── Tabs ──────────────────────────────────── */
+    .tabs {
+      display: flex; gap: 4px; margin-bottom: 24px;
+      background: var(--deep); padding: 4px; border-radius: var(--radius-sm);
+      width: fit-content;
+    }
+    .tab {
+      padding: 10px 20px; border-radius: var(--radius-sm); cursor: pointer;
+      font-size: 14px; font-weight: 500; color: var(--mist);
+      border: none; background: transparent; transition: all 0.2s;
+    }
+    .tab:hover { color: var(--cream); }
+    .tab.active { background: var(--slate); color: var(--gold); }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* ── Cards ─────────────────────────────────── */
+    .stats-grid {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px; margin-bottom: 24px;
+    }
+    .stat-card {
+      background: var(--deep); border: 1px solid var(--slate);
+      border-radius: var(--radius); padding: 20px;
+    }
+    .stat-label { font-size: 12px; color: var(--mist); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+    .stat-value { font-family: 'Syne', sans-serif; font-size: 28px; font-weight: 700; color: var(--white); }
+    .stat-value.gold { color: var(--gold); }
+    .stat-value.green { color: var(--green); }
+    .stat-sub { font-size: 12px; color: var(--mist); margin-top: 4px; }
+
+    /* ── Pipeline ──────────────────────────────── */
+    .pipeline-board {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 12px;
+      margin-bottom: 24px;
+      overflow-x: auto;
+    }
+    .pipeline-col {
+      background: var(--deep); border: 1px solid var(--slate);
+      border-radius: var(--radius); min-height: 300px;
+    }
+    .pipeline-col-header {
+      padding: 12px 16px; border-bottom: 1px solid var(--slate);
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    .pipeline-col-title {
+      font-size: 12px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .pipeline-col-count {
+      font-size: 11px; background: var(--slate); padding: 2px 8px;
+      border-radius: 10px; color: var(--mist);
+    }
+    .pipeline-col-body { padding: 8px; }
+
+    .pipeline-card {
+      background: var(--slate); border-radius: var(--radius-sm);
+      padding: 12px; margin-bottom: 8px; cursor: pointer;
+      transition: all 0.2s; border: 1px solid transparent;
+    }
+    .pipeline-card:hover { border-color: var(--gold); transform: translateY(-1px); }
+    .pipeline-card-brand { font-size: 13px; font-weight: 600; color: var(--white); }
+    .pipeline-card-model { font-size: 12px; color: var(--mist); margin-top: 2px; }
+    .pipeline-card-value { font-size: 14px; font-weight: 600; color: var(--gold); margin-top: 8px; }
+    .pipeline-card-shipyard { font-size: 11px; color: var(--mist); margin-top: 4px; }
+
+    .status-identified .pipeline-col-header { border-top: 3px solid var(--mist); }
+    .status-evaluating .pipeline-col-header { border-top: 3px solid var(--blue); }
+    .status-offer_made .pipeline-col-header { border-top: 3px solid var(--orange); }
+    .status-acquired .pipeline-col-header { border-top: 3px solid var(--purple); }
+    .status-listed .pipeline-col-header { border-top: 3px solid var(--gold); }
+    .status-sold .pipeline-col-header { border-top: 3px solid var(--green); }
+
+    /* ── Table ─────────────────────────────────── */
+    .table-wrapper {
+      background: var(--deep); border: 1px solid var(--slate);
+      border-radius: var(--radius); overflow: hidden;
+    }
+    .table-toolbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 20px; border-bottom: 1px solid var(--slate);
+    }
+    .table-toolbar h3 { font-size: 16px; }
+    table { width: 100%; border-collapse: collapse; }
+    th {
+      text-align: left; padding: 10px 16px; font-size: 11px;
+      text-transform: uppercase; letter-spacing: 0.5px; color: var(--mist);
+      background: var(--deep); border-bottom: 1px solid var(--slate);
+      font-weight: 600; position: sticky; top: 0;
+    }
+    td {
+      padding: 12px 16px; font-size: 13px; border-bottom: 1px solid rgba(26,45,74,0.5);
+      color: var(--cream);
+    }
+    tr:hover td { background: rgba(26,45,74,0.3); }
+
+    .status-badge {
+      display: inline-block; padding: 3px 10px; border-radius: 20px;
+      font-size: 11px; font-weight: 600; text-transform: uppercase;
+    }
+    .status-badge.identified { background: rgba(138,155,181,0.2); color: var(--mist); }
+    .status-badge.evaluating { background: var(--blue-dim); color: var(--blue); }
+    .status-badge.offer_made { background: var(--orange-dim); color: var(--orange); }
+    .status-badge.acquired { background: var(--purple-dim); color: var(--purple); }
+    .status-badge.listed { background: var(--gold-dim); color: var(--gold); }
+    .status-badge.sold { background: var(--green-dim); color: var(--green); }
+    .status-badge.lost { background: var(--red-dim); color: var(--red); }
+
+    /* ── Buttons ───────────────────────────────── */
+    .btn {
+      padding: 8px 16px; border-radius: var(--radius-sm); border: none;
+      font-size: 13px; font-weight: 600; cursor: pointer;
+      transition: all 0.2s; font-family: 'DM Sans', sans-serif;
+    }
+    .btn-gold { background: var(--gold); color: var(--navy); }
+    .btn-gold:hover { background: var(--gold-light); }
+    .btn-outline {
+      background: transparent; border: 1px solid var(--slate);
+      color: var(--cream);
+    }
+    .btn-outline:hover { border-color: var(--gold); color: var(--gold); }
+    .btn-sm { padding: 5px 12px; font-size: 12px; }
+    .btn-red { background: var(--red-dim); color: var(--red); border: 1px solid rgba(248,113,113,0.3); }
+    .btn-red:hover { background: rgba(248,113,113,0.3); }
+
+    /* ── Modal ─────────────────────────────────── */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.7);
+      display: none; align-items: center; justify-content: center;
+      z-index: 1000;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--deep); border: 1px solid var(--slate);
+      border-radius: var(--radius); width: 680px; max-width: 95vw;
+      max-height: 90vh; overflow-y: auto; padding: 24px;
+    }
+    .modal h2 { font-size: 20px; margin-bottom: 20px; color: var(--gold); }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px; }
+
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .form-group { display: flex; flex-direction: column; gap: 4px; }
+    .form-group.full { grid-column: 1 / -1; }
+    .form-group label { font-size: 12px; color: var(--mist); text-transform: uppercase; letter-spacing: 0.5px; }
+    .form-group input, .form-group select, .form-group textarea {
+      background: var(--slate); border: 1px solid var(--slate-light);
+      border-radius: var(--radius-sm); padding: 10px 12px; color: var(--cream);
+      font-size: 14px; font-family: 'DM Sans', sans-serif; outline: none;
+      transition: border-color 0.2s;
+    }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+      border-color: var(--gold);
+    }
+    .form-group textarea { resize: vertical; min-height: 60px; }
+    .form-section { font-size: 13px; color: var(--gold); font-weight: 600; margin-top: 8px; grid-column: 1 / -1; border-top: 1px solid var(--slate); padding-top: 12px; }
+
+    /* ── Charts ────────────────────────────────── */
+    .chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+    .chart-card {
+      background: var(--deep); border: 1px solid var(--slate);
+      border-radius: var(--radius); padding: 20px;
+    }
+    .chart-card h4 { font-size: 14px; margin-bottom: 16px; color: var(--cream); }
+    .bar-chart { display: flex; align-items: flex-end; gap: 8px; height: 160px; }
+    .bar-item { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; }
+    .bar {
+      width: 100%; border-radius: 4px 4px 0 0; min-height: 4px;
+      transition: height 0.5s ease;
+    }
+    .bar-label { font-size: 10px; color: var(--mist); margin-top: 6px; text-align: center; }
+    .bar-value { font-size: 11px; color: var(--cream); margin-bottom: 4px; font-weight: 600; }
+
+    .h-bar-chart { display: flex; flex-direction: column; gap: 10px; }
+    .h-bar-item { display: flex; align-items: center; gap: 12px; }
+    .h-bar-name { font-size: 12px; color: var(--mist); width: 100px; flex-shrink: 0; text-align: right; }
+    .h-bar-track { flex: 1; height: 24px; background: var(--slate); border-radius: 4px; overflow: hidden; }
+    .h-bar-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; display: flex; align-items: center; padding-left: 8px; }
+    .h-bar-fill span { font-size: 11px; font-weight: 600; color: var(--navy); white-space: nowrap; }
+
+    /* ── Responsive ────────────────────────────── */
+    @media (max-width: 1200px) {
+      .pipeline-board { grid-template-columns: repeat(3, 1fr); }
+    }
+    @media (max-width: 768px) {
+      .pipeline-board { grid-template-columns: 1fr 1fr; }
+      .chart-grid { grid-template-columns: 1fr; }
+      .form-grid { grid-template-columns: 1fr; }
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .container { padding: 16px; }
+      .table-wrapper { overflow-x: auto; }
+    }
+
+    /* ── Detail panel ─────────────────────────── */
+    .detail-panel {
+      display: none; position: fixed; right: 0; top: 0;
+      width: 540px; max-width: 100vw; height: 100vh;
+      background: var(--deep); border-left: 1px solid var(--slate);
+      z-index: 200; overflow-y: auto; box-shadow: -8px 0 32px rgba(0,0,0,0.4);
+    }
+    .detail-panel.open { display: block; }
+    .detail-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 16px 20px; border-bottom: 1px solid var(--slate);
+      position: sticky; top: 0; background: var(--deep); z-index: 1;
+    }
+    .detail-body { padding: 20px; }
+    .detail-section { margin-bottom: 20px; }
+    .detail-section h4 { font-size: 13px; color: var(--gold); margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .detail-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid rgba(26,45,74,0.3); }
+    .detail-label { font-size: 12px; color: var(--mist); }
+    .detail-value { font-size: 13px; color: var(--cream); font-weight: 500; }
+    .pnl-positive { color: var(--green); }
+    .pnl-negative { color: var(--red); }
+
+    .expense-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 12px; background: var(--slate); border-radius: var(--radius-sm);
+      margin-bottom: 6px;
+    }
+    .expense-item .cat { font-size: 12px; font-weight: 600; color: var(--cream); }
+    .expense-item .desc { font-size: 11px; color: var(--mist); }
+    .expense-item .amt { font-size: 13px; font-weight: 600; color: var(--red); }
+
+    .close-btn {
+      background: var(--slate); border: none; color: var(--mist);
+      width: 32px; height: 32px; border-radius: 50%; cursor: pointer;
+      font-size: 18px; display: flex; align-items: center; justify-content: center;
+    }
+    .close-btn:hover { color: var(--cream); }
+
+    .empty-state {
+      text-align: center; padding: 60px 20px; color: var(--mist);
+    }
+    .empty-state h3 { color: var(--cream); margin-bottom: 8px; }
+
+    .status-select {
+      background: var(--slate); border: 1px solid var(--slate-light);
+      color: var(--cream); padding: 4px 8px; border-radius: 6px;
+      font-size: 12px; font-family: 'DM Sans', sans-serif; cursor: pointer;
+    }
+    .status-select:focus { border-color: var(--gold); outline: none; }
+
+    .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid var(--slate); border-top-color: var(--gold); border-radius: 50%; animation: spin 0.6s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+
+<!-- Header -->
+<header class="app-header">
+  <a href="/" class="logo">BARNES YACHTING <span>Trade-In Fund</span></a>
+  <nav class="header-nav">
+    <a href="/">Matchmaker</a>
+    <a href="/deals" class="active">Deal Flow</a>
+  </nav>
+</header>
+
+<div class="container">
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab active" onclick="showTab('dashboard')">Dashboard</button>
+    <button class="tab" onclick="showTab('pipeline')">Pipeline</button>
+    <button class="tab" onclick="showTab('deals-list')">All Deals</button>
+    <button class="tab" onclick="showTab('shipyards')">Shipyards</button>
+  </div>
+
+  <!-- ═══ DASHBOARD TAB ═══ -->
+  <div id="tab-dashboard" class="tab-content active">
+    <div class="stats-grid" id="fund-stats"></div>
+    <div class="chart-grid">
+      <div class="chart-card">
+        <h4>Pipeline Distribution</h4>
+        <div class="bar-chart" id="chart-pipeline"></div>
+      </div>
+      <div class="chart-card">
+        <h4>Deals by Shipyard</h4>
+        <div class="h-bar-chart" id="chart-shipyards"></div>
+      </div>
+      <div class="chart-card">
+        <h4>Monthly Capital Deployed</h4>
+        <div class="bar-chart" id="chart-monthly"></div>
+      </div>
+      <div class="chart-card">
+        <h4>P&L Summary</h4>
+        <div id="chart-pnl"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ PIPELINE TAB ═══ -->
+  <div id="tab-pipeline" class="tab-content">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+      <h2 style="font-size: 20px;">Deal Pipeline</h2>
+      <button class="btn btn-gold" onclick="openNewDealModal()">+ New Deal</button>
+    </div>
+    <div class="pipeline-board" id="pipeline-board"></div>
+  </div>
+
+  <!-- ═══ ALL DEALS TAB ═══ -->
+  <div id="tab-deals-list" class="tab-content">
+    <div class="table-wrapper">
+      <div class="table-toolbar">
+        <h3>All Deals</h3>
+        <button class="btn btn-gold" onclick="openNewDealModal()">+ New Deal</button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Yacht</th>
+            <th>Shipyard</th>
+            <th>Status</th>
+            <th>Trade-In Value</th>
+            <th>Acquisition</th>
+            <th>Acq %</th>
+            <th>Listing</th>
+            <th>Sale Price</th>
+            <th>Profit</th>
+            <th>ROI</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="deals-table-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ═══ SHIPYARDS TAB ═══ -->
+  <div id="tab-shipyards" class="tab-content">
+    <div class="table-wrapper">
+      <div class="table-toolbar">
+        <h3>Shipyard Relationships</h3>
+        <button class="btn btn-gold" onclick="openNewShipyardModal()">+ Add Shipyard</button>
+      </div>
+      <table>
+        <thead>
+          <tr>
+            <th>Shipyard</th>
+            <th>Contact</th>
+            <th>Email</th>
+            <th>Status</th>
+            <th>Deals</th>
+            <th>Sold</th>
+            <th>Total Profit</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="shipyards-table-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- ═══ NEW DEAL MODAL ═══ -->
+<div class="modal-overlay" id="deal-modal">
+  <div class="modal">
+    <h2 id="deal-modal-title">Log New Trade-In Opportunity</h2>
+    <form id="deal-form" onsubmit="saveDeal(event)">
+      <input type="hidden" id="deal-id">
+      <div class="form-grid">
+        <div class="form-section">Yacht Details</div>
+        <div class="form-group">
+          <label>Brand *</label>
+          <input type="text" id="deal-brand" required placeholder="e.g. Sanlorenzo">
+        </div>
+        <div class="form-group">
+          <label>Model</label>
+          <input type="text" id="deal-model" placeholder="e.g. SL96A">
+        </div>
+        <div class="form-group">
+          <label>Year</label>
+          <input type="number" id="deal-year" placeholder="2020">
+        </div>
+        <div class="form-group">
+          <label>Length (m)</label>
+          <input type="number" step="0.01" id="deal-length" placeholder="29.5">
+        </div>
+
+        <div class="form-section">Trade-In Economics</div>
+        <div class="form-group">
+          <label>Trade-In Value (stated)</label>
+          <input type="number" id="deal-tradein" placeholder="5000000">
+        </div>
+        <div class="form-group">
+          <label>Proposed Acquisition Price</label>
+          <input type="number" id="deal-acquisition" placeholder="2500000">
+        </div>
+
+        <div class="form-section">Seller Information</div>
+        <div class="form-group">
+          <label>Seller Name</label>
+          <input type="text" id="deal-seller-name" placeholder="Full name">
+        </div>
+        <div class="form-group">
+          <label>Seller Email</label>
+          <input type="email" id="deal-seller-email" placeholder="seller@example.com">
+        </div>
+        <div class="form-group">
+          <label>Seller Phone</label>
+          <input type="text" id="deal-seller-phone" placeholder="+33 6 XX XX XX XX">
+        </div>
+        <div class="form-group">
+          <label>Seller Notes</label>
+          <textarea id="deal-seller-notes" placeholder="Any context about the seller"></textarea>
+        </div>
+
+        <div class="form-section">New Boat Purchase (triggers trade-in)</div>
+        <div class="form-group">
+          <label>New Boat Brand</label>
+          <input type="text" id="deal-newboat-brand" placeholder="e.g. Benetti">
+        </div>
+        <div class="form-group">
+          <label>New Boat Model</label>
+          <input type="text" id="deal-newboat-model" placeholder="e.g. B.Yond 37m">
+        </div>
+        <div class="form-group">
+          <label>New Boat Price</label>
+          <input type="number" id="deal-newboat-price" placeholder="12000000">
+        </div>
+
+        <div class="form-section">Shipyard</div>
+        <div class="form-group">
+          <label>Shipyard</label>
+          <select id="deal-shipyard-id">
+            <option value="">Select shipyard...</option>
+          </select>
+        </div>
+
+        <div class="form-section">Resale</div>
+        <div class="form-group">
+          <label>Listing Price</label>
+          <input type="number" id="deal-listing" placeholder="3500000">
+        </div>
+
+        <div class="form-group full">
+          <label>Notes</label>
+          <textarea id="deal-notes" placeholder="Deal notes, context, observations..."></textarea>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" onclick="closeModal('deal-modal')">Cancel</button>
+        <button type="submit" class="btn btn-gold">Save Deal</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ═══ NEW SHIPYARD MODAL ═══ -->
+<div class="modal-overlay" id="shipyard-modal">
+  <div class="modal">
+    <h2>Add Shipyard Contact</h2>
+    <form id="shipyard-form" onsubmit="saveShipyard(event)">
+      <input type="hidden" id="shipyard-edit-id">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Shipyard Name *</label>
+          <input type="text" id="shipyard-name" required placeholder="e.g. Sanlorenzo">
+        </div>
+        <div class="form-group">
+          <label>Contact Name</label>
+          <input type="text" id="shipyard-contact" placeholder="Full name">
+        </div>
+        <div class="form-group">
+          <label>Email</label>
+          <input type="email" id="shipyard-email" placeholder="contact@shipyard.com">
+        </div>
+        <div class="form-group">
+          <label>Phone</label>
+          <input type="text" id="shipyard-phone" placeholder="+39 XX XXX XXXX">
+        </div>
+        <div class="form-group full">
+          <label>Notes</label>
+          <textarea id="shipyard-notes" placeholder="Relationship notes"></textarea>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" onclick="closeModal('shipyard-modal')">Cancel</button>
+        <button type="submit" class="btn btn-gold">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ═══ EXPENSE MODAL ═══ -->
+<div class="modal-overlay" id="expense-modal">
+  <div class="modal" style="width: 420px;">
+    <h2>Add Expense</h2>
+    <form id="expense-form" onsubmit="saveExpense(event)">
+      <input type="hidden" id="expense-deal-id">
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Category *</label>
+          <select id="expense-category" required>
+            <option value="survey">Marine Survey</option>
+            <option value="refurbishment">Refurbishment</option>
+            <option value="transport">Transport/Delivery</option>
+            <option value="mooring">Mooring/Marina</option>
+            <option value="insurance">Insurance</option>
+            <option value="legal">Legal</option>
+            <option value="marketing">Marketing/Listing</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Amount *</label>
+          <input type="number" id="expense-amount" required placeholder="50000">
+        </div>
+        <div class="form-group full">
+          <label>Description</label>
+          <input type="text" id="expense-description" placeholder="Details of this expense">
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" onclick="closeModal('expense-modal')">Cancel</button>
+        <button type="submit" class="btn btn-gold">Add Expense</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ═══ DEAL DETAIL PANEL ═══ -->
+<div class="detail-panel" id="detail-panel">
+  <div class="detail-header">
+    <h3 id="detail-title" style="font-size: 16px;"></h3>
+    <button class="close-btn" onclick="closeDetail()">&times;</button>
+  </div>
+  <div class="detail-body" id="detail-body"></div>
+</div>
+
+
+<script>
+// ═══════════════════════════════════════════════════════════════
+// STATE
+// ═══════════════════════════════════════════════════════════════
+let allDeals = [];
+let allShipyards = [];
+let analytics = null;
+
+const STATUS_LABELS = {
+  identified: 'Identified',
+  evaluating: 'Evaluating',
+  offer_made: 'Offer Made',
+  acquired: 'Acquired',
+  listed: 'Listed for Sale',
+  sold: 'Sold'
+};
+
+const STATUS_COLORS = {
+  identified: 'var(--mist)',
+  evaluating: 'var(--blue)',
+  offer_made: 'var(--orange)',
+  acquired: 'var(--purple)',
+  listed: 'var(--gold)',
+  sold: 'var(--green)',
+  lost: 'var(--red)'
+};
+
+// ═══════════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════════
+async function init() {
+  await Promise.all([loadDeals(), loadShipyards(), loadAnalytics()]);
+  renderDashboard();
+  renderPipeline();
+  renderDealsTable();
+  renderShipyardsTable();
+}
+
+async function loadDeals() {
+  try {
+    const res = await fetch('/api/deals');
+    const data = await res.json();
+    if (data.success) allDeals = data.deals;
+  } catch (e) { console.error('Failed to load deals:', e); }
+}
+
+async function loadShipyards() {
+  try {
+    const res = await fetch('/api/shipyards');
+    const data = await res.json();
+    if (data.success) allShipyards = data.shipyards;
+    populateShipyardSelect();
+  } catch (e) { console.error('Failed to load shipyards:', e); }
+}
+
+async function loadAnalytics() {
+  try {
+    const res = await fetch('/api/deals/analytics/fund');
+    const data = await res.json();
+    if (data.success) analytics = data;
+  } catch (e) { console.error('Failed to load analytics:', e); }
+}
+
+// ═══════════════════════════════════════════════════════════════
+// TABS
+// ═══════════════════════════════════════════════════════════════
+function showTab(tab) {
+  document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(el => el.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  event.target.classList.add('active');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DASHBOARD
+// ═══════════════════════════════════════════════════════════════
+function renderDashboard() {
+  if (!analytics || !analytics.fund) return;
+  const f = analytics.fund;
+
+  document.getElementById('fund-stats').innerHTML = `
+    <div class="stat-card">
+      <div class="stat-label">Total Deals</div>
+      <div class="stat-value">${f.total_deals || 0}</div>
+      <div class="stat-sub">${f.deals_in_portfolio || 0} in portfolio</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Capital Deployed</div>
+      <div class="stat-value gold">${fmtEur(f.total_capital_deployed)}</div>
+      <div class="stat-sub">${fmtEur(f.active_capital)} active</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Total Revenue</div>
+      <div class="stat-value">${fmtEur(f.total_revenue)}</div>
+      <div class="stat-sub">${f.deals_sold || 0} deals closed</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Total Profit</div>
+      <div class="stat-value green">${fmtEur(f.total_profit)}</div>
+      <div class="stat-sub">Avg ROI: ${f.avg_roi || 0}%</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Avg Acquisition</div>
+      <div class="stat-value">${f.avg_acquisition_pct || 0}%</div>
+      <div class="stat-sub">of trade-in value (target: 50%)</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Avg Time-to-Sale</div>
+      <div class="stat-value">${analytics.time_metrics?.avg_days_to_sale || '—'}</div>
+      <div class="stat-sub">days</div>
+    </div>
+  `;
+
+  // Pipeline distribution chart
+  if (analytics.pipeline && analytics.pipeline.length > 0) {
+    const maxCount = Math.max(...analytics.pipeline.map(p => Number(p.count)));
+    document.getElementById('chart-pipeline').innerHTML = analytics.pipeline
+      .filter(p => p.status !== 'lost')
+      .map(p => {
+        const pct = maxCount > 0 ? (Number(p.count) / maxCount) * 100 : 0;
+        const color = STATUS_COLORS[p.status] || 'var(--mist)';
+        return `<div class="bar-item">
+          <div class="bar-value">${p.count}</div>
+          <div class="bar" style="height: ${Math.max(pct, 5)}%; background: ${color};"></div>
+          <div class="bar-label">${STATUS_LABELS[p.status] || p.status}</div>
+        </div>`;
+      }).join('');
+  } else {
+    document.getElementById('chart-pipeline').innerHTML = '<div class="empty-state"><p>No deals yet</p></div>';
+  }
+
+  // Shipyard chart
+  if (analytics.by_shipyard && analytics.by_shipyard.length > 0) {
+    const maxDeals = Math.max(...analytics.by_shipyard.map(s => Number(s.deal_count)));
+    document.getElementById('chart-shipyards').innerHTML = analytics.by_shipyard.slice(0, 6).map(s => {
+      const pct = maxDeals > 0 ? (Number(s.deal_count) / maxDeals) * 100 : 0;
+      return `<div class="h-bar-item">
+        <div class="h-bar-name">${esc(s.shipyard_name)}</div>
+        <div class="h-bar-track">
+          <div class="h-bar-fill" style="width: ${Math.max(pct, 5)}%; background: var(--gold);">
+            <span>${s.deal_count} deals</span>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  } else {
+    document.getElementById('chart-shipyards').innerHTML = '<div class="empty-state"><p>No shipyard data yet</p></div>';
+  }
+
+  // Monthly chart
+  if (analytics.monthly && analytics.monthly.length > 0) {
+    const months = analytics.monthly.slice(0, 6).reverse();
+    const maxCap = Math.max(...months.map(m => Number(m.capital_deployed) || 1));
+    document.getElementById('chart-monthly').innerHTML = months.map(m => {
+      const pct = maxCap > 0 ? (Number(m.capital_deployed) / maxCap) * 100 : 0;
+      return `<div class="bar-item">
+        <div class="bar-value">${fmtEurShort(m.capital_deployed)}</div>
+        <div class="bar" style="height: ${Math.max(pct, 5)}%; background: var(--blue);"></div>
+        <div class="bar-label">${m.month}</div>
+      </div>`;
+    }).join('');
+  } else {
+    document.getElementById('chart-monthly').innerHTML = '<div class="empty-state"><p>No monthly data yet</p></div>';
+  }
+
+  // P&L summary
+  const totalCost = Number(f.total_capital_deployed || 0) + Number(f.total_expenses || 0);
+  const totalRev = Number(f.total_revenue || 0);
+  const totalProfit = Number(f.total_profit || 0);
+  document.getElementById('chart-pnl').innerHTML = `
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+      <div style="display: flex; justify-content: space-between; padding: 10px; background: var(--slate); border-radius: 8px;">
+        <span style="font-size: 13px; color: var(--mist);">Total Capital + Expenses</span>
+        <span style="font-size: 14px; font-weight: 600; color: var(--red);">${fmtEur(totalCost)}</span>
+      </div>
+      <div style="display: flex; justify-content: space-between; padding: 10px; background: var(--slate); border-radius: 8px;">
+        <span style="font-size: 13px; color: var(--mist);">Total Revenue (Sales)</span>
+        <span style="font-size: 14px; font-weight: 600; color: var(--cream);">${fmtEur(totalRev)}</span>
+      </div>
+      <div style="display: flex; justify-content: space-between; padding: 14px; background: ${totalProfit >= 0 ? 'var(--green-dim)' : 'var(--red-dim)'}; border-radius: 8px; border: 1px solid ${totalProfit >= 0 ? 'rgba(74,222,128,0.3)' : 'rgba(248,113,113,0.3)'};">
+        <span style="font-size: 14px; font-weight: 600; color: var(--cream);">Net Profit</span>
+        <span style="font-size: 18px; font-weight: 700; color: ${totalProfit >= 0 ? 'var(--green)' : 'var(--red)'};">${fmtEur(totalProfit)}</span>
+      </div>
+    </div>
+  `;
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PIPELINE
+// ═══════════════════════════════════════════════════════════════
+function renderPipeline() {
+  const statuses = ['identified', 'evaluating', 'offer_made', 'acquired', 'listed', 'sold'];
+  const board = document.getElementById('pipeline-board');
+
+  board.innerHTML = statuses.map(status => {
+    const deals = allDeals.filter(d => d.status === status);
+    return `<div class="pipeline-col status-${status}">
+      <div class="pipeline-col-header">
+        <span class="pipeline-col-title">${STATUS_LABELS[status]}</span>
+        <span class="pipeline-col-count">${deals.length}</span>
+      </div>
+      <div class="pipeline-col-body">
+        ${deals.length === 0 ? '<p style="text-align:center;color:var(--mist);font-size:12px;padding:20px;">No deals</p>' :
+          deals.map(d => `
+            <div class="pipeline-card" onclick="openDealDetail(${d.id})">
+              <div class="pipeline-card-brand">${esc(d.yacht_brand)}</div>
+              <div class="pipeline-card-model">${esc(d.yacht_model || '')} ${d.yacht_year || ''}</div>
+              <div class="pipeline-card-value">${d.trade_in_value ? fmtEur(d.trade_in_value) : '—'}</div>
+              ${d.shipyard_name ? `<div class="pipeline-card-shipyard">${esc(d.shipyard_name)}</div>` : ''}
+            </div>
+          `).join('')}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DEALS TABLE
+// ═══════════════════════════════════════════════════════════════
+function renderDealsTable() {
+  const tbody = document.getElementById('deals-table-body');
+  if (allDeals.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="11" class="empty-state"><h3>No deals yet</h3><p>Click "+ New Deal" to log your first trade-in opportunity</p></td></tr>';
+    return;
+  }
+  tbody.innerHTML = allDeals.map(d => `
+    <tr style="cursor:pointer;" onclick="openDealDetail(${d.id})">
+      <td>
+        <strong>${esc(d.yacht_brand)}</strong>
+        <br><span style="color:var(--mist);font-size:12px;">${esc(d.yacht_model || '')} ${d.yacht_year || ''}</span>
+      </td>
+      <td>${esc(d.shipyard_name || '—')}</td>
+      <td><span class="status-badge ${d.status}">${STATUS_LABELS[d.status] || d.status}</span></td>
+      <td>${d.trade_in_value ? fmtEur(d.trade_in_value) : '—'}</td>
+      <td>${d.acquisition_price ? fmtEur(d.acquisition_price) : '—'}</td>
+      <td>${d.acquisition_pct ? d.acquisition_pct + '%' : '—'}</td>
+      <td>${d.listing_price ? fmtEur(d.listing_price) : '—'}</td>
+      <td>${d.final_sale_price ? fmtEur(d.final_sale_price) : '—'}</td>
+      <td class="${d.profit > 0 ? 'pnl-positive' : d.profit < 0 ? 'pnl-negative' : ''}" style="font-weight:600;">${d.profit !== null ? fmtEur(d.profit) : '—'}</td>
+      <td>${d.roi_pct !== null ? d.roi_pct + '%' : '—'}</td>
+      <td><button class="btn btn-outline btn-sm" onclick="event.stopPropagation();editDeal(${d.id})">Edit</button></td>
+    </tr>
+  `).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// SHIPYARDS TABLE
+// ═══════════════════════════════════════════════════════════════
+function renderShipyardsTable() {
+  const tbody = document.getElementById('shipyards-table-body');
+  if (allShipyards.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" class="empty-state"><h3>No shipyard contacts</h3></td></tr>';
+    return;
+  }
+  tbody.innerHTML = allShipyards.map(s => `
+    <tr>
+      <td><strong>${esc(s.shipyard_name)}</strong></td>
+      <td>${esc(s.contact_name || '—')}</td>
+      <td>${esc(s.contact_email || '—')}</td>
+      <td><span class="status-badge ${s.relationship_status === 'active' ? 'sold' : 'identified'}">${s.relationship_status}</span></td>
+      <td>${s.deal_count || 0}</td>
+      <td>${s.sold_count || 0}</td>
+      <td class="${s.total_profit > 0 ? 'pnl-positive' : ''}" style="font-weight:600;">${fmtEur(s.total_profit || 0)}</td>
+      <td><button class="btn btn-outline btn-sm" onclick="editShipyard(${s.id})">Edit</button></td>
+    </tr>
+  `).join('');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DEAL DETAIL PANEL
+// ═══════════════════════════════════════════════════════════════
+async function openDealDetail(id) {
+  try {
+    const res = await fetch(`/api/deals/${id}`);
+    const data = await res.json();
+    if (!data.success) return;
+
+    const d = data.deal;
+    const expenses = data.expenses || [];
+    const sales = data.sales || [];
+
+    document.getElementById('detail-title').textContent = `${d.yacht_brand} ${d.yacht_model || ''} ${d.yacht_year || ''}`;
+
+    document.getElementById('detail-body').innerHTML = `
+      <div class="detail-section">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+          <span class="status-badge ${d.status}" style="font-size: 13px; padding: 5px 14px;">${STATUS_LABELS[d.status] || d.status}</span>
+          <select class="status-select" onchange="updateDealStatus(${d.id}, this.value)">
+            ${Object.entries(STATUS_LABELS).map(([k, v]) => `<option value="${k}" ${k === d.status ? 'selected' : ''}>${v}</option>`).join('')}
+            <option value="lost" ${d.status === 'lost' ? 'selected' : ''}>Lost</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="detail-section">
+        <h4>Trade-In Economics</h4>
+        <div class="detail-row"><span class="detail-label">Trade-In Value</span><span class="detail-value">${d.trade_in_value ? fmtEur(d.trade_in_value) : '—'}</span></div>
+        <div class="detail-row"><span class="detail-label">Acquisition Price</span><span class="detail-value">${d.acquisition_price ? fmtEur(d.acquisition_price) : '—'}</span></div>
+        <div class="detail-row"><span class="detail-label">Acquisition %</span><span class="detail-value">${d.acquisition_pct ? d.acquisition_pct + '%' : '—'}</span></div>
+        <div class="detail-row"><span class="detail-label">Length</span><span class="detail-value">${d.yacht_length_m ? d.yacht_length_m + 'm' : '—'}</span></div>
+      </div>
+
+      <div class="detail-section">
+        <h4>Seller</h4>
+        <div class="detail-row"><span class="detail-label">Name</span><span class="detail-value">${esc(d.seller_name || '—')}</span></div>
+        <div class="detail-row"><span class="detail-label">Email</span><span class="detail-value">${esc(d.seller_email || '—')}</span></div>
+        <div class="detail-row"><span class="detail-label">Phone</span><span class="detail-value">${esc(d.seller_phone || '—')}</span></div>
+        ${d.seller_notes ? `<div class="detail-row"><span class="detail-label">Notes</span><span class="detail-value">${esc(d.seller_notes)}</span></div>` : ''}
+      </div>
+
+      ${d.new_boat_brand ? `
+      <div class="detail-section">
+        <h4>New Boat Purchase</h4>
+        <div class="detail-row"><span class="detail-label">Brand/Model</span><span class="detail-value">${esc(d.new_boat_brand)} ${esc(d.new_boat_model || '')}</span></div>
+        <div class="detail-row"><span class="detail-label">Price</span><span class="detail-value">${d.new_boat_price ? fmtEur(d.new_boat_price) : '—'}</span></div>
+      </div>` : ''}
+
+      <div class="detail-section">
+        <h4>Shipyard</h4>
+        <div class="detail-row"><span class="detail-label">Shipyard</span><span class="detail-value">${esc(d.shipyard_name || d.shipyard_contact_name || '—')}</span></div>
+        ${d.contact_name ? `<div class="detail-row"><span class="detail-label">Contact</span><span class="detail-value">${esc(d.contact_name)}</span></div>` : ''}
+      </div>
+
+      <div class="detail-section">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <h4>Expenses</h4>
+          <button class="btn btn-outline btn-sm" onclick="openExpenseModal(${d.id})">+ Add</button>
+        </div>
+        ${expenses.length === 0 ? '<p style="color:var(--mist);font-size:12px;margin-top:8px;">No expenses recorded</p>' :
+          expenses.map(e => `
+            <div class="expense-item">
+              <div>
+                <div class="cat">${esc(e.category)}</div>
+                <div class="desc">${esc(e.description || '')}</div>
+              </div>
+              <div style="display:flex;align-items:center;gap:8px;">
+                <span class="amt">${fmtEur(e.amount)}</span>
+                <button class="btn btn-red btn-sm" onclick="deleteExpense(${e.id}, ${d.id})" style="padding:2px 6px;font-size:11px;">&times;</button>
+              </div>
+            </div>
+          `).join('')}
+        <div class="detail-row" style="margin-top: 8px; border-top: 1px solid var(--slate); padding-top: 8px;">
+          <span class="detail-label" style="font-weight:600;">Total Expenses</span>
+          <span class="detail-value" style="color: var(--red);">${fmtEur(d.total_expenses || 0)}</span>
+        </div>
+      </div>
+
+      <div class="detail-section">
+        <h4>P&L Summary</h4>
+        <div class="detail-row"><span class="detail-label">Acquisition Cost</span><span class="detail-value">${fmtEur(d.acquisition_price || 0)}</span></div>
+        <div class="detail-row"><span class="detail-label">Total Expenses</span><span class="detail-value" style="color:var(--red);">${fmtEur(d.total_expenses || 0)}</span></div>
+        <div class="detail-row"><span class="detail-label">Total Cost</span><span class="detail-value">${fmtEur(d.total_cost || 0)}</span></div>
+        <div class="detail-row"><span class="detail-label">Listing Price</span><span class="detail-value">${d.listing_price ? fmtEur(d.listing_price) : '—'}</span></div>
+        <div class="detail-row"><span class="detail-label">Final Sale Price</span><span class="detail-value">${d.final_sale_price ? fmtEur(d.final_sale_price) : '—'}</span></div>
+        <div class="detail-row" style="border-top: 1px solid var(--slate); padding-top: 8px; margin-top: 4px;">
+          <span class="detail-label" style="font-weight:600; font-size: 13px;">Profit</span>
+          <span class="detail-value ${d.profit > 0 ? 'pnl-positive' : d.profit < 0 ? 'pnl-negative' : ''}" style="font-size: 16px; font-weight: 700;">${d.profit !== null ? fmtEur(d.profit) : '—'}</span>
+        </div>
+        ${d.roi_pct !== null ? `<div class="detail-row"><span class="detail-label">ROI</span><span class="detail-value ${d.roi_pct > 0 ? 'pnl-positive' : 'pnl-negative'}">${d.roi_pct}%</span></div>` : ''}
+      </div>
+
+      ${d.notes ? `<div class="detail-section"><h4>Notes</h4><p style="font-size:13px;color:var(--mist);line-height:1.5;">${esc(d.notes)}</p></div>` : ''}
+
+      <div style="display: flex; gap: 8px; margin-top: 20px;">
+        <button class="btn btn-outline" onclick="editDeal(${d.id})">Edit Deal</button>
+        <button class="btn btn-red" onclick="if(confirm('Delete this deal?')) deleteDeal(${d.id})">Delete</button>
+      </div>
+    `;
+
+    document.getElementById('detail-panel').classList.add('open');
+  } catch (e) {
+    console.error('Error loading deal detail:', e);
+  }
+}
+
+function closeDetail() {
+  document.getElementById('detail-panel').classList.remove('open');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// CRUD OPERATIONS
+// ═══════════════════════════════════════════════════════════════
+function openNewDealModal() {
+  document.getElementById('deal-id').value = '';
+  document.getElementById('deal-modal-title').textContent = 'Log New Trade-In Opportunity';
+  document.getElementById('deal-form').reset();
+  openModal('deal-modal');
+}
+
+function openNewShipyardModal() {
+  document.getElementById('shipyard-edit-id').value = '';
+  document.getElementById('shipyard-form').reset();
+  openModal('shipyard-modal');
+}
+
+function openExpenseModal(dealId) {
+  document.getElementById('expense-deal-id').value = dealId;
+  document.getElementById('expense-form').reset();
+  document.getElementById('expense-deal-id').value = dealId;
+  openModal('expense-modal');
+}
+
+async function editDeal(id) {
+  const deal = allDeals.find(d => d.id === id);
+  if (!deal) return;
+
+  document.getElementById('deal-id').value = deal.id;
+  document.getElementById('deal-modal-title').textContent = 'Edit Deal';
+  document.getElementById('deal-brand').value = deal.yacht_brand || '';
+  document.getElementById('deal-model').value = deal.yacht_model || '';
+  document.getElementById('deal-year').value = deal.yacht_year || '';
+  document.getElementById('deal-length').value = deal.yacht_length_m || '';
+  document.getElementById('deal-tradein').value = deal.trade_in_value || '';
+  document.getElementById('deal-acquisition').value = deal.acquisition_price || '';
+  document.getElementById('deal-seller-name').value = deal.seller_name || '';
+  document.getElementById('deal-seller-email').value = deal.seller_email || '';
+  document.getElementById('deal-seller-phone').value = deal.seller_phone || '';
+  document.getElementById('deal-seller-notes').value = deal.seller_notes || '';
+  document.getElementById('deal-newboat-brand').value = deal.new_boat_brand || '';
+  document.getElementById('deal-newboat-model').value = deal.new_boat_model || '';
+  document.getElementById('deal-newboat-price').value = deal.new_boat_price || '';
+  document.getElementById('deal-shipyard-id').value = deal.shipyard_id || '';
+  document.getElementById('deal-listing').value = deal.listing_price || '';
+  document.getElementById('deal-notes').value = deal.notes || '';
+
+  closeDetail();
+  openModal('deal-modal');
+}
+
+async function saveDeal(e) {
+  e.preventDefault();
+  const id = document.getElementById('deal-id').value;
+  const shipyardId = document.getElementById('deal-shipyard-id').value;
+  const shipyard = allShipyards.find(s => s.id === Number(shipyardId));
+
+  const body = {
+    yacht_brand: document.getElementById('deal-brand').value,
+    yacht_model: document.getElementById('deal-model').value || null,
+    yacht_year: document.getElementById('deal-year').value ? Number(document.getElementById('deal-year').value) : null,
+    yacht_length_m: document.getElementById('deal-length').value ? Number(document.getElementById('deal-length').value) : null,
+    trade_in_value: document.getElementById('deal-tradein').value ? Number(document.getElementById('deal-tradein').value) : null,
+    acquisition_price: document.getElementById('deal-acquisition').value ? Number(document.getElementById('deal-acquisition').value) : null,
+    seller_name: document.getElementById('deal-seller-name').value || null,
+    seller_email: document.getElementById('deal-seller-email').value || null,
+    seller_phone: document.getElementById('deal-seller-phone').value || null,
+    seller_notes: document.getElementById('deal-seller-notes').value || null,
+    new_boat_brand: document.getElementById('deal-newboat-brand').value || null,
+    new_boat_model: document.getElementById('deal-newboat-model').value || null,
+    new_boat_price: document.getElementById('deal-newboat-price').value ? Number(document.getElementById('deal-newboat-price').value) : null,
+    shipyard_id: shipyardId ? Number(shipyardId) : null,
+    shipyard_name: shipyard ? shipyard.shipyard_name : null,
+    listing_price: document.getElementById('deal-listing').value ? Number(document.getElementById('deal-listing').value) : null,
+    notes: document.getElementById('deal-notes').value || null
+  };
+
+  const url = id ? `/api/deals/${id}` : '/api/deals';
+  const method = id ? 'PUT' : 'POST';
+
+  try {
+    const res = await fetch(url, {
+      method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (data.success) {
+      closeModal('deal-modal');
+      await refreshAll();
+    } else {
+      alert(data.message || 'Failed to save deal');
+    }
+  } catch (e) { alert('Error saving deal: ' + e.message); }
+}
+
+async function deleteDeal(id) {
+  try {
+    const res = await fetch(`/api/deals/${id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.success) {
+      closeDetail();
+      await refreshAll();
+    }
+  } catch (e) { alert('Error deleting deal'); }
+}
+
+async function updateDealStatus(id, status) {
+  try {
+    await fetch(`/api/deals/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status })
+    });
+    await refreshAll();
+    openDealDetail(id);
+  } catch (e) { alert('Error updating status'); }
+}
+
+async function saveExpense(e) {
+  e.preventDefault();
+  const dealId = document.getElementById('expense-deal-id').value;
+  const body = {
+    category: document.getElementById('expense-category').value,
+    amount: Number(document.getElementById('expense-amount').value),
+    description: document.getElementById('expense-description').value || null
+  };
+
+  try {
+    const res = await fetch(`/api/deals/${dealId}/expenses`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (data.success) {
+      closeModal('expense-modal');
+      await refreshAll();
+      openDealDetail(Number(dealId));
+    }
+  } catch (e) { alert('Error adding expense'); }
+}
+
+async function deleteExpense(expenseId, dealId) {
+  if (!confirm('Delete this expense?')) return;
+  try {
+    await fetch(`/api/expenses/${expenseId}`, { method: 'DELETE' });
+    await refreshAll();
+    openDealDetail(dealId);
+  } catch (e) { alert('Error deleting expense'); }
+}
+
+async function saveShipyard(e) {
+  e.preventDefault();
+  const id = document.getElementById('shipyard-edit-id').value;
+  const body = {
+    shipyard_name: document.getElementById('shipyard-name').value,
+    contact_name: document.getElementById('shipyard-contact').value || null,
+    contact_email: document.getElementById('shipyard-email').value || null,
+    contact_phone: document.getElementById('shipyard-phone').value || null,
+    notes: document.getElementById('shipyard-notes').value || null
+  };
+
+  const url = id ? `/api/shipyards/${id}` : '/api/shipyards';
+  const method = id ? 'PUT' : 'POST';
+
+  try {
+    const res = await fetch(url, {
+      method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    });
+    const data = await res.json();
+    if (data.success) {
+      closeModal('shipyard-modal');
+      await refreshAll();
+    }
+  } catch (e) { alert('Error saving shipyard'); }
+}
+
+function editShipyard(id) {
+  const s = allShipyards.find(x => x.id === id);
+  if (!s) return;
+  document.getElementById('shipyard-edit-id').value = s.id;
+  document.getElementById('shipyard-name').value = s.shipyard_name || '';
+  document.getElementById('shipyard-contact').value = s.contact_name || '';
+  document.getElementById('shipyard-email').value = s.contact_email || '';
+  document.getElementById('shipyard-phone').value = s.contact_phone || '';
+  document.getElementById('shipyard-notes').value = s.notes || '';
+  openModal('shipyard-modal');
+}
+
+// ═══════════════════════════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════════════════════════
+function openModal(id) { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+
+function populateShipyardSelect() {
+  const sel = document.getElementById('deal-shipyard-id');
+  const current = sel.value;
+  sel.innerHTML = '<option value="">Select shipyard...</option>' +
+    allShipyards.map(s => `<option value="${s.id}">${esc(s.shipyard_name)}</option>`).join('');
+  if (current) sel.value = current;
+}
+
+async function refreshAll() {
+  await Promise.all([loadDeals(), loadShipyards(), loadAnalytics()]);
+  renderDashboard();
+  renderPipeline();
+  renderDealsTable();
+  renderShipyardsTable();
+}
+
+function fmtEur(val) {
+  const n = Number(val) || 0;
+  if (Math.abs(n) >= 1000000) return new Intl.NumberFormat('en-EU', { style: 'currency', currency: 'EUR', maximumFractionDigits: 1, notation: 'compact' }).format(n);
+  return new Intl.NumberFormat('en-EU', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(n);
+}
+
+function fmtEurShort(val) {
+  const n = Number(val) || 0;
+  if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+  if (n >= 1000) return (n / 1000).toFixed(0) + 'K';
+  return n.toString();
+}
+
+function esc(str) {
+  if (!str) return '';
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+// Close modals on overlay click
+document.querySelectorAll('.modal-overlay').forEach(el => {
+  el.addEventListener('click', (e) => {
+    if (e.target === el) el.classList.remove('open');
+  });
+});
+
+// Close detail panel on Escape
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    closeDetail();
+    document.querySelectorAll('.modal-overlay.open').forEach(el => el.classList.remove('open'));
+  }
+});
+
+// Boot
+init();
+</script>
+</body>
+</html>
