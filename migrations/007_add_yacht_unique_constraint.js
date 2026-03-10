@@ -9,9 +9,13 @@ module.exports = {
         AND a.model IS NOT DISTINCT FROM b.model
     `);
     await client.query(`
-      ALTER TABLE yachts
-      ADD CONSTRAINT IF NOT EXISTS yachts_brand_model_unique
-      UNIQUE (brand, model)
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint WHERE conname = 'yachts_brand_model_unique'
+        ) THEN
+          ALTER TABLE yachts ADD CONSTRAINT yachts_brand_model_unique UNIQUE (brand, model);
+        END IF;
+      END $$
     `);
   },
   down: async (client) => {
