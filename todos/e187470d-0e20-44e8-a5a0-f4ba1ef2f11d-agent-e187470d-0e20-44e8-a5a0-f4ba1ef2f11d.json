@@ -1,0 +1,22 @@
+[
+  {
+    "content": "Phase 1: Add outreach API endpoint to server.js",
+    "status": "completed",
+    "activeForm": "Adding outreach API endpoint to server.js"
+  },
+  {
+    "content": "Phase 2: Add My Prospects list view to command-center.html",
+    "status": "completed",
+    "activeForm": "Adding My Prospects list view to command-center.html"
+  },
+  {
+    "content": "Phase 3: Add Activate campaign modal with email + LinkedIn output",
+    "status": "completed",
+    "activeForm": "Adding Activate campaign modal with email + LinkedIn output"
+  },
+  {
+    "content": "Deploy and verify",
+    "status": "in_progress",
+    "activeForm": "Deploying and verifying"
+  }
+]
