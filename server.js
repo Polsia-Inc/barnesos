@@ -3,6 +3,7 @@ const session = require('express-session');
 const { Pool } = require('pg');
 const path = require('path');
 const fs = require('fs');
+const OpenAI = require('openai');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -15,6 +16,12 @@ if (!process.env.DATABASE_URL) {
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL?.includes('localhost') ? false : { rejectUnauthorized: false }
+});
+
+// ─── AI CLIENT ───────────────────────────────────────────────────────────────
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+  baseURL: process.env.OPENAI_BASE_URL
 });
 
 // ─── AUTH SETUP ──────────────────────────────────────────────────────────────
@@ -1375,6 +1382,172 @@ async function scanProspect(prospect) {
     throw err;
   }
 }
+
+// ─── OUTREACH: Generate personalised email + LinkedIn message per prospect ────
+app.post('/api/prospects/:id/outreach', requireAuth, async (req, res) => {
+  try {
+    const prospectId = req.params.id;
+
+    // 1. Fetch prospect
+    const { rows: prospects } = await pool.query('SELECT * FROM prospects WHERE id = $1', [prospectId]);
+    if (prospects.length === 0) {
+      return res.status(404).json({ success: false, message: 'Prospect not found' });
+    }
+    const prospect = prospects[0];
+
+    // 2. Find matching yachts (same logic as /api/match but simplified)
+    const { rows: yachts } = await pool.query(
+      'SELECT * FROM yachts WHERE is_available = TRUE ORDER BY price_eur DESC'
+    );
+
+    // Score yachts against prospect preferences
+    const scored = yachts.map(yacht => {
+      let score = 0;
+      const reasons = [];
+
+      // Brand match
+      if (prospect.yacht_brand) {
+        const brands = prospect.yacht_brand.split(/[,;\/]/).map(b => b.trim().toLowerCase()).filter(Boolean);
+        if (brands.some(b => yacht.brand.toLowerCase().includes(b) || b.includes(yacht.brand.toLowerCase()))) {
+          score += 35;
+          reasons.push(`${yacht.brand} matches your brand preference`);
+        }
+      }
+
+      // Model match
+      if (prospect.yacht_model && yacht.model) {
+        if (yacht.model.toLowerCase().includes(prospect.yacht_model.toLowerCase()) ||
+            prospect.yacht_model.toLowerCase().includes(yacht.model.toLowerCase())) {
+          score += 25;
+          reasons.push(`${yacht.model} matches your preferred model`);
+        }
+      }
+
+      // Free-text interest keyword matching
+      if (prospect.current_yacht_interest) {
+        const interest = prospect.current_yacht_interest.toLowerCase();
+        const yachtText = `${yacht.brand} ${yacht.model || ''} ${yacht.notes || ''}`.toLowerCase();
+        const words = interest.split(/\s+/).filter(w => w.length > 3);
+        const matches = words.filter(w => yachtText.includes(w));
+        if (matches.length > 0) {
+          score += matches.length * 5;
+          reasons.push(`Matches your interest in "${prospect.current_yacht_interest}"`);
+        }
+      }
+
+      // Discount bonus
+      if (yacht.has_discount && yacht.discount_pct > 0) {
+        score += 10;
+        reasons.push(`${yacht.discount_pct}% discount currently available`);
+      }
+
+      return { ...yacht, match_score: score, match_reasons: reasons };
+    });
+
+    // Sort by match score, take top 3
+    const topMatches = scored.sort((a, b) => b.match_score - a.match_score).slice(0, 3);
+
+    // Format yacht details for the prompt
+    const yachtSummary = topMatches.map((y, i) => {
+      const price = y.price_eur ? `€${Number(y.price_eur).toLocaleString('fr-FR')}` : 'Price on request';
+      return `${i + 1}. ${y.brand}${y.model ? ' ' + y.model : ''} — ${y.length_m}m — ${price} — Delivery: ${y.delivery || 'TBD'} — Location: ${y.location || 'TBD'}${y.has_discount ? ` — ${y.discount_pct}% discount` : ''}${y.notes ? ` — Notes: ${y.notes}` : ''}`;
+    }).join('\n');
+
+    // 3. Generate email + LinkedIn message in a single AI call
+    const prompt = `You are writing outreach for Barnes Yachting, a luxury yacht brokerage based in Marseille/Monaco.
+
+PROSPECT:
+- Name: ${prospect.name}
+- Company: ${prospect.company || 'N/A'}
+- Location: ${prospect.location || 'N/A'}
+- Yacht Interest: ${prospect.current_yacht_interest || 'Luxury yachts'}
+- Preferred Brand: ${prospect.yacht_brand || 'N/A'}
+- Preferred Model: ${prospect.yacht_model || 'N/A'}
+- Notes: ${prospect.notes || 'N/A'}
+- Tier: ${prospect.heat_tier || 'warm'}
+
+MATCHING YACHTS FROM OUR CURRENT INVENTORY:
+${yachtSummary || 'No exact matches found — use best judgment from inventory context'}
+
+Generate TWO pieces of outreach copy. Return ONLY valid JSON (no markdown, no code fences).
+
+Rules for the EMAIL:
+- Subject line + body
+- Professional luxury tone (Robb Report level, not pushy)
+- Reference at least one specific yacht by name/brand from the inventory list above
+- Explain briefly WHY it is a match for this prospect (size, brand, delivery timing, discount)
+- 150-200 words max body
+- Sign off as "The Barnes Yachting Team"
+
+Rules for LINKEDIN:
+- LinkedIn connection request message (MAX 280 characters — this is critical)
+- Warm, personal, NOT salesy
+- Hint at a matching opportunity without hard selling
+- First-name basis
+
+Return this exact JSON structure:
+{
+  "email_subject": "...",
+  "email_body": "...",
+  "linkedin_message": "..."
+}`;
+
+    const completion = await openai.chat.completions.create({
+      model: 'gpt-4o-mini',
+      messages: [
+        { role: 'system', content: 'You are a luxury yacht brokerage copywriter. Return only valid JSON, no markdown.' },
+        { role: 'user', content: prompt }
+      ],
+      max_tokens: 1200,
+      temperature: 0.75,
+      response_format: { type: 'json_object' }
+    });
+
+    // Parse response (handle Gemini proxy quirks)
+    let raw = completion.choices[0].message.content || '';
+    raw = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (e) {
+      // Try repairing truncated JSON
+      let fixed = raw;
+      let inStr = false;
+      for (let i = 0; i < fixed.length; i++) {
+        if (fixed[i] === '"' && (i === 0 || fixed[i-1] !== '\\')) inStr = !inStr;
+      }
+      if (inStr) fixed += '"';
+      fixed = fixed.replace(/,\s*$/, '');
+      let open = 0;
+      for (const ch of fixed) { if (ch === '{') open++; if (ch === '}') open--; }
+      while (open > 0) { fixed += '}'; open--; }
+      try { parsed = JSON.parse(fixed); } catch (e2) {
+        parsed = {
+          email_subject: `An exceptional yacht opportunity for ${prospect.name}`,
+          email_body: `Dear ${prospect.name},\n\nI wanted to reach out personally about a remarkable opportunity in our current inventory that aligns with your interests.\n\nOur team at Barnes Yachting has identified several vessels that we believe would be a perfect fit. I would love to share more details at your convenience.\n\nKind regards,\nThe Barnes Yachting Team`,
+          linkedin_message: `Hi ${prospect.name.split(' ')[0]}, I'm with Barnes Yachting and have come across a yacht that closely matches what you're looking for. Would love to connect!`
+        };
+      }
+    }
+
+    res.json({
+      success: true,
+      prospect: { id: prospect.id, name: prospect.name, company: prospect.company, heat_tier: prospect.heat_tier },
+      matched_yachts: topMatches.map(y => ({
+        id: y.id, brand: y.brand, model: y.model, length_m: y.length_m,
+        price_eur: y.price_eur, delivery: y.delivery, location: y.location,
+        has_discount: y.has_discount, discount_pct: y.discount_pct, match_score: y.match_score
+      })),
+      email_subject: parsed.email_subject || '',
+      email_body: parsed.email_body || '',
+      linkedin_message: parsed.linkedin_message || ''
+    });
+
+  } catch (err) {
+    console.error('Error generating outreach:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to generate outreach messages' });
+  }
+});
 
 // ─── Heat Score Recalculation ────────────────────────────────────────────────
 async function recalcProspectHeat(prospectId) {

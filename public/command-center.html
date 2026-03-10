@@ -945,6 +945,174 @@ input, textarea, select { font-family: inherit; }
   .inv-search { width: 100%; }
   .inv-table-wrap { overflow-x: auto; }
 }
+
+/* ─── All Prospects List View ─────────────────────────────────────────── */
+.btn-prospects-list {
+  background: rgba(180, 140, 60, 0.12);
+  border: 1px solid rgba(212, 175, 55, 0.45);
+  color: var(--gold);
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  transition: all 0.2s;
+}
+.btn-prospects-list:hover, .btn-prospects-list.active {
+  background: rgba(212,175,55,0.22);
+  border-color: var(--gold);
+  box-shadow: 0 0 12px rgba(212,175,55,0.2);
+}
+.prospect-list-header {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.prospect-list-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.pl-select {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.pl-count {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+.prospect-list-wrap {
+  overflow-x: auto;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+}
+.prospect-list-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+.prospect-list-table th {
+  padding: 10px 14px;
+  text-align: left;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: rgba(255,255,255,0.03);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.prospect-list-table td {
+  padding: 11px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  vertical-align: middle;
+  color: var(--text-secondary);
+}
+.prospect-list-table tr:last-child td { border-bottom: none; }
+.prospect-list-table tr:hover td { background: rgba(255,255,255,0.025); }
+.prospect-list-table td.col-name { color: var(--text-primary); font-weight: 600; }
+.prospect-list-table td.col-tier .tier-pill {
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+.tier-pill.hot { background: var(--hot-bg); color: var(--hot); }
+.tier-pill.warm { background: var(--warm-bg); color: var(--warm); }
+.tier-pill.cold { background: var(--cold-bg); color: var(--cold); }
+.btn-activate {
+  background: linear-gradient(135deg, rgba(212,175,55,0.18) 0%, rgba(180,130,30,0.25) 100%);
+  border: 1px solid rgba(212,175,55,0.55);
+  color: var(--gold);
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  letter-spacing: 0.5px;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+.btn-activate:hover {
+  background: linear-gradient(135deg, rgba(212,175,55,0.3) 0%, rgba(180,130,30,0.4) 100%);
+  box-shadow: 0 0 14px rgba(212,175,55,0.3);
+}
+.btn-activate:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ─── Outreach Campaign Modal ─────────────────────────────────────────── */
+.modal-outreach { max-width: 620px; }
+.outreach-spinner {
+  width: 40px; height: 40px;
+  border: 3px solid rgba(255,255,255,0.08);
+  border-top-color: var(--gold);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin: 0 auto;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.outreach-section {
+  margin-bottom: 20px;
+}
+.outreach-section:last-child { margin-bottom: 0; }
+.outreach-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.outreach-copy-block {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 12px 14px;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  line-height: 1.6;
+  margin-bottom: 8px;
+  user-select: text;
+  cursor: text;
+}
+.btn-copy {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  padding: 5px 14px;
+  border-radius: 5px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-copy:hover { background: rgba(255,255,255,0.12); color: var(--text-primary); }
+.outreach-matched-yachts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.yacht-match-chip {
+  background: rgba(40,120,255,0.1);
+  border: 1px solid rgba(40,120,255,0.3);
+  border-radius: 6px;
+  padding: 5px 12px;
+  font-size: 0.75rem;
+  color: rgba(160,200,255,0.9);
+}
+.yacht-match-chip .chip-price { color: var(--gold); font-weight: 700; }
 </style>
 </head>
 <body>
@@ -1082,10 +1250,49 @@ input, textarea, select { font-family: inherit; }
         <input type="text" class="search-box" id="prospectSearch" placeholder="Search prospects by name, company, location...">
       </div>
       <button class="btn-gold" id="btnAddProspect">+ Add Prospect</button>
+      <button class="btn-prospects-list" id="btnProspectList">&#x1F4CB; All Prospects</button>
       <button class="scan-all-btn" id="btnScanAll">&#x21BB; Scan All</button>
     </div>
 
-    <div class="radar-layout">
+    <!-- ===== MY PROSPECTS LIST VIEW ===== -->
+    <div id="prospectListView" style="display:none;">
+      <div class="prospect-list-header">
+        <div class="prospect-list-controls">
+          <select id="plFilterTier" class="pl-select">
+            <option value="">All Tiers</option>
+            <option value="hot">&#x1F534; Hot</option>
+            <option value="warm">&#x1F7E0; Warm</option>
+            <option value="cold">&#x1F7E1; Cold</option>
+          </select>
+          <select id="plSort" class="pl-select">
+            <option value="heat_score">Sort: Heat Score</option>
+            <option value="name">Sort: Name A–Z</option>
+            <option value="recent">Sort: Recently Added</option>
+          </select>
+          <span class="pl-count" id="plCount">0 prospects</span>
+        </div>
+      </div>
+      <div class="prospect-list-wrap">
+        <table class="prospect-list-table">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Company</th>
+              <th>Location</th>
+              <th>Yacht Interest</th>
+              <th>Tier</th>
+              <th>Score</th>
+              <th>Added</th>
+              <th>Campaign</th>
+            </tr>
+          </thead>
+          <tbody id="prospectListBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <!-- ===== END MY PROSPECTS LIST VIEW ===== -->
+
+    <div class="radar-layout" id="radarLayout">
       <!-- LEFT: Prospect Grid -->
       <div>
         <div class="prospect-grid">
@@ -1390,6 +1597,50 @@ input, textarea, select { font-family: inherit; }
     <div class="modal-footer">
       <button class="btn-outline" onclick="closeModal('modalRule')">Cancel</button>
       <button class="btn-gold" id="btnSaveRule">Save Rule</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: OUTREACH CAMPAIGN ===== -->
+<div class="modal-overlay" id="modalOutreach">
+  <div class="modal modal-outreach">
+    <div class="modal-header">
+      <div class="modal-title" id="outreachModalTitle">&#x1F680; Launch Campaign</div>
+      <button class="modal-close" onclick="closeModal('modalOutreach')">&times;</button>
+    </div>
+    <div class="modal-body" id="outreachModalBody">
+      <!-- Loading state -->
+      <div id="outreachLoading" style="text-align:center;padding:40px 0;">
+        <div class="outreach-spinner"></div>
+        <div style="color:var(--text-muted);font-size:0.85rem;margin-top:16px;">Matching inventory &amp; generating copy…</div>
+      </div>
+      <!-- Content (hidden until loaded) -->
+      <div id="outreachContent" style="display:none;">
+        <!-- Matched Yachts -->
+        <div class="outreach-section" id="outreachMatchedYachts"></div>
+        <!-- Email -->
+        <div class="outreach-section">
+          <div class="outreach-label">&#x2709;&#xFE0F; Email — Subject</div>
+          <div class="outreach-copy-block" id="outreachEmailSubject"></div>
+          <button class="btn-copy" onclick="copyOutreach('outreachEmailSubject')">Copy Subject</button>
+        </div>
+        <div class="outreach-section">
+          <div class="outreach-label">Email Body</div>
+          <div class="outreach-copy-block" id="outreachEmailBody" style="white-space:pre-wrap;min-height:120px;"></div>
+          <button class="btn-copy" onclick="copyOutreach('outreachEmailBody')">Copy Email</button>
+        </div>
+        <!-- LinkedIn -->
+        <div class="outreach-section">
+          <div class="outreach-label">&#x1F517; LinkedIn Connection Request</div>
+          <div class="outreach-copy-block" id="outreachLinkedin" style="white-space:pre-wrap;"></div>
+          <div id="outreachLinkedinCharCount" style="font-size:0.72rem;color:var(--text-muted);margin-top:4px;"></div>
+          <button class="btn-copy" onclick="copyOutreach('outreachLinkedin')">Copy LinkedIn Message</button>
+        </div>
+      </div>
+      <!-- Error state -->
+      <div id="outreachError" style="display:none;color:var(--hot);text-align:center;padding:32px;">
+        Failed to generate outreach. Please try again.
+      </div>
     </div>
   </div>
 </div>
@@ -2070,6 +2321,151 @@ function initEvents() {
   $('#btnScanAll').addEventListener('click', scanAll);
   $('#btnAddRule').addEventListener('click', openAddRule);
   $('#btnSaveRule').addEventListener('click', saveRule);
+  $('#btnProspectList').addEventListener('click', toggleProspectListView);
+  $('#plFilterTier').addEventListener('change', renderProspectList);
+  $('#plSort').addEventListener('change', renderProspectList);
+}
+
+// ==================== PROSPECT LIST VIEW ====================
+let prospectListVisible = false;
+
+async function toggleProspectListView() {
+  prospectListVisible = !prospectListVisible;
+  const listView = $('#prospectListView');
+  const radarLayout = $('#radarLayout');
+  const btn = $('#btnProspectList');
+
+  if (prospectListVisible) {
+    listView.style.display = 'block';
+    radarLayout.style.display = 'none';
+    btn.classList.add('active');
+    btn.innerHTML = '&#x2715; Close List';
+    // Ensure prospects are loaded (may not be if user opened radar for first time)
+    const allLoaded = (state.prospects.hot.length + state.prospects.warm.length + state.prospects.cold.length) > 0;
+    if (!allLoaded) await loadProspects();
+    renderProspectList();
+  } else {
+    listView.style.display = 'none';
+    radarLayout.style.display = '';
+    btn.classList.remove('active');
+    btn.innerHTML = '&#x1F4CB; All Prospects';
+  }
+}
+
+function renderProspectList() {
+  const tier = $('#plFilterTier').value;
+  const sort = $('#plSort').value;
+  const tbody = $('#prospectListBody');
+
+  // Collect all prospects from state
+  let all = [...(state.prospects.hot || []), ...(state.prospects.warm || []), ...(state.prospects.cold || [])];
+
+  // Filter by tier
+  if (tier) all = all.filter(p => (p.heat_tier || 'cold').toLowerCase() === tier);
+
+  // Sort
+  if (sort === 'name') {
+    all.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  } else if (sort === 'recent') {
+    all.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+  } else {
+    all.sort((a, b) => (b.heat_score || 0) - (a.heat_score || 0));
+  }
+
+  $('#plCount').textContent = all.length + ' prospect' + (all.length !== 1 ? 's' : '');
+
+  if (all.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:32px;">No prospects found</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = all.map(p => {
+    const tierClass = getTierClass(p.heat_tier);
+    const tierLabel = (p.heat_tier || 'cold').toUpperCase();
+    const interest = p.current_yacht_interest || p.yacht_brand || p.yacht_model || '—';
+    const added = formatDate(p.created_at);
+    return `<tr>
+      <td class="col-name">${escapeHtml(p.name)}</td>
+      <td>${escapeHtml(p.company || '—')}</td>
+      <td>${escapeHtml(p.location || '—')}</td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escapeHtml(interest)}">${escapeHtml(interest)}</td>
+      <td class="col-tier"><span class="tier-pill ${tierClass}">${tierLabel}</span></td>
+      <td style="color:var(--gold);font-weight:600;">${p.heat_score || 0}</td>
+      <td>${added}</td>
+      <td><button class="btn-activate" onclick="launchCampaign(${p.id}, '${escapeHtml(p.name).replace(/'/g,"\\'")}')">&#x1F680; Activate</button></td>
+    </tr>`;
+  }).join('');
+}
+
+// ==================== OUTREACH CAMPAIGN ====================
+async function launchCampaign(prospectId, prospectName) {
+  // Show modal in loading state
+  $('#outreachModalTitle').textContent = '🚀 Campaign — ' + prospectName;
+  $('#outreachLoading').style.display = 'block';
+  $('#outreachContent').style.display = 'none';
+  $('#outreachError').style.display = 'none';
+  openModal('modalOutreach');
+
+  try {
+    const res = await fetch(`/api/prospects/${prospectId}/outreach`, { method: 'POST' });
+    const data = await res.json();
+
+    if (!data.success) throw new Error(data.message || 'Unknown error');
+
+    // Populate matched yachts
+    const yachtsSection = $('#outreachMatchedYachts');
+    if (data.matched_yachts && data.matched_yachts.length > 0) {
+      const chips = data.matched_yachts.map(y => {
+        const price = y.price_eur ? formatCurrency(Number(y.price_eur)) : 'POR';
+        return `<div class="yacht-match-chip">${escapeHtml(y.brand)}${y.model ? ' ' + escapeHtml(y.model) : ''} — ${y.length_m}m — <span class="chip-price">${price}</span></div>`;
+      }).join('');
+      yachtsSection.innerHTML = `<div class="outreach-label">&#x1F6A2; Matched Inventory</div><div class="outreach-matched-yachts">${chips}</div>`;
+      yachtsSection.style.display = 'block';
+    } else {
+      yachtsSection.style.display = 'none';
+    }
+
+    // Populate email
+    $('#outreachEmailSubject').textContent = data.email_subject || '';
+    $('#outreachEmailBody').textContent = data.email_body || '';
+
+    // Populate LinkedIn
+    const li = data.linkedin_message || '';
+    $('#outreachLinkedin').textContent = li;
+    const charCount = li.length;
+    const charEl = $('#outreachLinkedinCharCount');
+    charEl.textContent = `${charCount}/280 characters`;
+    charEl.style.color = charCount > 280 ? 'var(--hot)' : 'var(--text-muted)';
+
+    // Show content
+    $('#outreachLoading').style.display = 'none';
+    $('#outreachContent').style.display = 'block';
+
+  } catch (err) {
+    console.error('Campaign error:', err);
+    $('#outreachLoading').style.display = 'none';
+    $('#outreachError').style.display = 'block';
+  }
+}
+
+function copyOutreach(elementId) {
+  const el = $('#' + elementId);
+  if (!el) return;
+  const text = el.textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    showToast('Copied to clipboard!');
+  }).catch(() => {
+    // Fallback
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    showToast('Copied!');
+  });
 }
 
 // ==================== SIGNAL FEED AUTO-REFRESH ====================
