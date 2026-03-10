@@ -555,6 +555,341 @@ input, textarea, select { font-family: inherit; }
   .form-row { grid-template-columns: 1fr; }
   .rules-grid { grid-template-columns: 1fr; }
 }
+
+/* ===== INVENTORY PANEL ===== */
+.inv-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 28px 28px 60px;
+}
+.inv-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.inv-title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: -0.02em;
+}
+.inv-subtitle {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+.inv-header-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.btn-outline-gold {
+  background: transparent;
+  border: 1px solid var(--gold);
+  color: var(--gold);
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.btn-outline-gold:hover {
+  background: var(--gold-dim);
+}
+
+/* Stats strip */
+.inv-stats-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  margin-bottom: 24px;
+}
+.inv-stat-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  text-align: center;
+}
+.inv-stat-num {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--gold);
+  letter-spacing: -0.03em;
+}
+.inv-stat-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* Upload section */
+.inv-upload-section {
+  margin-bottom: 24px;
+}
+.inv-upload-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+}
+.inv-upload-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+.inv-upload-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.inv-upload-close {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: color var(--transition);
+}
+.inv-upload-close:hover { color: var(--text-primary); }
+
+/* Mode selector */
+.inv-mode-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.inv-mode-opt {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: var(--bg-input);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: border-color var(--transition);
+}
+.inv-mode-opt:has(input:checked) {
+  border-color: var(--gold);
+  background: var(--gold-dim);
+}
+.inv-mode-opt input[type="radio"] { margin-top: 3px; accent-color: var(--gold); }
+.inv-mode-label { display: flex; flex-direction: column; gap: 4px; }
+.inv-mode-label strong { font-size: 0.88rem; color: var(--text-primary); }
+.inv-mode-label small { font-size: 0.75rem; color: var(--text-secondary); line-height: 1.4; }
+
+/* Drop zone */
+.inv-drop-zone {
+  border: 2px dashed var(--border-light);
+  border-radius: var(--radius);
+  padding: 40px 24px;
+  text-align: center;
+  transition: all var(--transition);
+  cursor: pointer;
+  background: var(--bg-input);
+  margin-bottom: 16px;
+}
+.inv-drop-zone.drag-over {
+  border-color: var(--gold);
+  background: var(--gold-dim);
+}
+.inv-drop-icon { font-size: 2.5rem; margin-bottom: 12px; }
+.inv-drop-title { font-size: 1rem; font-weight: 600; color: var(--text-primary); margin-bottom: 6px; }
+.inv-drop-hint { font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 8px; }
+.inv-drop-formats { font-size: 0.75rem; color: var(--text-muted); }
+.inv-link-btn {
+  background: none; border: none;
+  color: var(--gold); text-decoration: underline;
+  cursor: pointer; font-size: inherit; padding: 0;
+}
+.inv-link-btn:hover { color: var(--gold-hover); }
+
+/* File preview */
+.inv-file-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  margin-bottom: 16px;
+}
+.inv-file-icon { font-size: 1.2rem; }
+.inv-file-name { font-size: 0.88rem; font-weight: 600; color: var(--text-primary); flex: 1; }
+.inv-file-rows { font-size: 0.78rem; color: var(--text-muted); }
+
+/* Format hint */
+.inv-format-hint {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  background: var(--bg-input);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  line-height: 1.6;
+  margin-bottom: 20px;
+}
+.inv-format-hint strong { color: var(--text-secondary); }
+
+/* Upload footer */
+.inv-upload-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Progress card */
+.inv-progress-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 28px 24px;
+  margin-bottom: 24px;
+  text-align: center;
+}
+.inv-progress-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+}
+.inv-progress-bar-wrap {
+  background: var(--bg-input);
+  border-radius: 999px;
+  height: 8px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+.inv-progress-bar {
+  background: linear-gradient(90deg, var(--gold), #e8c47a);
+  height: 100%;
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+.inv-progress-status {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+
+/* Result card */
+.inv-result-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 32px 24px;
+  margin-bottom: 24px;
+  text-align: center;
+}
+.inv-result-icon { font-size: 2.5rem; margin-bottom: 12px; }
+.inv-result-title { font-size: 1.1rem; font-weight: 700; color: var(--text-primary); margin-bottom: 8px; }
+.inv-result-summary { font-size: 0.9rem; color: var(--text-secondary); margin-bottom: 12px; }
+.inv-result-errors {
+  text-align: left;
+  background: rgba(239,68,68,0.08);
+  border: 1px solid rgba(239,68,68,0.2);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  font-size: 0.78rem;
+  color: #fca5a5;
+  max-height: 150px;
+  overflow-y: auto;
+  margin-bottom: 12px;
+}
+
+/* Inventory table */
+.inv-table-wrap {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.inv-table-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.inv-table-title {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.inv-search {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  padding: 8px 14px;
+  font-size: 0.82rem;
+  width: 240px;
+  outline: none;
+  transition: border-color var(--transition);
+}
+.inv-search:focus { border-color: var(--gold); }
+.inv-loading {
+  text-align: center;
+  padding: 40px;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+.inv-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+.inv-table th {
+  text-align: left;
+  padding: 11px 14px;
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.inv-table td {
+  padding: 11px 14px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.inv-table tr:last-child td { border-bottom: none; }
+.inv-table tr:hover td { background: var(--bg-card-hover); }
+.inv-table .col-brand { color: var(--text-primary); font-weight: 600; }
+.inv-table .col-price { color: var(--gold); font-weight: 600; }
+.badge-avail { background: rgba(34,197,94,0.12); color: #4ade80; padding: 2px 8px; border-radius: 999px; font-size: 0.7rem; font-weight: 600; }
+.badge-sold { background: rgba(239,68,68,0.1); color: #f87171; padding: 2px 8px; border-radius: 999px; font-size: 0.7rem; font-weight: 600; }
+.badge-disc { background: rgba(234,179,8,0.12); color: #fbbf24; padding: 2px 8px; border-radius: 999px; font-size: 0.7rem; }
+.inv-empty {
+  text-align: center;
+  padding: 60px 24px;
+  color: var(--text-muted);
+}
+.inv-empty-icon { font-size: 2.5rem; margin-bottom: 12px; }
+.inv-empty-text { font-size: 0.9rem; }
+
+@media (max-width: 768px) {
+  .inv-stats-strip { grid-template-columns: repeat(2, 1fr); }
+  .inv-search { width: 100%; }
+  .inv-table-wrap { overflow-x: auto; }
+}
 </style>
 </head>
 <body>
@@ -569,6 +904,7 @@ input, textarea, select { font-family: inherit; }
     <button class="nav-tab active" data-panel="matchmaker">Matchmaker</button>
     <button class="nav-tab" data-panel="radar">Signal Radar</button>
     <button class="nav-tab" data-panel="fund">Fund Tracker</button>
+    <button class="nav-tab" data-panel="inventory">🗂 Inventory</button>
   </div>
   <div class="nav-date" id="navDate"></div>
   <a href="/api/auth/logout" style="color:var(--text-muted);font-size:12px;text-decoration:none;padding:4px 10px;border-radius:6px;opacity:0.65;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.65'">Logout</a>
@@ -764,6 +1100,133 @@ input, textarea, select { font-family: inherit; }
   </div>
 
 </div>
+
+
+  <!-- PANEL: INVENTORY MANAGEMENT -->
+  <div class="panel" id="panel-inventory">
+    <div class="inv-page">
+
+      <!-- HEADER ROW -->
+      <div class="inv-header">
+        <div>
+          <div class="inv-title">Yacht Inventory</div>
+          <div class="inv-subtitle" id="invSubtitle">Loading inventory stats...</div>
+        </div>
+        <div class="inv-header-actions">
+          <button class="btn-outline-gold btn-sm" id="btnDownloadTemplate" onclick="downloadCSVTemplate()">⬇ CSV Template</button>
+          <button class="btn-gold btn-sm" id="btnOpenUpload" onclick="openUploadSection()">⬆ Import CSV</button>
+        </div>
+      </div>
+
+      <!-- STATS STRIP -->
+      <div class="inv-stats-strip">
+        <div class="inv-stat-card">
+          <div class="inv-stat-num" id="invStatTotal">—</div>
+          <div class="inv-stat-label">Total Yachts</div>
+        </div>
+        <div class="inv-stat-card">
+          <div class="inv-stat-num" id="invStatAvailable">—</div>
+          <div class="inv-stat-label">Available</div>
+        </div>
+        <div class="inv-stat-card">
+          <div class="inv-stat-num" id="invStatDiscounted">—</div>
+          <div class="inv-stat-label">With Discount</div>
+        </div>
+        <div class="inv-stat-card">
+          <div class="inv-stat-num" id="invStatAvgPrice">—</div>
+          <div class="inv-stat-label">Avg Price</div>
+        </div>
+      </div>
+
+      <!-- CSV UPLOAD ZONE -->
+      <div class="inv-upload-section" id="invUploadSection" style="display:none;">
+        <div class="inv-upload-card">
+          <div class="inv-upload-header">
+            <div class="inv-upload-title">Import Yacht Inventory</div>
+            <button class="inv-upload-close" onclick="closeUploadSection()">&#x2715;</button>
+          </div>
+
+          <!-- Mode selector -->
+          <div class="inv-mode-row">
+            <label class="inv-mode-opt">
+              <input type="radio" name="importMode" value="replace" checked>
+              <span class="inv-mode-label">
+                <strong>Replace All</strong>
+                <small>Wipe existing inventory and import fresh &mdash; recommended for full updates</small>
+              </span>
+            </label>
+            <label class="inv-mode-opt">
+              <input type="radio" name="importMode" value="merge">
+              <span class="inv-mode-label">
+                <strong>Merge / Update</strong>
+                <small>Add new yachts, update existing by brand+model &mdash; keeps unmatched rows</small>
+              </span>
+            </label>
+          </div>
+
+          <!-- Drop zone -->
+          <div class="inv-drop-zone" id="invDropZone">
+            <input type="file" id="invFileInput" accept=".csv,.tsv,.txt" style="display:none;">
+            <div class="inv-drop-icon">&#x1F4C2;</div>
+            <div class="inv-drop-title">Drag &amp; drop your CSV file here</div>
+            <div class="inv-drop-hint">or <button class="inv-link-btn" onclick="document.getElementById('invFileInput').click()">browse to upload</button></div>
+            <div class="inv-drop-formats">Accepts .csv or .tsv &mdash; comma or tab separated &mdash; max 20MB</div>
+          </div>
+
+          <!-- File preview -->
+          <div id="invFilePreview" style="display:none;">
+            <div class="inv-file-info">
+              <span class="inv-file-icon">&#x1F4C4;</span>
+              <span id="invFileName" class="inv-file-name">file.csv</span>
+              <span id="invFileRows" class="inv-file-rows"></span>
+              <button class="inv-link-btn" onclick="clearSelectedFile()">Remove</button>
+            </div>
+          </div>
+
+          <!-- Column format hint -->
+          <div class="inv-format-hint">
+            <strong>Expected columns:</strong> brand &bull; model &bull; length_m &bull; delivery &bull; location &bull; price_eur &bull; notes &bull; discount_pct &bull; broker_commission_pct<br>
+            <strong>Optional:</strong> is_available (true/false) &bull; yacht_type (motor/sail/catamaran)
+          </div>
+
+          <!-- Import button -->
+          <div class="inv-upload-footer">
+            <button class="btn-gold" id="btnStartImport" disabled onclick="startImport()">Start Import</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- PROGRESS CARD -->
+      <div class="inv-progress-card" id="invProgressCard" style="display:none;">
+        <div class="inv-progress-title">Importing inventory...</div>
+        <div class="inv-progress-bar-wrap">
+          <div class="inv-progress-bar" id="invProgressBar" style="width:0%"></div>
+        </div>
+        <div class="inv-progress-status" id="invProgressStatus">Starting...</div>
+      </div>
+
+      <!-- RESULT CARD -->
+      <div class="inv-result-card" id="invResultCard" style="display:none;">
+        <div class="inv-result-icon" id="invResultIcon">&#x2705;</div>
+        <div class="inv-result-title" id="invResultTitle">Import Complete</div>
+        <div class="inv-result-summary" id="invResultSummary"></div>
+        <div class="inv-result-errors" id="invResultErrors" style="display:none;"></div>
+        <button class="btn-gold btn-sm" style="margin-top:16px;" onclick="resetImportUI()">Import Another File</button>
+      </div>
+
+      <!-- INVENTORY TABLE -->
+      <div class="inv-table-wrap">
+        <div class="inv-table-header">
+          <div class="inv-table-title">Current Inventory</div>
+          <input class="inv-search" type="text" id="invSearch" placeholder="Search brand, model, location...">
+        </div>
+        <div id="invTableContainer">
+          <div class="inv-loading">Loading inventory...</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
 
 <!-- ===== MODAL: ADD/EDIT PROSPECT ===== -->
 <div class="modal-overlay" id="modalProspect">
@@ -1027,6 +1490,9 @@ function initTabs() {
         loadRules();
         // Init globe on first visit
         if (!window._globeReady) initGlobe();
+      }
+      if (panel === 'inventory') {
+        loadInventoryPanel();
       }
     });
   });
@@ -2072,6 +2538,298 @@ async function initGlobe() {
 // ==================== END 3D GLOBE ====================
 
 document.addEventListener('DOMContentLoaded', init);
+
+// ==================== INVENTORY PANEL ====================
+let invState = {
+  allYachts: [],
+  searchQuery: '',
+  selectedFile: null,
+  selectedFileText: null,
+  currentJobId: null,
+  pollTimer: null,
+};
+
+async function loadInventoryPanel() {
+  loadInventoryStats();
+  loadInventoryTable();
+}
+
+async function loadInventoryStats() {
+  try {
+    const data = await api('/api/inventory/stats');
+    const s = data.stats;
+    $('#invStatTotal').textContent = s.total || '0';
+    $('#invStatAvailable').textContent = s.available || '0';
+    $('#invStatDiscounted').textContent = s.discounted || '0';
+    const avg = parseFloat(s.avg_price);
+    $('#invStatAvgPrice').textContent = avg > 0 ? formatCurrency(avg) : '—';
+    $('#invSubtitle').textContent = s.total + ' yachts in database — last updated just now';
+  } catch (err) {
+    console.warn('Failed to load inventory stats:', err);
+    $('#invSubtitle').textContent = 'Unable to load stats';
+  }
+}
+
+async function loadInventoryTable() {
+  const container = $('#invTableContainer');
+  try {
+    const data = await api('/api/yachts?all=true');
+    invState.allYachts = data.yachts || [];
+    renderInventoryTable();
+  } catch (err) {
+    container.innerHTML = '<div class="inv-loading">Failed to load inventory</div>';
+  }
+}
+
+function renderInventoryTable() {
+  const container = $('#invTableContainer');
+  const q = invState.searchQuery.toLowerCase();
+  const yachts = q
+    ? invState.allYachts.filter(y =>
+        (y.brand || '').toLowerCase().includes(q) ||
+        (y.model || '').toLowerCase().includes(q) ||
+        (y.location || '').toLowerCase().includes(q) ||
+        (y.notes || '').toLowerCase().includes(q)
+      )
+    : invState.allYachts;
+
+  if (!yachts.length) {
+    container.innerHTML = '<div class="inv-empty"><div class="inv-empty-icon">🚤</div><div class="inv-empty-text">' + (q ? 'No yachts match your search.' : 'No yachts in inventory yet. Import a CSV to get started.') + '</div></div>';
+    return;
+  }
+
+  const rows = yachts.map(y => {
+    const price = y.price_eur ? '€' + Number(y.price_eur).toLocaleString() : '—';
+    const length = y.length_m ? y.length_m + 'm' : '—';
+    const avail = y.is_available
+      ? '<span class="badge-avail">Available</span>'
+      : '<span class="badge-sold">Sold/Unavailable</span>';
+    const disc = y.has_discount
+      ? '<span class="badge-disc">-' + (y.discount_pct || '?') + '%</span>'
+      : '';
+    const comm = y.broker_commission_pct > 0 ? y.broker_commission_pct + '% comm' : '';
+    return `<tr>
+      <td class="col-brand">${esc(y.brand)}</td>
+      <td>${esc(y.model || '—')}</td>
+      <td>${length}</td>
+      <td>${esc(y.delivery || '—')}</td>
+      <td>${esc(y.location || '—')}</td>
+      <td class="col-price">${price}</td>
+      <td>${avail}</td>
+      <td>${disc} ${comm}</td>
+      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;" title="${esc(y.notes || '')}">${esc(y.notes ? y.notes.substring(0, 60) + (y.notes.length > 60 ? '…' : '') : '—')}</td>
+    </tr>`;
+  }).join('');
+
+  container.innerHTML = `<div style="overflow-x:auto;">
+    <table class="inv-table">
+      <thead>
+        <tr>
+          <th>Brand</th><th>Model</th><th>Length</th><th>Delivery</th>
+          <th>Location</th><th>Price (EUR)</th><th>Status</th><th>Discount / Comm</th><th>Notes</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
+}
+
+function esc(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ─── Upload UI ────────────────────────────────────────────────────────────────
+function openUploadSection() {
+  $('#invUploadSection').style.display = 'block';
+  $('#invProgressCard').style.display = 'none';
+  $('#invResultCard').style.display = 'none';
+}
+
+function closeUploadSection() {
+  $('#invUploadSection').style.display = 'none';
+}
+
+function clearSelectedFile() {
+  invState.selectedFile = null;
+  invState.selectedFileText = null;
+  $('#invFileInput').value = '';
+  $('#invFilePreview').style.display = 'none';
+  $('#invDropZone').style.display = 'block';
+  $('#btnStartImport').disabled = true;
+}
+
+function resetImportUI() {
+  clearSelectedFile();
+  $('#invResultCard').style.display = 'none';
+  openUploadSection();
+}
+
+function onFileSelected(file) {
+  if (!file) return;
+  invState.selectedFile = file;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    invState.selectedFileText = e.target.result;
+    // Count data rows (minus header)
+    const lines = invState.selectedFileText.split('\n').filter(l => l.trim().length > 0);
+    const rowCount = Math.max(0, lines.length - 1);
+    $('#invFileName').textContent = file.name;
+    $('#invFileRows').textContent = '~' + rowCount + ' rows detected';
+    $('#invDropZone').style.display = 'none';
+    $('#invFilePreview').style.display = 'block';
+    $('#btnStartImport').disabled = false;
+  };
+  reader.readAsText(file);
+}
+
+// File input change
+document.addEventListener('DOMContentLoaded', () => {
+  const fileInput = document.getElementById('invFileInput');
+  if (fileInput) {
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files.length > 0) onFileSelected(e.target.files[0]);
+    });
+  }
+
+  // Drag and drop
+  const dropZone = document.getElementById('invDropZone');
+  if (dropZone) {
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('drag-over');
+    });
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('drag-over');
+    });
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if (file) onFileSelected(file);
+    });
+    dropZone.addEventListener('click', (e) => {
+      if (e.target.tagName !== 'BUTTON') {
+        document.getElementById('invFileInput').click();
+      }
+    });
+  }
+
+  // Inventory search
+  const invSearch = document.getElementById('invSearch');
+  if (invSearch) {
+    let searchTimeout;
+    invSearch.addEventListener('input', (e) => {
+      clearTimeout(searchTimeout);
+      invState.searchQuery = e.target.value;
+      searchTimeout = setTimeout(renderInventoryTable, 250);
+    });
+  }
+});
+
+async function startImport() {
+  if (!invState.selectedFileText) return;
+  const mode = document.querySelector('input[name="importMode"]:checked')?.value || 'replace';
+  
+  // Hide upload, show progress
+  $('#invUploadSection').style.display = 'none';
+  $('#invProgressCard').style.display = 'block';
+  $('#invProgressBar').style.width = '5%';
+  $('#invProgressStatus').textContent = 'Uploading and parsing CSV...';
+
+  try {
+    const res = await fetch('/api/inventory/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ csv: invState.selectedFileText, mode })
+    });
+    const data = await res.json();
+    if (!data.success) {
+      showImportError('Upload failed: ' + (data.message || 'Unknown error'));
+      return;
+    }
+    invState.currentJobId = data.job_id;
+    pollImportJob(data.job_id, data.total_rows);
+  } catch (err) {
+    showImportError('Network error: ' + err.message);
+  }
+}
+
+function pollImportJob(jobId, totalRows) {
+  let pollCount = 0;
+  const maxPolls = 120; // 4 minutes max
+
+  const poll = async () => {
+    if (pollCount++ > maxPolls) {
+      showImportError('Import timed out. Check inventory table to see if data was loaded.');
+      return;
+    }
+    try {
+      const data = await api('/api/inventory/import/jobs/' + jobId);
+      const job = data.job;
+      const pct = Math.max(5, job.progress || 0);
+      $('#invProgressBar').style.width = pct + '%';
+      $('#invProgressStatus').textContent = `Imported ${job.inserted_count || 0} of ${job.total_rows || totalRows} yachts...`;
+
+      if (job.status === 'completed' || job.status === 'failed') {
+        showImportResult(job);
+        return;
+      }
+      setTimeout(poll, 2000);
+    } catch (err) {
+      console.warn('Poll error:', err);
+      setTimeout(poll, 3000);
+    }
+  };
+  setTimeout(poll, 1500);
+}
+
+function showImportResult(job) {
+  $('#invProgressCard').style.display = 'none';
+  $('#invResultCard').style.display = 'block';
+  
+  const success = job.status === 'completed';
+  $('#invResultIcon').textContent = success ? '✅' : '⚠️';
+  $('#invResultTitle').textContent = success ? 'Import Complete!' : 'Import Finished with Issues';
+  $('#invResultSummary').textContent = `Imported ${job.inserted_count} yachts` +
+    (job.rejected_count > 0 ? `, ${job.rejected_count} rows skipped` : '') +
+    (job.mode === 'replace' ? ' (full replace)' : ' (merged)');
+
+  const errors = Array.isArray(job.errors) ? job.errors : [];
+  if (errors.length > 0) {
+    $('#invResultErrors').style.display = 'block';
+    $('#invResultErrors').innerHTML = '<strong>Warnings / Errors:</strong><br>' + errors.map(esc).join('<br>');
+  }
+
+  // Refresh table and stats
+  loadInventoryStats();
+  loadInventoryTable();
+}
+
+function showImportError(msg) {
+  $('#invProgressCard').style.display = 'none';
+  $('#invResultCard').style.display = 'block';
+  $('#invResultIcon').textContent = '❌';
+  $('#invResultTitle').textContent = 'Import Failed';
+  $('#invResultSummary').textContent = msg;
+  $('#invResultErrors').style.display = 'none';
+}
+
+function downloadCSVTemplate() {
+  const headers = 'brand,model,length_m,delivery,location,price_eur,notes,is_available,has_discount,discount_pct,broker_commission_pct,yacht_type';
+  const example = 'Sanlorenzo,SX88,27.0,Ready,Italy,6500000,Well-maintained,true,true,5,3,motor';
+  const csv = headers + '\n' + example;
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'yacht-inventory-template.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+// ==================== END INVENTORY PANEL ====================
+
+
 </script>
 </body>
 </html>

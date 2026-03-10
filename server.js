@@ -112,8 +112,10 @@ app.get('/health', (req, res) => {
 // ─── API: Get all available yachts ──────────────────────────────────────────
 app.get('/api/yachts', async (req, res) => {
   try {
+    const showAll = req.query.all === 'true';
+    const whereClause = showAll ? '' : 'WHERE is_available = TRUE';
     const { rows } = await pool.query(
-      `SELECT * FROM yachts WHERE is_available = TRUE ORDER BY length_m DESC`
+      `SELECT * FROM yachts ${whereClause} ORDER BY length_m DESC`
     );
     res.json({ success: true, yachts: rows, count: rows.length });
   } catch (err) {
@@ -1428,3 +1430,353 @@ app.get('/command-center', requireAuth, (req, res) => {
 app.listen(port, () => {
   console.log(`BarnesOS Command Center running on port ${port}`);
 });
+
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// INVENTORY CSV IMPORT
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── CSV/TSV Parser ───────────────────────────────────────────────────────────
+function splitCSVLine(line, delimiter) {
+  if (delimiter === '\t') return line.split('\t').map(v => v.trim());
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    if (line[i] === '"') {
+      inQuotes = !inQuotes;
+    } else if (line[i] === delimiter && !inQuotes) {
+      result.push(current.trim());
+      current = '';
+    } else {
+      current += line[i];
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
+
+function parsePrice(str) {
+  if (!str) return null;
+  // Remove currency symbols, spaces → "35 500 000" → 35500000
+  const cleaned = str.replace(/[€$£\s]/g, '').replace(/,/g, '');
+  const val = parseFloat(cleaned);
+  return isNaN(val) ? null : val;
+}
+
+function parseLength(str) {
+  if (!str) return null;
+  // "52,4" → 52.4, "27.0" → 27.0
+  const cleaned = str.replace(',', '.');
+  const val = parseFloat(cleaned);
+  return isNaN(val) ? null : val;
+}
+
+function parsePercent(str) {
+  if (!str) return 0;
+  const val = parseFloat(str.replace('%', '').trim());
+  return isNaN(val) ? 0 : val;
+}
+
+function normalizeHeader(h) {
+  return h.toLowerCase().trim()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function parseYachtCSV(text) {
+  // Normalize line endings
+  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+    .split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  if (lines.length < 2) {
+    return { rows: [], errors: ['File must have a header row and at least one data row'] };
+  }
+
+  // Detect delimiter
+  const firstLine = lines[0];
+  const tabCount = (firstLine.match(/\t/g) || []).length;
+  const commaCount = (firstLine.match(/,/g) || []).length;
+  const delimiter = tabCount >= commaCount ? '\t' : ',';
+
+  const rawHeaders = splitCSVLine(lines[0], delimiter);
+  const headers = rawHeaders.map(normalizeHeader);
+
+  // Flexible column mapping — ordered by specificity (first match wins)
+  const colAliases = {
+    brand: ['brand'],
+    model: ['model'],
+    length_m: ['length_m', 'length', 'lenght_m', 'lenght', 'length_meters', 'loa_m'],
+    delivery: ['delivery', 'delivery_date', 'available_date'],
+    location: ['location', 'loc', 'country', 'port'],
+    price_eur: ['price_eur', 'price_euro', 'price', 'asking_price', 'list_price'],
+    notes: ['notes', 'note', 'remarks', 'comments', 'description'],
+    is_available: ['is_available', 'available', 'active', 'status', 'display_miami', 'display'],
+    has_discount: ['has_discount'],
+    discount_pct: ['discount_pct', 'discount_percent', 'discount___', 'discount', 'disc_pct', 'disc'],
+    broker_commission_pct: ['broker_commission_pct', 'commission_pct', 'commission', 'broker_comm', 'comm_pct'],
+    yacht_type: ['yacht_type', 'type', 'vessel_type'],
+  };
+
+  const colIdx = {};
+  for (const [field, aliases] of Object.entries(colAliases)) {
+    for (const alias of aliases) {
+      const idx = headers.indexOf(alias);
+      if (idx !== -1) { colIdx[field] = idx; break; }
+    }
+  }
+
+  const rows = [];
+  const errors = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const cols = splitCSVLine(lines[i], delimiter);
+    if (cols.length < 2) continue;
+
+    const get = (field) => {
+      const idx = colIdx[field];
+      return idx !== undefined && idx < cols.length ? (cols[idx] || '').trim() : '';
+    };
+
+    const brand = get('brand');
+    if (!brand) {
+      errors.push(`Row ${i + 1}: Missing brand — skipped`);
+      continue;
+    }
+
+    const priceRaw = get('price_eur');
+    const price = parsePrice(priceRaw);
+
+    const lengthRaw = get('length_m');
+    const length = parseLength(lengthRaw);
+
+    const discountPct = parsePercent(get('discount_pct'));
+    const commissionPct = parsePercent(get('broker_commission_pct'));
+
+    const availRaw = get('is_available').toLowerCase();
+    let isAvailable = true;
+    if (['false', '0', 'no', 'sold', 'inactive', 'unavailable'].includes(availRaw)) {
+      isAvailable = false;
+    }
+
+    const hasDiscountRaw = get('has_discount').toLowerCase();
+    const hasDiscount = discountPct > 0
+      || ['true', '1', 'yes'].includes(hasDiscountRaw);
+
+    const yachtType = get('yacht_type') || 'motor';
+
+    rows.push({
+      brand,
+      model: get('model') || null,
+      length_m: length,
+      delivery: get('delivery') || null,
+      location: get('location') || null,
+      price_eur: price,
+      notes: get('notes') || null,
+      is_available: isAvailable,
+      has_discount: hasDiscount,
+      discount_pct: discountPct,
+      broker_commission_pct: commissionPct,
+      yacht_type: ['motor', 'sail', 'catamaran', 'expedition'].includes(yachtType.toLowerCase())
+        ? yachtType.toLowerCase() : 'motor',
+    });
+  }
+
+  return { rows, errors };
+}
+
+// ─── Ensure import_jobs table ─────────────────────────────────────────────────
+async function ensureImportJobsTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS import_jobs (
+      id SERIAL PRIMARY KEY,
+      status VARCHAR(20) DEFAULT 'processing',
+      mode VARCHAR(20) DEFAULT 'replace',
+      total_rows INTEGER DEFAULT 0,
+      inserted_count INTEGER DEFAULT 0,
+      rejected_count INTEGER DEFAULT 0,
+      errors JSONB DEFAULT '[]'::jsonb,
+      started_at TIMESTAMPTZ DEFAULT NOW(),
+      completed_at TIMESTAMPTZ
+    )
+  `);
+}
+ensureImportJobsTable().catch(err => console.error('Failed to ensure import_jobs table:', err.message));
+
+// ─── API: Get inventory stats ─────────────────────────────────────────────────
+app.get('/api/inventory/stats', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT COUNT(*) as total,
+              COUNT(*) FILTER (WHERE is_available = TRUE) as available,
+              COUNT(*) FILTER (WHERE has_discount = TRUE) as discounted,
+              COALESCE(AVG(price_eur), 0)::numeric(14,2) as avg_price
+       FROM yachts`
+    );
+    res.json({ success: true, stats: rows[0] });
+  } catch (err) {
+    console.error('Error fetching inventory stats:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to fetch stats' });
+  }
+});
+
+// ─── API: Get import job status ───────────────────────────────────────────────
+app.get('/api/inventory/import/jobs/:id', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      'SELECT * FROM import_jobs WHERE id = $1', [req.params.id]
+    );
+    if (!rows.length) return res.status(404).json({ success: false, message: 'Job not found' });
+    const job = rows[0];
+    const progress = job.total_rows > 0
+      ? Math.round(((job.inserted_count + job.rejected_count) / job.total_rows) * 100)
+      : 0;
+    res.json({ success: true, job: { ...job, progress } });
+  } catch (err) {
+    console.error('Error fetching import job:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to fetch job' });
+  }
+});
+
+// ─── API: Start CSV import ────────────────────────────────────────────────────
+app.post('/api/inventory/import', requireAuth, express.json({ limit: '20mb' }), async (req, res) => {
+  try {
+    const { csv, mode = 'replace' } = req.body;
+    if (!csv || typeof csv !== 'string') {
+      return res.status(400).json({ success: false, message: 'CSV content is required' });
+    }
+    if (!['replace', 'merge'].includes(mode)) {
+      return res.status(400).json({ success: false, message: 'Mode must be "replace" or "merge"' });
+    }
+
+    // Parse CSV now (fast, < 1s for 500 rows)
+    const { rows, errors: parseErrors } = parseYachtCSV(csv);
+    if (rows.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No valid rows found in CSV',
+        parse_errors: parseErrors.slice(0, 10)
+      });
+    }
+
+    // Create job record
+    const { rows: jobRows } = await pool.query(
+      `INSERT INTO import_jobs (status, mode, total_rows, errors)
+       VALUES ('processing', $1, $2, $3::jsonb)
+       RETURNING id`,
+      [mode, rows.length, JSON.stringify(parseErrors.slice(0, 50))]
+    );
+    const jobId = jobRows[0].id;
+
+    // Respond immediately with job ID
+    res.json({ success: true, job_id: jobId, total_rows: rows.length, parse_errors: parseErrors.length });
+
+    // Background processing
+    setImmediate(async () => {
+      let insertedCount = 0;
+      let rejectedCount = parseErrors.length;
+      const batchErrors = [...parseErrors.slice(0, 50)];
+      const BATCH_SIZE = 50;
+
+      try {
+        const client = await pool.connect();
+        try {
+          // Replace mode: wipe existing inventory
+          if (mode === 'replace') {
+            await client.query('DELETE FROM yachts');
+          }
+
+          // Insert in batches
+          for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+            const batch = rows.slice(i, i + BATCH_SIZE);
+            try {
+              await client.query('BEGIN');
+              for (const row of batch) {
+                if (mode === 'merge') {
+                  // Upsert by brand+model (or just insert if no match found)
+                  if (row.model) {
+                    await client.query(
+                      `INSERT INTO yachts (brand, model, length_m, delivery, location, price_eur, notes,
+                         is_available, has_discount, discount_pct, broker_commission_pct, yacht_type, updated_at)
+                       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
+                       ON CONFLICT (brand, model) DO UPDATE SET
+                         length_m = EXCLUDED.length_m,
+                         delivery = EXCLUDED.delivery,
+                         location = EXCLUDED.location,
+                         price_eur = EXCLUDED.price_eur,
+                         notes = EXCLUDED.notes,
+                         is_available = EXCLUDED.is_available,
+                         has_discount = EXCLUDED.has_discount,
+                         discount_pct = EXCLUDED.discount_pct,
+                         broker_commission_pct = EXCLUDED.broker_commission_pct,
+                         yacht_type = EXCLUDED.yacht_type,
+                         updated_at = NOW()`,
+                      [row.brand, row.model, row.length_m, row.delivery, row.location,
+                       row.price_eur, row.notes, row.is_available, row.has_discount,
+                       row.discount_pct, row.broker_commission_pct, row.yacht_type]
+                    );
+                  } else {
+                    await client.query(
+                      `INSERT INTO yachts (brand, model, length_m, delivery, location, price_eur, notes,
+                         is_available, has_discount, discount_pct, broker_commission_pct, yacht_type)
+                       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+                      [row.brand, row.model, row.length_m, row.delivery, row.location,
+                       row.price_eur, row.notes, row.is_available, row.has_discount,
+                       row.discount_pct, row.broker_commission_pct, row.yacht_type]
+                    );
+                  }
+                } else {
+                  await client.query(
+                    `INSERT INTO yachts (brand, model, length_m, delivery, location, price_eur, notes,
+                       is_available, has_discount, discount_pct, broker_commission_pct, yacht_type)
+                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+                    [row.brand, row.model, row.length_m, row.delivery, row.location,
+                     row.price_eur, row.notes, row.is_available, row.has_discount,
+                     row.discount_pct, row.broker_commission_pct, row.yacht_type]
+                  );
+                }
+                insertedCount++;
+              }
+              await client.query('COMMIT');
+            } catch (batchErr) {
+              await client.query('ROLLBACK').catch(() => {});
+              rejectedCount += batch.length;
+              insertedCount -= batch.length;
+              if (insertedCount < 0) insertedCount = 0;
+              batchErrors.push(`Batch ${Math.floor(i / BATCH_SIZE) + 1} failed: ${batchErr.message}`);
+              console.error(`Import batch error:`, batchErr.message);
+            }
+
+            // Update progress after each batch
+            await pool.query(
+              `UPDATE import_jobs SET inserted_count = $1, rejected_count = $2 WHERE id = $3`,
+              [insertedCount, rejectedCount, jobId]
+            ).catch(() => {});
+          }
+        } finally {
+          client.release();
+        }
+
+        // Mark completed
+        await pool.query(
+          `UPDATE import_jobs SET status = 'completed', inserted_count = $1, rejected_count = $2,
+           errors = $3::jsonb, completed_at = NOW() WHERE id = $4`,
+          [insertedCount, rejectedCount, JSON.stringify(batchErrors.slice(0, 50)), jobId]
+        );
+        console.log(`[Import] Job ${jobId} complete: ${insertedCount} inserted, ${rejectedCount} rejected`);
+
+      } catch (err) {
+        console.error(`[Import] Job ${jobId} failed:`, err.message);
+        await pool.query(
+          `UPDATE import_jobs SET status = 'failed', completed_at = NOW(),
+           errors = $1::jsonb WHERE id = $2`,
+          [JSON.stringify([...batchErrors, `Fatal: ${err.message}`].slice(0, 50)), jobId]
+        ).catch(() => {});
+      }
+    });
+
+  } catch (err) {
+    console.error('Error starting import:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to start import' });
+  }
+});
+

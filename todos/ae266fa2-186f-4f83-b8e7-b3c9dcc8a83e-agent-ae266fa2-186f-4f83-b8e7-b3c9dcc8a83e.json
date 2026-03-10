@@ -1,0 +1,22 @@
+[
+  {
+    "content": "Create import_jobs migration",
+    "status": "completed",
+    "activeForm": "Creating import_jobs migration"
+  },
+  {
+    "content": "Add CSV import API routes to server.js",
+    "status": "completed",
+    "activeForm": "Adding CSV import API routes"
+  },
+  {
+    "content": "Add Inventory tab with CSV upload UI to command-center.html",
+    "status": "completed",
+    "activeForm": "Adding Inventory tab UI"
+  },
+  {
+    "content": "Push and deploy",
+    "status": "in_progress",
+    "activeForm": "Pushing and deploying"
+  }
+]
