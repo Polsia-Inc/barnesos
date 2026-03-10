@@ -1,0 +1,32 @@
+[
+  {
+    "content": "Write migration 009 to rebuild yachts table with new schema",
+    "status": "completed",
+    "activeForm": "Writing migration 009"
+  },
+  {
+    "content": "Rewrite CSV parser for new 12-column structure",
+    "status": "completed",
+    "activeForm": "Rewriting CSV parser"
+  },
+  {
+    "content": "Update API endpoints (yachts, filters, stats, import, match)",
+    "status": "completed",
+    "activeForm": "Updating API endpoints"
+  },
+  {
+    "content": "Update frontend inventory table UI for new fields",
+    "status": "completed",
+    "activeForm": "Updating frontend inventory UI"
+  },
+  {
+    "content": "Add broker portal image scraper route",
+    "status": "completed",
+    "activeForm": "Adding broker portal image scraper"
+  },
+  {
+    "content": "Deploy and verify",
+    "status": "in_progress",
+    "activeForm": "Deploying and verifying"
+  }
+]
