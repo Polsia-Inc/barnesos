@@ -1,0 +1,22 @@
+[
+  {
+    "content": "Add Three.js, TopoJSON, Playfair Display to <head>",
+    "status": "completed",
+    "activeForm": "Adding dependencies to <head>"
+  },
+  {
+    "content": "Insert globe HTML as first child of #panel-radar",
+    "status": "completed",
+    "activeForm": "Inserting globe HTML container"
+  },
+  {
+    "content": "Add globe JavaScript with geocoding + API integration",
+    "status": "completed",
+    "activeForm": "Adding globe JavaScript"
+  },
+  {
+    "content": "Push changes and create PR",
+    "status": "in_progress",
+    "activeForm": "Pushing and creating PR"
+  }
+]
