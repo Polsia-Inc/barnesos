@@ -1053,7 +1053,7 @@ input, textarea, select { font-family: inherit; }
 }
 
 /* ─── Outreach Campaign Modal ─────────────────────────────────────────── */
-.modal-outreach { max-width: 620px; }
+.modal-outreach { max-width: 660px; }
 .outreach-spinner {
   width: 40px; height: 40px;
   border: 3px solid rgba(255,255,255,0.08);
@@ -1064,28 +1064,63 @@ input, textarea, select { font-family: inherit; }
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 .outreach-section {
-  margin-bottom: 20px;
+  margin-bottom: 22px;
+  padding: 16px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border);
+  border-radius: 10px;
 }
 .outreach-section:last-child { margin-bottom: 0; }
-.outreach-label {
-  font-size: 0.72rem;
+.outreach-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.outreach-section-title {
+  font-size: 0.8rem;
   font-weight: 700;
   letter-spacing: 1px;
   text-transform: uppercase;
-  color: var(--text-muted);
-  margin-bottom: 8px;
+  color: var(--gold);
 }
+.outreach-section-tag {
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: rgba(201,169,110,0.1);
+  border: 1px solid rgba(201,169,110,0.3);
+  color: rgba(201,169,110,0.8);
+  letter-spacing: 0.5px;
+}
+.outreach-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+  margin-top: 10px;
+}
+.outreach-label:first-child { margin-top: 0; }
 .outreach-copy-block {
   background: rgba(255,255,255,0.04);
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255,255,255,0.08);
   border-radius: 7px;
   padding: 12px 14px;
-  font-size: 0.85rem;
+  font-size: 0.84rem;
   color: var(--text-primary);
-  line-height: 1.6;
+  line-height: 1.65;
   margin-bottom: 8px;
   user-select: text;
   cursor: text;
+}
+.outreach-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
 }
 .btn-copy {
   background: rgba(255,255,255,0.06);
@@ -1098,6 +1133,37 @@ input, textarea, select { font-family: inherit; }
   transition: all 0.15s;
 }
 .btn-copy:hover { background: rgba(255,255,255,0.12); color: var(--text-primary); }
+.btn-launch-email {
+  background: linear-gradient(135deg, rgba(201,169,110,0.2) 0%, rgba(201,169,110,0.12) 100%);
+  border: 1px solid rgba(201,169,110,0.5);
+  color: var(--gold);
+  padding: 5px 16px;
+  border-radius: 5px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.btn-launch-email:hover {
+  background: linear-gradient(135deg, rgba(201,169,110,0.35) 0%, rgba(201,169,110,0.25) 100%);
+  box-shadow: 0 0 12px rgba(201,169,110,0.2);
+}
+.btn-launch-email:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.btn-launch-email.sent {
+  background: rgba(40,200,100,0.1);
+  border-color: rgba(40,200,100,0.4);
+  color: #4ade80;
+  cursor: default;
+}
+.outreach-char-count {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+  margin-bottom: 8px;
+}
 .outreach-matched-yachts {
   display: flex;
   flex-wrap: wrap;
@@ -1113,6 +1179,41 @@ input, textarea, select { font-family: inherit; }
   color: rgba(160,200,255,0.9);
 }
 .yacht-match-chip .chip-price { color: var(--gold); font-weight: 700; }
+.outreach-signal-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.outreach-signal-pill {
+  font-size: 0.68rem;
+  padding: 3px 10px;
+  border-radius: 20px;
+  background: rgba(255,60,60,0.1);
+  border: 1px solid rgba(255,60,60,0.25);
+  color: rgba(255,140,140,0.9);
+}
+/* ─── HOT Card Outreach Button ─────────────────────────────────────────── */
+.card-outreach-btn {
+  width: 100%;
+  margin-top: 10px;
+  padding: 7px 12px;
+  background: linear-gradient(135deg, rgba(201,169,110,0.15) 0%, rgba(201,169,110,0.08) 100%);
+  border: 1px solid rgba(201,169,110,0.4);
+  border-radius: 7px;
+  color: var(--gold);
+  font-size: 0.73rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: center;
+}
+.card-outreach-btn:hover {
+  background: linear-gradient(135deg, rgba(201,169,110,0.28) 0%, rgba(201,169,110,0.18) 100%);
+  box-shadow: 0 0 14px rgba(201,169,110,0.2);
+  transform: translateY(-1px);
+}
 </style>
 </head>
 <body>
@@ -1605,37 +1706,73 @@ input, textarea, select { font-family: inherit; }
 <div class="modal-overlay" id="modalOutreach">
   <div class="modal modal-outreach">
     <div class="modal-header">
-      <div class="modal-title" id="outreachModalTitle">&#x1F680; Launch Campaign</div>
+      <div class="modal-title" id="outreachModalTitle">&#x1F4E1; Signal-Based Outreach Suite</div>
       <button class="modal-close" onclick="closeModal('modalOutreach')">&times;</button>
     </div>
     <div class="modal-body" id="outreachModalBody">
       <!-- Loading state -->
       <div id="outreachLoading" style="text-align:center;padding:40px 0;">
         <div class="outreach-spinner"></div>
-        <div style="color:var(--text-muted);font-size:0.85rem;margin-top:16px;">Matching inventory &amp; generating copy…</div>
+        <div style="color:var(--text-muted);font-size:0.85rem;margin-top:16px;">Analysing signals &amp; generating copy…</div>
       </div>
       <!-- Content (hidden until loaded) -->
       <div id="outreachContent" style="display:none;">
+
+        <!-- Signal context pills -->
+        <div id="outreachSignalContext" style="display:none;margin-bottom:16px;">
+          <div style="font-size:0.7rem;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);margin-bottom:8px;">&#x26A1; Signals Driving This Outreach</div>
+          <div class="outreach-signal-pills" id="outreachSignalPills"></div>
+        </div>
+
         <!-- Matched Yachts -->
-        <div class="outreach-section" id="outreachMatchedYachts"></div>
-        <!-- Email -->
+        <div class="outreach-section" id="outreachMatchedYachts" style="display:none;"></div>
+
+        <!-- SECTION 1: LinkedIn Intro -->
         <div class="outreach-section">
-          <div class="outreach-label">&#x2709;&#xFE0F; Email — Subject</div>
-          <div class="outreach-copy-block" id="outreachEmailSubject"></div>
-          <button class="btn-copy" onclick="copyOutreach('outreachEmailSubject')">Copy Subject</button>
-        </div>
-        <div class="outreach-section">
-          <div class="outreach-label">Email Body</div>
-          <div class="outreach-copy-block" id="outreachEmailBody" style="white-space:pre-wrap;min-height:120px;"></div>
-          <button class="btn-copy" onclick="copyOutreach('outreachEmailBody')">Copy Email</button>
-        </div>
-        <!-- LinkedIn -->
-        <div class="outreach-section">
-          <div class="outreach-label">&#x1F517; LinkedIn Connection Request</div>
+          <div class="outreach-section-header">
+            <div class="outreach-section-title">&#x1F517; LinkedIn Intro Message</div>
+            <div class="outreach-section-tag">Step 1 — Send Now</div>
+          </div>
+          <div class="outreach-label">Message (paste directly into LinkedIn)</div>
           <div class="outreach-copy-block" id="outreachLinkedin" style="white-space:pre-wrap;"></div>
-          <div id="outreachLinkedinCharCount" style="font-size:0.72rem;color:var(--text-muted);margin-top:4px;"></div>
-          <button class="btn-copy" onclick="copyOutreach('outreachLinkedin')">Copy LinkedIn Message</button>
+          <div class="outreach-char-count" id="outreachLinkedinCharCount"></div>
+          <div class="outreach-actions">
+            <button class="btn-copy" onclick="copyOutreach('outreachLinkedin')">&#x2398; Copy Message</button>
+          </div>
         </div>
+
+        <!-- SECTION 2: Follow-Up Email Day 3 -->
+        <div class="outreach-section">
+          <div class="outreach-section-header">
+            <div class="outreach-section-title">&#x2709;&#xFE0F; Follow-Up Email #1</div>
+            <div class="outreach-section-tag">Day 3 after LinkedIn</div>
+          </div>
+          <div class="outreach-label">Subject</div>
+          <div class="outreach-copy-block" id="outreachDay3Subject"></div>
+          <div class="outreach-label">Body</div>
+          <div class="outreach-copy-block" id="outreachDay3Body" style="white-space:pre-wrap;min-height:100px;"></div>
+          <div class="outreach-actions">
+            <button class="btn-copy" onclick="copyOutreach('outreachDay3Body')">&#x2398; Copy Email</button>
+            <button class="btn-launch-email" id="btnLaunchDay3" onclick="sendOutreachEmail('followup_day3')">&#x1F4E4; Launch Email</button>
+          </div>
+        </div>
+
+        <!-- SECTION 3: Follow-Up Email Day 10 -->
+        <div class="outreach-section">
+          <div class="outreach-section-header">
+            <div class="outreach-section-title">&#x2709;&#xFE0F; Follow-Up Email #2</div>
+            <div class="outreach-section-tag">Day 10 after LinkedIn</div>
+          </div>
+          <div class="outreach-label">Subject</div>
+          <div class="outreach-copy-block" id="outreachDay10Subject"></div>
+          <div class="outreach-label">Body</div>
+          <div class="outreach-copy-block" id="outreachDay10Body" style="white-space:pre-wrap;min-height:100px;"></div>
+          <div class="outreach-actions">
+            <button class="btn-copy" onclick="copyOutreach('outreachDay10Body')">&#x2398; Copy Email</button>
+            <button class="btn-launch-email" id="btnLaunchDay10" onclick="sendOutreachEmail('followup_day10')">&#x1F4E4; Launch Email</button>
+          </div>
+        </div>
+
       </div>
       <!-- Error state -->
       <div id="outreachError" style="display:none;color:var(--hot);text-align:center;padding:32px;">
@@ -1941,6 +2078,8 @@ function renderProspectTier(tier) {
     const scanned = p.last_scanned_at || p.last_scanned || p.lastScanned;
     const topSignals = p.top_signals || [];
     const signalCount = parseInt(p.signal_count || 0);
+    const isHot = (p.tier || tier) === 'hot';
+    const pName = escapeHtml(p.name).replace(/'/g, "\\'");
     return `
       <div class="prospect-card" onclick="openProspectDetail('${p.id}')">
         <div class="prospect-name">${escapeHtml(p.name)}</div>
@@ -1953,6 +2092,7 @@ function renderProspectTier(tier) {
           ? renderTopSignals(topSignals, signalCount, p.id)
           : (scanned ? `<div class="prospect-scanned" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);">Scanned ${formatDate(scanned)} · No signals yet</div>` : '')
         }
+        ${isHot ? `<button class="card-outreach-btn" onclick="event.stopPropagation();launchCampaign(${p.id}, '${pName}')">&#x1F4E1; Launch Outreach Suite</button>` : ''}
       </div>
     `;
   }).join('');
@@ -2398,9 +2538,22 @@ function renderProspectList() {
 }
 
 // ==================== OUTREACH CAMPAIGN ====================
+// Store current outreach prospect context for email sending
+let currentOutreachProspectId = null;
+let currentOutreachData = null;
+
 async function launchCampaign(prospectId, prospectName) {
+  currentOutreachProspectId = prospectId;
+  currentOutreachData = null;
+
+  // Reset send buttons
+  const btnDay3 = $('#btnLaunchDay3');
+  const btnDay10 = $('#btnLaunchDay10');
+  if (btnDay3) { btnDay3.disabled = false; btnDay3.className = 'btn-launch-email'; btnDay3.textContent = '📤 Launch Email'; }
+  if (btnDay10) { btnDay10.disabled = false; btnDay10.className = 'btn-launch-email'; btnDay10.textContent = '📤 Launch Email'; }
+
   // Show modal in loading state
-  $('#outreachModalTitle').textContent = '🚀 Campaign — ' + prospectName;
+  $('#outreachModalTitle').textContent = '📡 Outreach Suite — ' + prospectName;
   $('#outreachLoading').style.display = 'block';
   $('#outreachContent').style.display = 'none';
   $('#outreachError').style.display = 'none';
@@ -2411,8 +2564,21 @@ async function launchCampaign(prospectId, prospectName) {
     const data = await res.json();
 
     if (!data.success) throw new Error(data.message || 'Unknown error');
+    currentOutreachData = data;
 
-    // Populate matched yachts
+    // ── Signal context pills ──
+    const signalCtxEl = $('#outreachSignalContext');
+    const signalPillsEl = $('#outreachSignalPills');
+    if (data.signals && data.signals.length > 0) {
+      signalPillsEl.innerHTML = data.signals.map(s =>
+        `<div class="outreach-signal-pill">${escapeHtml(s.signal_type || 'Signal')}: ${escapeHtml(s.title || '')}</div>`
+      ).join('');
+      signalCtxEl.style.display = 'block';
+    } else {
+      signalCtxEl.style.display = 'none';
+    }
+
+    // ── Matched yachts ──
     const yachtsSection = $('#outreachMatchedYachts');
     if (data.matched_yachts && data.matched_yachts.length > 0) {
       const chips = data.matched_yachts.map(y => {
@@ -2425,17 +2591,21 @@ async function launchCampaign(prospectId, prospectName) {
       yachtsSection.style.display = 'none';
     }
 
-    // Populate email
-    $('#outreachEmailSubject').textContent = data.email_subject || '';
-    $('#outreachEmailBody').textContent = data.email_body || '';
-
-    // Populate LinkedIn
+    // ── Section 1: LinkedIn Intro ──
     const li = data.linkedin_message || '';
     $('#outreachLinkedin').textContent = li;
     const charCount = li.length;
     const charEl = $('#outreachLinkedinCharCount');
     charEl.textContent = `${charCount}/280 characters`;
     charEl.style.color = charCount > 280 ? 'var(--hot)' : 'var(--text-muted)';
+
+    // ── Section 2: Follow-Up Email Day 3 ──
+    $('#outreachDay3Subject').textContent = data.followup_day3_subject || '';
+    $('#outreachDay3Body').textContent = data.followup_day3_body || '';
+
+    // ── Section 3: Follow-Up Email Day 10 ──
+    $('#outreachDay10Subject').textContent = data.followup_day10_subject || '';
+    $('#outreachDay10Body').textContent = data.followup_day10_body || '';
 
     // Show content
     $('#outreachLoading').style.display = 'none';
@@ -2445,6 +2615,53 @@ async function launchCampaign(prospectId, prospectName) {
     console.error('Campaign error:', err);
     $('#outreachLoading').style.display = 'none';
     $('#outreachError').style.display = 'block';
+  }
+}
+
+async function sendOutreachEmail(templateType) {
+  if (!currentOutreachProspectId || !currentOutreachData) {
+    showToast('Generate outreach first', 'error');
+    return;
+  }
+
+  const isDay3 = templateType === 'followup_day3';
+  const btnId = isDay3 ? 'btnLaunchDay3' : 'btnLaunchDay10';
+  const btn = $('#' + btnId);
+  const subject = isDay3 ? currentOutreachData.followup_day3_subject : currentOutreachData.followup_day10_subject;
+  const body = isDay3 ? currentOutreachData.followup_day3_body : currentOutreachData.followup_day10_body;
+
+  if (!subject || !body) {
+    showToast('No email content to send', 'error');
+    return;
+  }
+
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Sending…';
+  }
+
+  try {
+    const res = await fetch(`/api/prospects/${currentOutreachProspectId}/send-email`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ template_type: templateType, subject, body })
+    });
+    const data = await res.json();
+
+    if (data.success) {
+      showToast('Email sent ✓');
+      if (btn) {
+        btn.textContent = '✓ Sent';
+        btn.className = 'btn-launch-email sent';
+      }
+    } else {
+      showToast('Send failed: ' + (data.message || 'Unknown error'), 'error');
+      if (btn) { btn.disabled = false; btn.textContent = '📤 Launch Email'; }
+    }
+  } catch (err) {
+    console.error('Send email error:', err);
+    showToast('Send failed: ' + err.message, 'error');
+    if (btn) { btn.disabled = false; btn.textContent = '📤 Launch Email'; }
   }
 }
 

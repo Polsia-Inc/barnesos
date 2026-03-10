@@ -1395,7 +1395,18 @@ app.post('/api/prospects/:id/outreach', requireAuth, async (req, res) => {
     }
     const prospect = prospects[0];
 
-    // 2. Find matching yachts (same logic as /api/match but simplified)
+    // 2. Fetch top signals for this prospect (the actual events that triggered HOT status)
+    const { rows: signals } = await pool.query(
+      `SELECT ps.title, ps.summary, ps.signal_type, ps.source_name, ps.detected_at, ps.score, tr.name as trigger_name
+       FROM prospect_signals ps
+       LEFT JOIN trigger_rules tr ON ps.trigger_rule_id = tr.id
+       WHERE ps.prospect_id = $1
+       ORDER BY ps.score DESC, ps.detected_at DESC
+       LIMIT 6`,
+      [prospectId]
+    );
+
+    // 3. Find matching yachts
     const { rows: yachts } = await pool.query(
       'SELECT * FROM yachts WHERE is_available = TRUE ORDER BY price_eur DESC'
     );
@@ -1405,25 +1416,22 @@ app.post('/api/prospects/:id/outreach', requireAuth, async (req, res) => {
       let score = 0;
       const reasons = [];
 
-      // Brand match
       if (prospect.yacht_brand) {
         const brands = prospect.yacht_brand.split(/[,;\/]/).map(b => b.trim().toLowerCase()).filter(Boolean);
         if (brands.some(b => yacht.brand.toLowerCase().includes(b) || b.includes(yacht.brand.toLowerCase()))) {
           score += 35;
-          reasons.push(`${yacht.brand} matches your brand preference`);
+          reasons.push(`${yacht.brand} matches brand preference`);
         }
       }
 
-      // Model match
       if (prospect.yacht_model && yacht.model) {
         if (yacht.model.toLowerCase().includes(prospect.yacht_model.toLowerCase()) ||
             prospect.yacht_model.toLowerCase().includes(yacht.model.toLowerCase())) {
           score += 25;
-          reasons.push(`${yacht.model} matches your preferred model`);
+          reasons.push(`${yacht.model} matches preferred model`);
         }
       }
 
-      // Free-text interest keyword matching
       if (prospect.current_yacht_interest) {
         const interest = prospect.current_yacht_interest.toLowerCase();
         const yachtText = `${yacht.brand} ${yacht.model || ''} ${yacht.notes || ''}`.toLowerCase();
@@ -1431,30 +1439,37 @@ app.post('/api/prospects/:id/outreach', requireAuth, async (req, res) => {
         const matches = words.filter(w => yachtText.includes(w));
         if (matches.length > 0) {
           score += matches.length * 5;
-          reasons.push(`Matches your interest in "${prospect.current_yacht_interest}"`);
+          reasons.push(`Matches interest in "${prospect.current_yacht_interest}"`);
         }
       }
 
-      // Discount bonus
       if (yacht.has_discount && yacht.discount_pct > 0) {
         score += 10;
-        reasons.push(`${yacht.discount_pct}% discount currently available`);
+        reasons.push(`${yacht.discount_pct}% discount available`);
       }
 
       return { ...yacht, match_score: score, match_reasons: reasons };
     });
 
-    // Sort by match score, take top 3
     const topMatches = scored.sort((a, b) => b.match_score - a.match_score).slice(0, 3);
 
-    // Format yacht details for the prompt
     const yachtSummary = topMatches.map((y, i) => {
       const price = y.price_eur ? `€${Number(y.price_eur).toLocaleString('fr-FR')}` : 'Price on request';
       return `${i + 1}. ${y.brand}${y.model ? ' ' + y.model : ''} — ${y.length_m}m — ${price} — Delivery: ${y.delivery || 'TBD'} — Location: ${y.location || 'TBD'}${y.has_discount ? ` — ${y.discount_pct}% discount` : ''}${y.notes ? ` — Notes: ${y.notes}` : ''}`;
     }).join('\n');
 
-    // 3. Generate email + LinkedIn message in a single AI call
-    const prompt = `You are writing outreach for Barnes Yachting, a luxury yacht brokerage based in Marseille/Monaco.
+    // 4. Build signal context (the "why" behind this prospect being HOT)
+    const signalContext = signals.length > 0
+      ? signals.map(s => {
+          const date = s.detected_at ? new Date(s.detected_at).toISOString().slice(0, 10) : '';
+          return `- [${s.signal_type || s.trigger_name || 'Signal'}] "${s.title}"${s.summary ? ': ' + s.summary : ''}${date ? ` (${date})` : ''}`;
+        }).join('\n')
+      : '- No specific signals detected yet — use general luxury wealth context';
+
+    const firstName = prospect.name ? prospect.name.split(' ')[0] : 'there';
+
+    // 5. Generate signal-based 3-message outreach suite in one AI call
+    const prompt = `You are a senior copywriter for Barnes Yachting, a luxury yacht brokerage in Marseille/Monaco. You write elegant, high-touch outreach for ultra-high-net-worth individuals. Never sound generic or salesy.
 
 PROSPECT:
 - Name: ${prospect.name}
@@ -1462,55 +1477,67 @@ PROSPECT:
 - Location: ${prospect.location || 'N/A'}
 - Yacht Interest: ${prospect.current_yacht_interest || 'Luxury yachts'}
 - Preferred Brand: ${prospect.yacht_brand || 'N/A'}
-- Preferred Model: ${prospect.yacht_model || 'N/A'}
 - Notes: ${prospect.notes || 'N/A'}
-- Tier: ${prospect.heat_tier || 'warm'}
 
-MATCHING YACHTS FROM OUR CURRENT INVENTORY:
-${yachtSummary || 'No exact matches found — use best judgment from inventory context'}
+INTELLIGENCE SIGNALS (why this prospect is HOT right now — MUST reference these specifically):
+${signalContext}
 
-Generate TWO pieces of outreach copy. Return ONLY valid JSON (no markdown, no code fences).
+MATCHING INVENTORY (reference at least one yacht in the emails):
+${yachtSummary || 'No exact matches — reference our Marseille/Monaco-based luxury fleet'}
 
-Rules for the EMAIL:
-- Subject line + body
-- Professional luxury tone (Robb Report level, not pushy)
-- Reference at least one specific yacht by name/brand from the inventory list above
-- Explain briefly WHY it is a match for this prospect (size, brand, delivery timing, discount)
-- 150-200 words max body
-- Sign off as "The Barnes Yachting Team"
+Generate THREE pieces of signal-driven outreach. Return ONLY valid JSON (no markdown).
 
-Rules for LINKEDIN:
-- LinkedIn connection request message (MAX 280 characters — this is critical)
-- Warm, personal, NOT salesy
-- Hint at a matching opportunity without hard selling
-- First-name basis
+PIECE 1 — LinkedIn Intro Message:
+- MAX 280 characters (hard limit — count carefully)
+- Warm and personal, not salesy
+- Directly reference the most impactful signal (e.g., "Congratulations on your recent exit…", "Saw your appearance at Monaco Yacht Show…", "Congrats on the new role at…")
+- First-name basis (use "${firstName}")
+- End with a gentle hook, not a hard ask
 
-Return this exact JSON structure:
+PIECE 2 — Follow-Up Email #1 (Day 3 — sent 3 days after LinkedIn):
+- Subject line + body (150-220 words)
+- Assumes they saw the LinkedIn message but haven't responded
+- Build on the same signal context — go slightly deeper
+- Introduce Barnes Yachting value prop naturally
+- Reference a specific yacht from inventory that fits their profile
+- Tone: Robb Report level — informed, elegant, respectful of their time
+- Sign off: "Warmly,\nThe Barnes Yachting Team"
+
+PIECE 3 — Follow-Up Email #2 (Day 10 — 10 days after LinkedIn):
+- Subject line + body (120-180 words)
+- Warmer tone — acknowledge you've reached out before, no pressure
+- Reference their previous signals and any new context
+- Offer a specific next step: private yacht viewing, charter experience, or 15-min call
+- Light and confident — make it easy to say yes
+- Sign off: "Warmly,\nThe Barnes Yachting Team"
+
+Return this exact JSON:
 {
-  "email_subject": "...",
-  "email_body": "...",
-  "linkedin_message": "..."
+  "linkedin_message": "...",
+  "followup_day3_subject": "...",
+  "followup_day3_body": "...",
+  "followup_day10_subject": "...",
+  "followup_day10_body": "..."
 }`;
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [
-        { role: 'system', content: 'You are a luxury yacht brokerage copywriter. Return only valid JSON, no markdown.' },
+        { role: 'system', content: 'You are a luxury yacht brokerage copywriter. Return only valid JSON, no markdown, no code fences.' },
         { role: 'user', content: prompt }
       ],
-      max_tokens: 1200,
-      temperature: 0.75,
+      max_tokens: 2000,
+      temperature: 0.72,
       response_format: { type: 'json_object' }
     });
 
-    // Parse response (handle Gemini proxy quirks)
+    // Parse response
     let raw = completion.choices[0].message.content || '';
     raw = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
     let parsed;
     try {
       parsed = JSON.parse(raw);
     } catch (e) {
-      // Try repairing truncated JSON
       let fixed = raw;
       let inStr = false;
       for (let i = 0; i < fixed.length; i++) {
@@ -1523,29 +1550,129 @@ Return this exact JSON structure:
       while (open > 0) { fixed += '}'; open--; }
       try { parsed = JSON.parse(fixed); } catch (e2) {
         parsed = {
-          email_subject: `An exceptional yacht opportunity for ${prospect.name}`,
-          email_body: `Dear ${prospect.name},\n\nI wanted to reach out personally about a remarkable opportunity in our current inventory that aligns with your interests.\n\nOur team at Barnes Yachting has identified several vessels that we believe would be a perfect fit. I would love to share more details at your convenience.\n\nKind regards,\nThe Barnes Yachting Team`,
-          linkedin_message: `Hi ${prospect.name.split(' ')[0]}, I'm with Barnes Yachting and have come across a yacht that closely matches what you're looking for. Would love to connect!`
+          linkedin_message: `Hi ${firstName}, following your recent news — we have a yacht in our Marseille fleet that I think you'd appreciate. Would love to connect.`,
+          followup_day3_subject: `A yacht curated for you, ${firstName}`,
+          followup_day3_body: `Dear ${firstName},\n\nI hope this finds you well. Following up on my LinkedIn message — I wanted to share something specific from our current inventory that I believe aligns closely with your interests.\n\nWe recently listed a vessel that fits your profile remarkably well. I'd welcome the chance to walk you through it at your convenience.\n\nWarmly,\nThe Barnes Yachting Team`,
+          followup_day10_subject: `Still here if the timing is right`,
+          followup_day10_body: `Dear ${firstName},\n\nI know your schedule is demanding — no pressure at all. I just wanted to leave this door open.\n\nWhen the moment is right, I'd love to offer you a private viewing or a charter day aboard one of our flagships. No commitment, just the experience.\n\nWarmly,\nThe Barnes Yachting Team`
         };
       }
+    }
+
+    // Enforce LinkedIn 280-char limit
+    if (parsed.linkedin_message && parsed.linkedin_message.length > 280) {
+      parsed.linkedin_message = parsed.linkedin_message.slice(0, 277) + '...';
     }
 
     res.json({
       success: true,
       prospect: { id: prospect.id, name: prospect.name, company: prospect.company, heat_tier: prospect.heat_tier },
+      signals: signals.map(s => ({ title: s.title, signal_type: s.signal_type, detected_at: s.detected_at, score: s.score })),
       matched_yachts: topMatches.map(y => ({
         id: y.id, brand: y.brand, model: y.model, length_m: y.length_m,
         price_eur: y.price_eur, delivery: y.delivery, location: y.location,
         has_discount: y.has_discount, discount_pct: y.discount_pct, match_score: y.match_score
       })),
-      email_subject: parsed.email_subject || '',
-      email_body: parsed.email_body || '',
-      linkedin_message: parsed.linkedin_message || ''
+      // Legacy fields (for backward compat with existing code)
+      email_subject: parsed.followup_day3_subject || '',
+      email_body: parsed.followup_day3_body || '',
+      linkedin_message: parsed.linkedin_message || '',
+      // New 3-message suite
+      followup_day3_subject: parsed.followup_day3_subject || '',
+      followup_day3_body: parsed.followup_day3_body || '',
+      followup_day10_subject: parsed.followup_day10_subject || '',
+      followup_day10_body: parsed.followup_day10_body || ''
     });
 
   } catch (err) {
     console.error('Error generating outreach:', err.message);
     res.status(500).json({ success: false, message: 'Failed to generate outreach messages' });
+  }
+});
+
+// ─── OUTREACH: Send follow-up email to prospect ───────────────────────────────
+app.post('/api/prospects/:id/send-email', requireAuth, async (req, res) => {
+  try {
+    const prospectId = req.params.id;
+    const { template_type, subject, body } = req.body;
+
+    if (!template_type || !subject || !body) {
+      return res.status(400).json({ success: false, message: 'template_type, subject, and body are required' });
+    }
+
+    const validTypes = ['followup_day3', 'followup_day10'];
+    if (!validTypes.includes(template_type)) {
+      return res.status(400).json({ success: false, message: 'template_type must be followup_day3 or followup_day10' });
+    }
+
+    // Fetch prospect
+    const { rows: prospects } = await pool.query('SELECT id, name, email FROM prospects WHERE id = $1', [prospectId]);
+    if (prospects.length === 0) {
+      return res.status(404).json({ success: false, message: 'Prospect not found' });
+    }
+    const prospect = prospects[0];
+
+    if (!prospect.email) {
+      return res.status(400).json({ success: false, message: 'Prospect has no email address on file' });
+    }
+
+    // Convert plain text body to HTML
+    const htmlBody = body.split('\n').map(line =>
+      line.trim() === '' ? '<br>' : `<p style="margin:0 0 10px;line-height:1.7;font-family:-apple-system,Georgia,serif;font-size:15px;color:#1a1a1a;">${line.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</p>`
+    ).join('');
+
+    const htmlEmail = `<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="background:#fff;padding:40px 30px;max-width:600px;margin:0 auto;">
+  <div style="border-bottom:2px solid #c9a96e;padding-bottom:16px;margin-bottom:28px;">
+    <span style="font-family:Georgia,serif;font-size:20px;font-weight:700;color:#1a1a1a;letter-spacing:1px;">BARNES YACHTING</span>
+    <span style="font-family:-apple-system,sans-serif;font-size:11px;color:#888;margin-left:12px;letter-spacing:2px;text-transform:uppercase;">Monaco · Marseille</span>
+  </div>
+  ${htmlBody}
+  <div style="border-top:1px solid #e8e0d0;margin-top:32px;padding-top:16px;">
+    <p style="font-family:-apple-system,sans-serif;font-size:12px;color:#aaa;margin:0;">Barnes Yachting · 2 Quai des Belges, Marseille · Monaco Yacht Club</p>
+  </div>
+</body>
+</html>`;
+
+    // Send via Polsia email proxy
+    const emailRes = await fetch('https://polsia.com/api/proxy/email/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.POLSIA_API_KEY}`
+      },
+      body: JSON.stringify({
+        to: prospect.email,
+        subject,
+        body,
+        html: htmlEmail,
+        transactional: false  // cold outreach — not transactional
+      })
+    });
+
+    const emailResult = await emailRes.json();
+
+    if (!emailRes.ok) {
+      console.error('[EMAIL OUTREACH] Failed to send:', emailResult);
+      return res.status(500).json({ success: false, message: 'Failed to send email: ' + (emailResult.error || emailResult.message || 'Unknown error') });
+    }
+
+    console.log(`[EMAIL OUTREACH] Sent ${template_type} to ${prospect.email} (Prospect #${prospectId})`);
+
+    // Log to database
+    await pool.query(
+      `INSERT INTO outreach_emails (prospect_id, template_type, subject, body, sent_from)
+       VALUES ($1, $2, $3, $4, 'barnesos@polsia.app')`,
+      [prospectId, template_type, subject, body]
+    );
+
+    res.json({ success: true, message: `Email sent to ${prospect.email}` });
+
+  } catch (err) {
+    console.error('Error sending outreach email:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to send email' });
   }
 });
 
