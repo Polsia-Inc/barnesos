@@ -1,0 +1,27 @@
+[
+  {
+    "content": "Update /api/prospects endpoint to include top signals per prospect",
+    "status": "completed",
+    "activeForm": "Updating API endpoint"
+  },
+  {
+    "content": "Update prospect card rendering with source icons + snippets + links",
+    "status": "completed",
+    "activeForm": "Updating prospect card UI"
+  },
+  {
+    "content": "Fix detail view signal bug + add source links",
+    "status": "completed",
+    "activeForm": "Fixing detail view"
+  },
+  {
+    "content": "Make signal feed source URLs clickable",
+    "status": "completed",
+    "activeForm": "Updating signal feed"
+  },
+  {
+    "content": "Push to remote and verify",
+    "status": "in_progress",
+    "activeForm": "Pushing to remote"
+  }
+]
