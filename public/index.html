@@ -627,8 +627,8 @@
             const res = await fetch('/api/yachts/filters');
             const data = await res.json();
             if (data.success) {
-                brands = data.brands;
-                locations = data.locations;
+                brands = data.builders || data.brands || [];
+                locations = data.locations || [];
                 renderChips('brandChips', brands, selectedBrands);
                 renderChips('locationChips', locations, selectedLocations);
 
@@ -720,35 +720,47 @@
 
         for (const yacht of matches) {
             const relClass = yacht.relevance_score >= 75 ? 'relevance-high' : (yacht.relevance_score >= 50 ? 'relevance-mid' : 'relevance-low');
+            // Support both old and new field names for graceful transition
+            const yachtName  = yacht.name  || yacht.model || '—';
+            const yachtBuild = yacht.builder || yacht.brand || '—';
+            const yachtLen   = yacht.length  || yacht.length_m;
+            const yachtPrice = yacht.price   || yacht.price_eur;
+            const yachtLoc   = yacht.location_text || yacht.location || 'N/A';
+            const yachtCurr  = yacht.currency || 'EUR';
 
             let tags = '';
-            if (yacht.delivery === 'Ready') tags += '<span class="tag tag-ready">READY NOW</span>';
-            if (yacht.has_discount) tags += '<span class="tag tag-discount">' + yacht.discount_pct + '% OFF</span>';
-            if (yacht.broker_commission_pct > 0) tags += '<span class="tag tag-commission">' + yacht.broker_commission_pct + '% COMMISSION</span>';
-            if (yacht.model.includes('New Model') || yacht.model.includes('NEW')) tags += '<span class="tag tag-new">NEW MODEL</span>';
+            if (yacht.is_approved) tags += '<span class="tag tag-ready">✓ APPROVED</span>';
+            if (yacht.brokers)      tags += '<span class="tag tag-commission">' + escapeHtml(yacht.brokers) + '</span>';
+            if (yacht.year_refit)   tags += '<span class="tag tag-new">REFIT ' + yacht.year_refit + '</span>';
 
             let reasons = '';
             if (yacht.match_reasons && yacht.match_reasons.length > 0) {
                 reasons = '<div class="match-reasons">' + yacht.match_reasons.map(function(r) { return '<span class="reason">' + escapeHtml(r) + '</span>'; }).join('') + '</div>';
             }
 
-            const noteSnippet = yacht.notes ? yacht.notes.substring(0, 80) + (yacht.notes.length > 80 ? '...' : '') : '';
+            const imgHtml = yacht.image_url
+                ? '<div style="width:100%;height:160px;overflow:hidden;border-radius:8px 8px 0 0;margin-bottom:12px"><img src="' + escapeHtml(yacht.image_url) + '" style="width:100%;height:160px;object-fit:cover;" onerror="this.parentNode.style.display=\'none\'"></div>'
+                : '';
+
+            const priceStr = yachtCurr === 'USD' ? '$' + Number(yachtPrice).toLocaleString()
+                : yachtCurr === 'GBP' ? '£' + Number(yachtPrice).toLocaleString()
+                : formatPrice(yachtPrice);
 
             html += '<div class="yacht-card">' +
+                imgHtml +
                 '<div class="yacht-main">' +
                     '<div class="yacht-top">' +
-                        '<span class="yacht-brand">' + escapeHtml(yacht.brand) + '</span>' +
-                        '<span class="yacht-model">' + escapeHtml(yacht.model) + '</span>' +
+                        '<span class="yacht-brand">' + escapeHtml(yachtBuild) + '</span>' +
+                        '<span class="yacht-model">' + escapeHtml(yachtName) + '</span>' +
                     '</div>' +
                     '<div class="yacht-specs">' +
-                        '<div class="spec"><span class="spec-label">Length</span><span class="spec-value">' + yacht.length_m + 'm</span></div>' +
-                        '<div class="spec"><span class="spec-label">Delivery</span><span class="spec-value">' + escapeHtml(yacht.delivery || 'TBD') + '</span></div>' +
-                        '<div class="spec"><span class="spec-label">Location</span><span class="spec-value">' + escapeHtml(yacht.location || 'N/A') + '</span></div>' +
-                        '<div class="spec"><span class="spec-label">Type</span><span class="spec-value">' + (yacht.yacht_type === 'catamaran' ? 'Catamaran' : 'Motor Yacht') + '</span></div>' +
+                        (yachtLen ? '<div class="spec"><span class="spec-label">Length</span><span class="spec-value">' + Number(yachtLen).toFixed(1) + 'm</span></div>' : '') +
+                        (yacht.year_built ? '<div class="spec"><span class="spec-label">Built</span><span class="spec-value">' + yacht.year_built + '</span></div>' : '') +
+                        (yacht.lob ? '<div class="spec"><span class="spec-label">LOB</span><span class="spec-value">' + Number(yacht.lob).toFixed(1) + 'm</span></div>' : '') +
+                        '<div class="spec"><span class="spec-label">Location</span><span class="spec-value">' + escapeHtml(yachtLoc) + '</span></div>' +
                     '</div>' +
                     '<div class="yacht-tags">' + tags + '</div>' +
                     reasons +
-                    (noteSnippet ? '<div style="font-size:12px;color:var(--mist);opacity:0.7;margin-top:4px">' + escapeHtml(noteSnippet) + '</div>' : '') +
                 '</div>' +
                 '<div class="yacht-right">' +
                     '<div class="relevance-badge">' +
@@ -756,8 +768,7 @@
                         '<span class="relevance-label">Match</span>' +
                     '</div>' +
                     '<div>' +
-                        '<div class="yacht-price">' + formatPrice(yacht.price_eur) + '</div>' +
-                        (yacht.has_discount ? '<div class="yacht-price-note">Discount available</div>' : '') +
+                        '<div class="yacht-price">' + priceStr + '</div>' +
                     '</div>' +
                 '</div>' +
             '</div>';
@@ -791,23 +802,40 @@
             return;
         }
         let html = '<div style="overflow-x:auto"><table class="inventory-table"><thead><tr>' +
-            '<th>Brand</th><th>Model</th><th>Length</th><th>Delivery</th><th>Location</th><th>Price (EUR)</th><th>Status</th>' +
+            '<th></th><th>Name</th><th>Builder</th><th>Length</th><th>Built</th><th>Refit</th><th>Location</th><th>Price</th><th>Status</th><th>Brokers</th>' +
             '</tr></thead><tbody>';
 
         for (const y of allYachts) {
+            const yName  = y.name  || y.model || '—';
+            const yBuild = y.builder || y.brand || '—';
+            const yLen   = y.length  || y.length_m;
+            const yPrice = y.price   || y.price_eur;
+            const yLoc   = y.location_text || y.location || 'N/A';
+            const yCurr  = y.currency || 'EUR';
             const status = [];
-            if (y.delivery === 'Ready') status.push('<span class="tag tag-ready" style="display:inline">READY</span>');
-            if (y.has_discount) status.push('<span class="tag tag-discount" style="display:inline">' + y.discount_pct + '% OFF</span>');
-            if (y.broker_commission_pct > 0) status.push('<span class="tag tag-commission" style="display:inline">' + y.broker_commission_pct + '% COMM</span>');
+            if (y.is_active === false) status.push('<span class="tag tag-discount" style="display:inline">INACTIVE</span>');
+            else if (y.is_active)      status.push('<span class="tag tag-ready" style="display:inline">ACTIVE</span>');
+            if (y.is_approved)         status.push('<span class="tag tag-commission" style="display:inline">✓ APPR</span>');
+
+            const priceStr = yCurr === 'USD' ? '$' + Number(yPrice).toLocaleString()
+                : yCurr === 'GBP' ? '£' + Number(yPrice).toLocaleString()
+                : formatPrice(yPrice);
+
+            const imgCell = y.image_url
+                ? '<img src="' + escapeHtml(y.image_url) + '" style="width:48px;height:32px;object-fit:cover;border-radius:4px;" onerror="this.style.display=\'none\'">'
+                : '';
 
             html += '<tr>' +
-                '<td class="brand-cell">' + escapeHtml(y.brand) + '</td>' +
-                '<td style="color:var(--white);font-weight:500">' + escapeHtml(y.model) + '</td>' +
-                '<td>' + y.length_m + 'm</td>' +
-                '<td>' + escapeHtml(y.delivery || 'TBD') + '</td>' +
-                '<td>' + escapeHtml(y.location || 'N/A') + '</td>' +
-                '<td style="font-weight:700;color:var(--white)">' + formatPrice(y.price_eur) + '</td>' +
+                '<td>' + imgCell + '</td>' +
+                '<td class="brand-cell">' + escapeHtml(yName) + '</td>' +
+                '<td style="color:var(--white);font-weight:500">' + escapeHtml(yBuild) + '</td>' +
+                '<td>' + (yLen ? Number(yLen).toFixed(1) + 'm' : '—') + '</td>' +
+                '<td>' + (y.year_built || '—') + '</td>' +
+                '<td>' + (y.year_refit || '—') + '</td>' +
+                '<td>' + escapeHtml(yLoc) + '</td>' +
+                '<td style="font-weight:700;color:var(--white)">' + priceStr + '</td>' +
                 '<td>' + status.join(' ') + '</td>' +
+                '<td style="max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + escapeHtml(y.brokers||'') + '">' + escapeHtml(y.brokers || '—') + '</td>' +
             '</tr>';
         }
         html += '</tbody></table></div>';

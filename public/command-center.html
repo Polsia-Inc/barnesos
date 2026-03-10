@@ -940,10 +940,43 @@ input, textarea, select { font-family: inherit; }
 .inv-empty-icon { font-size: 2.5rem; margin-bottom: 12px; }
 .inv-empty-text { font-size: 0.9rem; }
 
+.inv-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 12px 0 8px;
+}
+.inv-filter-select {
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  outline: none;
+  transition: border-color var(--transition);
+}
+.inv-filter-select:focus { border-color: var(--gold); }
+.btn-outline-sm {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.btn-outline-sm:hover { border-color: var(--gold); color: var(--gold); }
+
 @media (max-width: 768px) {
   .inv-stats-strip { grid-template-columns: repeat(2, 1fr); }
   .inv-search { width: 100%; }
   .inv-table-wrap { overflow-x: auto; }
+  .inv-filter-bar { flex-direction: column; align-items: flex-start; }
+  .inv-filter-select { width: 100%; }
 }
 
 /* ─── All Prospects List View ─────────────────────────────────────────── */
@@ -1493,7 +1526,7 @@ input, textarea, select { font-family: inherit; }
         </div>
         <div class="inv-stat-card">
           <div class="inv-stat-num" id="invStatDiscounted">—</div>
-          <div class="inv-stat-label">With Discount</div>
+          <div class="inv-stat-label">Approved</div>
         </div>
         <div class="inv-stat-card">
           <div class="inv-stat-num" id="invStatAvgPrice">—</div>
@@ -1522,7 +1555,7 @@ input, textarea, select { font-family: inherit; }
               <input type="radio" name="importMode" value="merge">
               <span class="inv-mode-label">
                 <strong>Merge / Update</strong>
-                <small>Add new yachts, update existing by brand+model &mdash; keeps unmatched rows</small>
+                <small>Add new yachts alongside existing &mdash; use for incremental additions</small>
               </span>
             </label>
           </div>
@@ -1548,8 +1581,8 @@ input, textarea, select { font-family: inherit; }
 
           <!-- Column format hint -->
           <div class="inv-format-hint">
-            <strong>Expected columns:</strong> brand &bull; model &bull; length_m &bull; delivery &bull; location &bull; price_eur &bull; notes &bull; discount_pct &bull; broker_commission_pct<br>
-            <strong>Optional:</strong> is_available (true/false) &bull; yacht_type (motor/sail/catamaran)
+            <strong>Primary columns (auto-detected):</strong> Name &bull; Builder OS &bull; Length &bull; LOB &bull; YearBuilt &bull; Year Refit &bull; Price &bull; Currency &bull; Location Text &bull; Active? &bull; Approved? &bull; ✅ Brokers<br>
+            <strong>Format:</strong> CSV or TSV &bull; checkbox/checkmark cells auto-parsed &bull; extra columns stored automatically
           </div>
 
           <!-- Import button -->
@@ -1577,11 +1610,36 @@ input, textarea, select { font-family: inherit; }
         <button class="btn-gold btn-sm" style="margin-top:16px;" onclick="resetImportUI()">Import Another File</button>
       </div>
 
+      <!-- FILTER BAR -->
+      <div class="inv-filter-bar" id="invFilterBar">
+        <select class="inv-filter-select" id="filterActive" onchange="applyInventoryFilters()">
+          <option value="">All Status</option>
+          <option value="true">Active ✓</option>
+          <option value="false">Inactive</option>
+        </select>
+        <select class="inv-filter-select" id="filterApproved" onchange="applyInventoryFilters()">
+          <option value="">All Approval</option>
+          <option value="true">Approved ✓</option>
+          <option value="false">Not Approved</option>
+        </select>
+        <select class="inv-filter-select" id="filterBuilder" onchange="applyInventoryFilters()">
+          <option value="">All Builders</option>
+        </select>
+        <select class="inv-filter-select" id="filterCurrency" onchange="applyInventoryFilters()">
+          <option value="">All Currencies</option>
+        </select>
+        <select class="inv-filter-select" id="filterBroker" onchange="applyInventoryFilters()">
+          <option value="">All Brokers</option>
+        </select>
+        <button class="btn-outline-sm" onclick="clearInventoryFilters()">✕ Clear</button>
+        <button class="btn-outline-sm" onclick="scrapeImages()" id="btnScrapeImages" title="Scrape images from broker portal">🖼 Fetch Images</button>
+      </div>
+
       <!-- INVENTORY TABLE -->
       <div class="inv-table-wrap">
         <div class="inv-table-header">
           <div class="inv-table-title">Current Inventory</div>
-          <input class="inv-search" type="text" id="invSearch" placeholder="Search brand, model, location...">
+          <input class="inv-search" type="text" id="invSearch" placeholder="Search name, builder, location, broker...">
         </div>
         <div id="invTableContainer">
           <div class="inv-loading">Loading inventory...</div>
@@ -2582,8 +2640,12 @@ async function launchCampaign(prospectId, prospectName) {
     const yachtsSection = $('#outreachMatchedYachts');
     if (data.matched_yachts && data.matched_yachts.length > 0) {
       const chips = data.matched_yachts.map(y => {
-        const price = y.price_eur ? formatCurrency(Number(y.price_eur)) : 'POR';
-        return `<div class="yacht-match-chip">${escapeHtml(y.brand)}${y.model ? ' ' + escapeHtml(y.model) : ''} — ${y.length_m}m — <span class="chip-price">${price}</span></div>`;
+        const priceVal = y.price || y.price_eur;
+        const price = priceVal ? formatCurrency(Number(priceVal)) : 'POR';
+        const nameStr = y.name || y.model || '—';
+        const builderStr = y.builder || y.brand || '';
+        const lenStr = (y.length || y.length_m) ? Number(y.length || y.length_m).toFixed(1) + 'm' : '';
+        return `<div class="yacht-match-chip">${escapeHtml(builderStr)}${nameStr ? ' ' + escapeHtml(nameStr) : ''}${lenStr ? ' — ' + lenStr : ''} — <span class="chip-price">${price}</span></div>`;
       }).join('');
       yachtsSection.innerHTML = `<div class="outreach-label">&#x1F6A2; Matched Inventory</div><div class="outreach-matched-yachts">${chips}</div>`;
       yachtsSection.style.display = 'block';
@@ -3263,6 +3325,7 @@ document.addEventListener('DOMContentLoaded', init);
 // ==================== INVENTORY PANEL ====================
 let invState = {
   allYachts: [],
+  filteredYachts: null,
   searchQuery: '',
   selectedFile: null,
   selectedFileText: null,
@@ -3272,6 +3335,7 @@ let invState = {
 
 async function loadInventoryPanel() {
   loadInventoryStats();
+  loadInventoryFilters();
   loadInventoryTable();
 }
 
@@ -3281,7 +3345,7 @@ async function loadInventoryStats() {
     const s = data.stats;
     $('#invStatTotal').textContent = s.total || '0';
     $('#invStatAvailable').textContent = s.available || '0';
-    $('#invStatDiscounted').textContent = s.discounted || '0';
+    $('#invStatDiscounted').textContent = s.approved || '0';
     const avg = parseFloat(s.avg_price);
     $('#invStatAvgPrice').textContent = avg > 0 ? formatCurrency(avg) : '—';
     $('#invSubtitle').textContent = s.total + ' yachts in database — last updated just now';
@@ -3291,11 +3355,70 @@ async function loadInventoryStats() {
   }
 }
 
+async function loadInventoryFilters() {
+  try {
+    const data = await api('/api/yachts/filters');
+    const builderSel = $('#filterBuilder');
+    const currSel    = $('#filterCurrency');
+    const brokerSel  = $('#filterBroker');
+
+    (data.builders || []).forEach(b => {
+      const o = document.createElement('option'); o.value = b; o.textContent = b;
+      builderSel.appendChild(o);
+    });
+    (data.currencies || []).forEach(c => {
+      const o = document.createElement('option'); o.value = c; o.textContent = c;
+      currSel.appendChild(o);
+    });
+    (data.brokers || []).forEach(b => {
+      const o = document.createElement('option'); o.value = b; o.textContent = b;
+      brokerSel.appendChild(o);
+    });
+  } catch (err) {
+    console.warn('Failed to load filters:', err);
+  }
+}
+
+function applyInventoryFilters() {
+  const q        = (invState.searchQuery || '').toLowerCase();
+  const active   = $('#filterActive').value;
+  const approved = $('#filterApproved').value;
+  const builder  = $('#filterBuilder').value.toLowerCase();
+  const currency = $('#filterCurrency').value.toLowerCase();
+  const broker   = $('#filterBroker').value.toLowerCase();
+
+  invState.filteredYachts = invState.allYachts.filter(y => {
+    if (q && ![(y.name||''),(y.builder||''),(y.location_text||''),(y.brokers||'')].join(' ').toLowerCase().includes(q)) return false;
+    if (active === 'true'  && !y.is_active)  return false;
+    if (active === 'false' && y.is_active)   return false;
+    if (approved === 'true'  && !y.is_approved) return false;
+    if (approved === 'false' && y.is_approved)  return false;
+    if (builder  && !(y.builder||'').toLowerCase().includes(builder))  return false;
+    if (currency && !(y.currency||'').toLowerCase().includes(currency)) return false;
+    if (broker   && !(y.brokers||'').toLowerCase().includes(broker))   return false;
+    return true;
+  });
+  renderInventoryTable();
+}
+
+function clearInventoryFilters() {
+  $('#filterActive').value = '';
+  $('#filterApproved').value = '';
+  $('#filterBuilder').value = '';
+  $('#filterCurrency').value = '';
+  $('#filterBroker').value = '';
+  $('#invSearch').value = '';
+  invState.searchQuery = '';
+  invState.filteredYachts = null;
+  renderInventoryTable();
+}
+
 async function loadInventoryTable() {
   const container = $('#invTableContainer');
   try {
     const data = await api('/api/yachts?all=true');
     invState.allYachts = data.yachts || [];
+    invState.filteredYachts = null;
     renderInventoryTable();
   } catch (err) {
     container.innerHTML = '<div class="inv-loading">Failed to load inventory</div>';
@@ -3304,41 +3427,50 @@ async function loadInventoryTable() {
 
 function renderInventoryTable() {
   const container = $('#invTableContainer');
+  const source = invState.filteredYachts !== null ? invState.filteredYachts : invState.allYachts;
+
+  // Apply search query if filteredYachts is not set
   const q = invState.searchQuery.toLowerCase();
-  const yachts = q
-    ? invState.allYachts.filter(y =>
-        (y.brand || '').toLowerCase().includes(q) ||
-        (y.model || '').toLowerCase().includes(q) ||
-        (y.location || '').toLowerCase().includes(q) ||
-        (y.notes || '').toLowerCase().includes(q)
-      )
-    : invState.allYachts;
+  const yachts = (invState.filteredYachts !== null) ? source
+    : (q ? source.filter(y =>
+        (y.name || '').toLowerCase().includes(q) ||
+        (y.builder || '').toLowerCase().includes(q) ||
+        (y.location_text || '').toLowerCase().includes(q) ||
+        (y.brokers || '').toLowerCase().includes(q)
+      ) : source);
 
   if (!yachts.length) {
     container.innerHTML = '<div class="inv-empty"><div class="inv-empty-icon">🚤</div><div class="inv-empty-text">' + (q ? 'No yachts match your search.' : 'No yachts in inventory yet. Import a CSV to get started.') + '</div></div>';
     return;
   }
 
+  const fmtPrice = (y) => {
+    if (!y.price) return '—';
+    const sym = y.currency === 'USD' ? '$' : y.currency === 'GBP' ? '£' : '€';
+    return sym + Number(y.price).toLocaleString('fr-FR');
+  };
+
   const rows = yachts.map(y => {
-    const price = y.price_eur ? '€' + Number(y.price_eur).toLocaleString() : '—';
-    const length = y.length_m ? y.length_m + 'm' : '—';
-    const avail = y.is_available
-      ? '<span class="badge-avail">Available</span>'
-      : '<span class="badge-sold">Sold/Unavailable</span>';
-    const disc = y.has_discount
-      ? '<span class="badge-disc">-' + (y.discount_pct || '?') + '%</span>'
-      : '';
-    const comm = y.broker_commission_pct > 0 ? y.broker_commission_pct + '% comm' : '';
+    const img = y.image_url
+      ? `<img src="${esc(y.image_url)}" style="width:52px;height:36px;object-fit:cover;border-radius:4px;vertical-align:middle;" onerror="this.style.display='none'">`
+      : '<span style="color:#666;font-size:11px;">No img</span>';
+    const activeB  = y.is_active   ? '<span class="badge-avail">Active</span>'   : '<span class="badge-sold">Inactive</span>';
+    const approvedB = y.is_approved ? '<span class="badge-disc">✓ Approved</span>' : '';
+    const length = y.length ? Number(y.length).toFixed(1) + 'm' : '—';
+    const lob = y.lob ? Number(y.lob).toFixed(1) + 'm' : '—';
     return `<tr>
-      <td class="col-brand">${esc(y.brand)}</td>
-      <td>${esc(y.model || '—')}</td>
+      <td>${img}</td>
+      <td class="col-brand" style="min-width:140px;">${esc(y.name || '—')}</td>
+      <td>${esc(y.builder || '—')}</td>
       <td>${length}</td>
-      <td>${esc(y.delivery || '—')}</td>
-      <td>${esc(y.location || '—')}</td>
-      <td class="col-price">${price}</td>
-      <td>${avail}</td>
-      <td>${disc} ${comm}</td>
-      <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;" title="${esc(y.notes || '')}">${esc(y.notes ? y.notes.substring(0, 60) + (y.notes.length > 60 ? '…' : '') : '—')}</td>
+      <td>${lob}</td>
+      <td>${y.year_built || '—'}</td>
+      <td>${y.year_refit || '—'}</td>
+      <td class="col-price">${fmtPrice(y)}</td>
+      <td>${esc(y.currency || '—')}</td>
+      <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(y.location_text||'')}">${esc(y.location_text || '—')}</td>
+      <td>${activeB} ${approvedB}</td>
+      <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(y.brokers||'')}">${esc(y.brokers || '—')}</td>
     </tr>`;
   }).join('');
 
@@ -3346,13 +3478,28 @@ function renderInventoryTable() {
     <table class="inv-table">
       <thead>
         <tr>
-          <th>Brand</th><th>Model</th><th>Length</th><th>Delivery</th>
-          <th>Location</th><th>Price (EUR)</th><th>Status</th><th>Discount / Comm</th><th>Notes</th>
+          <th>Img</th><th>Name</th><th>Builder</th><th>Length</th><th>LOB</th>
+          <th>Built</th><th>Refit</th><th>Price</th><th>Curr</th>
+          <th>Location</th><th>Status</th><th>Brokers</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
     </table>
-  </div>`;
+  </div><div style="color:#888;font-size:12px;padding:8px 0;">${yachts.length} yacht${yachts.length !== 1 ? 's' : ''} shown</div>`;
+}
+
+async function scrapeImages() {
+  const btn = $('#btnScrapeImages');
+  btn.disabled = true;
+  btn.textContent = '⏳ Scraping...';
+  try {
+    const data = await api('/api/yachts/scrape-images', { method: 'POST' });
+    btn.textContent = '✓ Scraping started';
+    setTimeout(() => { loadInventoryTable(); btn.textContent = '🖼 Fetch Images'; btn.disabled = false; }, 35000);
+  } catch (err) {
+    btn.textContent = '✗ Failed';
+    setTimeout(() => { btn.textContent = '🖼 Fetch Images'; btn.disabled = false; }, 3000);
+  }
 }
 
 function esc(str) {
@@ -3443,7 +3590,8 @@ document.addEventListener('DOMContentLoaded', () => {
     invSearch.addEventListener('input', (e) => {
       clearTimeout(searchTimeout);
       invState.searchQuery = e.target.value;
-      searchTimeout = setTimeout(renderInventoryTable, 250);
+      invState.filteredYachts = null; // clear filter cache so search applies
+      searchTimeout = setTimeout(applyInventoryFilters, 250);
     });
   }
 });
@@ -3537,8 +3685,8 @@ function showImportError(msg) {
 }
 
 function downloadCSVTemplate() {
-  const headers = 'brand,model,length_m,delivery,location,price_eur,notes,is_available,has_discount,discount_pct,broker_commission_pct,yacht_type';
-  const example = 'Sanlorenzo,SX88,27.0,Ready,Italy,6500000,Well-maintained,true,true,5,3,motor';
+  const headers = 'Name,Builder OS,Length,LOB,YearBuilt,Year Refit,Price,Currency,Location Text,Active?,Approved?,Brokers';
+  const example = 'Custom Line Navetta 42,Custom Line,41.8,11.2,2027,,20500000,EUR,Ancona Italy,TRUE,TRUE,"Jean-Pierre,Marc"';
   const csv = headers + '\n' + example;
   const blob = new Blob([csv], { type: 'text/csv' });
   const url = URL.createObjectURL(blob);

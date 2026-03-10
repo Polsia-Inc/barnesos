@@ -116,13 +116,50 @@ app.get('/health', (req, res) => {
   res.json({ status: 'healthy' });
 });
 
-// ─── API: Get all available yachts ──────────────────────────────────────────
+// ─── API: Get all yachts (with optional filters) ─────────────────────────────
 app.get('/api/yachts', async (req, res) => {
   try {
-    const showAll = req.query.all === 'true';
-    const whereClause = showAll ? '' : 'WHERE is_available = TRUE';
+    const { active, approved, builder, currency, broker,
+            min_price, max_price, min_length, max_length,
+            min_year_built, max_year_built, search } = req.query;
+
+    const conditions = [];
+    const params = [];
+
+    if (req.query.all !== 'true') {
+      conditions.push('is_active = TRUE');
+    }
+    if (active === 'true')    conditions.push('is_active = TRUE');
+    if (active === 'false')   conditions.push('is_active = FALSE');
+    if (approved === 'true')  conditions.push('is_approved = TRUE');
+    if (approved === 'false') conditions.push('is_approved = FALSE');
+    if (builder) {
+      params.push(`%${builder}%`);
+      conditions.push(`builder ILIKE $${params.length}`);
+    }
+    if (currency) {
+      params.push(currency.toUpperCase());
+      conditions.push(`currency = $${params.length}`);
+    }
+    if (broker) {
+      params.push(`%${broker}%`);
+      conditions.push(`brokers ILIKE $${params.length}`);
+    }
+    if (min_price)     { params.push(min_price);     conditions.push(`price >= $${params.length}`); }
+    if (max_price)     { params.push(max_price);     conditions.push(`price <= $${params.length}`); }
+    if (min_length)    { params.push(min_length);    conditions.push(`length >= $${params.length}`); }
+    if (max_length)    { params.push(max_length);    conditions.push(`length <= $${params.length}`); }
+    if (min_year_built){ params.push(min_year_built);conditions.push(`year_built >= $${params.length}`); }
+    if (max_year_built){ params.push(max_year_built);conditions.push(`year_built <= $${params.length}`); }
+    if (search) {
+      params.push(`%${search}%`);
+      const idx = params.length;
+      conditions.push(`(name ILIKE $${idx} OR builder ILIKE $${idx} OR location_text ILIKE $${idx} OR brokers ILIKE $${idx})`);
+    }
+
+    const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
     const { rows } = await pool.query(
-      `SELECT * FROM yachts ${whereClause} ORDER BY length_m DESC`
+      `SELECT * FROM yachts ${where} ORDER BY length DESC NULLS LAST, name ASC`, params
     );
     res.json({ success: true, yachts: rows, count: rows.length });
   } catch (err) {
@@ -131,26 +168,34 @@ app.get('/api/yachts', async (req, res) => {
   }
 });
 
-// ─── API: Get unique filter values ──────────────────────────────────────────
+// ─── API: Get unique filter values ───────────────────────────────────────────
 app.get('/api/yachts/filters', async (req, res) => {
   try {
-    const brands = await pool.query(
-      `SELECT DISTINCT brand FROM yachts WHERE is_available = TRUE ORDER BY brand`
-    );
-    const locations = await pool.query(
-      `SELECT DISTINCT location FROM yachts WHERE is_available = TRUE ORDER BY location`
-    );
-    const stats = await pool.query(
-      `SELECT MIN(price_eur) as min_price, MAX(price_eur) as max_price,
-              MIN(length_m) as min_length, MAX(length_m) as max_length,
-              COUNT(*) as total
-       FROM yachts WHERE is_available = TRUE`
-    );
+    const [builders, currencies, locations, rangeStats, brokerRows] = await Promise.all([
+      pool.query(`SELECT DISTINCT builder FROM yachts WHERE builder IS NOT NULL AND is_active = TRUE ORDER BY builder`),
+      pool.query(`SELECT DISTINCT currency FROM yachts WHERE currency IS NOT NULL AND is_active = TRUE ORDER BY currency`),
+      pool.query(`SELECT DISTINCT location_text FROM yachts WHERE location_text IS NOT NULL AND is_active = TRUE ORDER BY location_text`),
+      pool.query(`SELECT
+          MIN(price)      as min_price,  MAX(price)      as max_price,
+          MIN(length)     as min_length, MAX(length)     as max_length,
+          MIN(lob)        as min_lob,    MAX(lob)        as max_lob,
+          MIN(year_built) as min_year_built, MAX(year_built) as max_year_built,
+          MIN(year_refit) as min_year_refit, MAX(year_refit) as max_year_refit,
+          COUNT(*) as total,
+          COUNT(*) FILTER (WHERE is_active = TRUE)   as active,
+          COUNT(*) FILTER (WHERE is_approved = TRUE) as approved
+        FROM yachts`),
+      pool.query(`SELECT DISTINCT TRIM(unnest(string_to_array(brokers, ','))) as broker
+        FROM yachts WHERE brokers IS NOT NULL AND brokers != '' ORDER BY broker`)
+    ]);
+
     res.json({
       success: true,
-      brands: brands.rows.map(r => r.brand),
-      locations: locations.rows.map(r => r.location),
-      stats: stats.rows[0]
+      builders:  builders.rows.map(r => r.builder),
+      currencies: currencies.rows.map(r => r.currency),
+      locations: locations.rows.map(r => r.location_text),
+      brokers:   brokerRows.rows.map(r => r.broker).filter(Boolean),
+      stats:     rangeStats.rows[0]
     });
   } catch (err) {
     console.error('Error fetching filters:', err.message);
@@ -166,15 +211,20 @@ app.post('/api/match', async (req, res) => {
       budget_max,
       length_min,
       length_max,
-      brands,
+      builders,
       locations,
-      delivery_preference,
+      year_built_min,
+      year_built_max,
+      only_approved,
       sort_by
     } = req.body;
 
-    // Get all available yachts
+    // Keep backward-compat with old `brands` field
+    const builderList = builders || req.body.brands || [];
+
+    // Get all active yachts
     const { rows: allYachts } = await pool.query(
-      `SELECT * FROM yachts WHERE is_available = TRUE`
+      `SELECT * FROM yachts WHERE is_active = TRUE`
     );
 
     // Score each yacht
@@ -183,45 +233,42 @@ app.post('/api/match', async (req, res) => {
       let maxScore = 0;
       const reasons = [];
 
+      // Filter: only_approved strict filter
+      if (only_approved && !yacht.is_approved) return null;
+
       // Budget match (40 points)
       maxScore += 40;
-      const price = Number(yacht.price_eur);
+      const price = Number(yacht.price);
       const bMin = budget_min ? Number(budget_min) : 0;
       const bMax = budget_max ? Number(budget_max) : Infinity;
 
       if (price >= bMin && price <= bMax) {
         score += 40;
         reasons.push('Within budget');
-      } else if (price < bMin) {
-        // Below budget — partial score based on proximity
+      } else if (price < bMin && bMin > 0) {
         const diff = (bMin - price) / bMin;
         if (diff < 0.3) {
           score += Math.round(40 * (1 - diff));
           reasons.push('Slightly below budget range');
         }
       } else if (bMax !== Infinity && price > bMax) {
-        // Above budget — partial score based on proximity
         const diff = (price - bMax) / bMax;
         if (diff < 0.3) {
           score += Math.round(40 * (1 - diff));
           reasons.push('Slightly above budget');
-          if (yacht.has_discount) {
-            score += 5;
-            reasons.push(`${yacht.discount_pct}% discount available`);
-          }
         }
       }
 
       // Length match (25 points)
       maxScore += 25;
-      const len = Number(yacht.length_m);
+      const len = Number(yacht.length);
       const lMin = length_min ? Number(length_min) : 0;
       const lMax = length_max ? Number(length_max) : Infinity;
 
       if (len >= lMin && len <= lMax) {
         score += 25;
         reasons.push('Ideal size');
-      } else {
+      } else if (len > 0) {
         const minDist = lMin ? Math.abs(len - lMin) / lMin : 0;
         const maxDist = lMax !== Infinity ? Math.abs(len - lMax) / lMax : 0;
         const dist = Math.min(minDist || maxDist, maxDist || minDist);
@@ -231,10 +278,10 @@ app.post('/api/match', async (req, res) => {
         }
       }
 
-      // Brand preference (20 points)
+      // Builder preference (20 points)
       maxScore += 20;
-      if (brands && brands.length > 0) {
-        if (brands.includes(yacht.brand)) {
+      if (builderList && builderList.length > 0) {
+        if (builderList.some(b => (yacht.builder || '').toLowerCase().includes(b.toLowerCase()) || b.toLowerCase().includes((yacht.builder || '').toLowerCase()))) {
           score += 20;
           reasons.push('Preferred brand');
         }
@@ -245,7 +292,8 @@ app.post('/api/match', async (req, res) => {
       // Location preference (10 points)
       maxScore += 10;
       if (locations && locations.length > 0) {
-        if (locations.includes(yacht.location)) {
+        const loc = (yacht.location_text || '').toLowerCase();
+        if (locations.some(l => loc.includes(l.toLowerCase()) || l.toLowerCase().includes(loc))) {
           score += 10;
           reasons.push('Preferred location');
         }
@@ -253,56 +301,47 @@ app.post('/api/match', async (req, res) => {
         score += 5; // No preference = neutral
       }
 
-      // Delivery bonus (5 points)
+      // Year built match (5 points)
       maxScore += 5;
-      if (delivery_preference === 'immediate' && yacht.delivery === 'Ready') {
-        score += 5;
-        reasons.push('Available immediately');
-      } else if (delivery_preference === '2026' && yacht.delivery?.includes('2026')) {
-        score += 5;
-        reasons.push('2026 delivery');
-      } else if (delivery_preference === '2027' && yacht.delivery?.includes('2027')) {
-        score += 5;
-        reasons.push('2027 delivery');
-      } else if (!delivery_preference) {
-        score += 3;
-      }
-
-      // Discount bonus
-      if (yacht.has_discount && yacht.discount_pct > 0) {
-        score += 3;
-        if (!reasons.some(r => r.includes('discount'))) {
-          reasons.push(`${yacht.discount_pct}% discount available`);
+      if (year_built_min || year_built_max) {
+        const yb = yacht.year_built;
+        const ybMin = year_built_min ? Number(year_built_min) : 0;
+        const ybMax = year_built_max ? Number(year_built_max) : 9999;
+        if (yb >= ybMin && yb <= ybMax) {
+          score += 5;
+          reasons.push(`Built ${yb}`);
         }
+      } else {
+        score += 3;
       }
 
-      // Broker commission bonus
-      if (yacht.broker_commission_pct > 0) {
+      // Approved bonus
+      if (yacht.is_approved) {
         score += 2;
-        reasons.push(`${yacht.broker_commission_pct}% broker commission`);
+        reasons.push('Approved listing');
       }
 
-      const relevance = Math.min(100, Math.round((score / maxScore) * 100));
+      const relevance = maxScore > 0 ? Math.min(100, Math.round((score / maxScore) * 100)) : 0;
 
       return {
         ...yacht,
         relevance_score: relevance,
         match_reasons: reasons
       };
-    });
+    }).filter(Boolean);
 
     // Filter: only return yachts with relevance >= 20
     let results = scored.filter(y => y.relevance_score >= 20);
 
     // Sort
     if (sort_by === 'price_asc') {
-      results.sort((a, b) => Number(a.price_eur) - Number(b.price_eur));
+      results.sort((a, b) => Number(a.price) - Number(b.price));
     } else if (sort_by === 'price_desc') {
-      results.sort((a, b) => Number(b.price_eur) - Number(a.price_eur));
+      results.sort((a, b) => Number(b.price) - Number(a.price));
     } else if (sort_by === 'length_desc') {
-      results.sort((a, b) => Number(b.length_m) - Number(a.length_m));
+      results.sort((a, b) => Number(b.length) - Number(a.length));
     } else if (sort_by === 'length_asc') {
-      results.sort((a, b) => Number(a.length_m) - Number(b.length_m));
+      results.sort((a, b) => Number(a.length) - Number(b.length));
     } else {
       // Default: sort by relevance
       results.sort((a, b) => b.relevance_score - a.relevance_score);
@@ -315,9 +354,9 @@ app.post('/api/match', async (req, res) => {
       [
         budget_min || null, budget_max || null,
         length_min || null, length_max || null,
-        brands && brands.length > 0 ? brands : null,
+        builderList && builderList.length > 0 ? builderList : null,
         locations && locations.length > 0 ? locations : null,
-        delivery_preference || null,
+        null,
         `Found ${results.length} matches out of ${allYachts.length} available`
       ]
     );
@@ -1408,7 +1447,7 @@ app.post('/api/prospects/:id/outreach', requireAuth, async (req, res) => {
 
     // 3. Find matching yachts
     const { rows: yachts } = await pool.query(
-      'SELECT * FROM yachts WHERE is_available = TRUE ORDER BY price_eur DESC'
+      'SELECT * FROM yachts WHERE is_active = TRUE ORDER BY price DESC NULLS LAST'
     );
 
     // Score yachts against prospect preferences
@@ -1418,23 +1457,25 @@ app.post('/api/prospects/:id/outreach', requireAuth, async (req, res) => {
 
       if (prospect.yacht_brand) {
         const brands = prospect.yacht_brand.split(/[,;\/]/).map(b => b.trim().toLowerCase()).filter(Boolean);
-        if (brands.some(b => yacht.brand.toLowerCase().includes(b) || b.includes(yacht.brand.toLowerCase()))) {
+        const builderLow = (yacht.builder || '').toLowerCase();
+        const nameLow = (yacht.name || '').toLowerCase();
+        if (brands.some(b => builderLow.includes(b) || b.includes(builderLow) || nameLow.includes(b))) {
           score += 35;
-          reasons.push(`${yacht.brand} matches brand preference`);
+          reasons.push(`${yacht.builder || yacht.name} matches brand preference`);
         }
       }
 
-      if (prospect.yacht_model && yacht.model) {
-        if (yacht.model.toLowerCase().includes(prospect.yacht_model.toLowerCase()) ||
-            prospect.yacht_model.toLowerCase().includes(yacht.model.toLowerCase())) {
+      if (prospect.yacht_model && yacht.name) {
+        if (yacht.name.toLowerCase().includes(prospect.yacht_model.toLowerCase()) ||
+            prospect.yacht_model.toLowerCase().includes(yacht.name.toLowerCase())) {
           score += 25;
-          reasons.push(`${yacht.model} matches preferred model`);
+          reasons.push(`${yacht.name} matches preferred model`);
         }
       }
 
       if (prospect.current_yacht_interest) {
         const interest = prospect.current_yacht_interest.toLowerCase();
-        const yachtText = `${yacht.brand} ${yacht.model || ''} ${yacht.notes || ''}`.toLowerCase();
+        const yachtText = `${yacht.builder || ''} ${yacht.name || ''} ${yacht.location_text || ''}`.toLowerCase();
         const words = interest.split(/\s+/).filter(w => w.length > 3);
         const matches = words.filter(w => yachtText.includes(w));
         if (matches.length > 0) {
@@ -1443,9 +1484,9 @@ app.post('/api/prospects/:id/outreach', requireAuth, async (req, res) => {
         }
       }
 
-      if (yacht.has_discount && yacht.discount_pct > 0) {
-        score += 10;
-        reasons.push(`${yacht.discount_pct}% discount available`);
+      if (yacht.is_approved) {
+        score += 5;
+        reasons.push('Approved listing');
       }
 
       return { ...yacht, match_score: score, match_reasons: reasons };
@@ -1454,8 +1495,8 @@ app.post('/api/prospects/:id/outreach', requireAuth, async (req, res) => {
     const topMatches = scored.sort((a, b) => b.match_score - a.match_score).slice(0, 3);
 
     const yachtSummary = topMatches.map((y, i) => {
-      const price = y.price_eur ? `€${Number(y.price_eur).toLocaleString('fr-FR')}` : 'Price on request';
-      return `${i + 1}. ${y.brand}${y.model ? ' ' + y.model : ''} — ${y.length_m}m — ${price} — Delivery: ${y.delivery || 'TBD'} — Location: ${y.location || 'TBD'}${y.has_discount ? ` — ${y.discount_pct}% discount` : ''}${y.notes ? ` — Notes: ${y.notes}` : ''}`;
+      const priceStr = y.price ? `${y.currency || '€'}${Number(y.price).toLocaleString('fr-FR')}` : 'Price on request';
+      return `${i + 1}. ${y.builder || ''}${y.name ? ' ' + y.name : ''} — ${y.length || '?'}m — ${priceStr} — Location: ${y.location_text || 'TBD'} — Built: ${y.year_built || 'N/A'}${y.year_refit ? ` / Refit: ${y.year_refit}` : ''}${y.brokers ? ` — Brokers: ${y.brokers}` : ''}`;
     }).join('\n');
 
     // 4. Build signal context (the "why" behind this prospect being HOT)
@@ -1569,9 +1610,11 @@ Return this exact JSON:
       prospect: { id: prospect.id, name: prospect.name, company: prospect.company, heat_tier: prospect.heat_tier },
       signals: signals.map(s => ({ title: s.title, signal_type: s.signal_type, detected_at: s.detected_at, score: s.score })),
       matched_yachts: topMatches.map(y => ({
-        id: y.id, brand: y.brand, model: y.model, length_m: y.length_m,
-        price_eur: y.price_eur, delivery: y.delivery, location: y.location,
-        has_discount: y.has_discount, discount_pct: y.discount_pct, match_score: y.match_score
+        id: y.id, name: y.name, builder: y.builder, length: y.length,
+        price: y.price, currency: y.currency, location_text: y.location_text,
+        year_built: y.year_built, year_refit: y.year_refit,
+        brokers: y.brokers, is_approved: y.is_approved, match_score: y.match_score,
+        image_url: y.image_url
       })),
       // Legacy fields (for backward compat with existing code)
       email_subject: parsed.followup_day3_subject || '',
@@ -1794,36 +1837,40 @@ function normalizeHeader(h) {
 }
 
 function parseYachtCSV(text) {
-  // Normalize line endings
-  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
-    .split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  // Normalize line endings and remove BOM
+  const normalized = text.replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const lines = normalized.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+
   if (lines.length < 2) {
     return { rows: [], errors: ['File must have a header row and at least one data row'] };
   }
 
-  // Detect delimiter
+  // Detect delimiter: prefer tab, then semicolon, then comma
   const firstLine = lines[0];
-  const tabCount = (firstLine.match(/\t/g) || []).length;
+  const tabCount   = (firstLine.match(/\t/g) || []).length;
+  const semiCount  = (firstLine.match(/;/g) || []).length;
   const commaCount = (firstLine.match(/,/g) || []).length;
-  const delimiter = tabCount >= commaCount ? '\t' : ',';
+  const delimiter  = tabCount > 0 ? '\t' : semiCount > commaCount ? ';' : ',';
 
   const rawHeaders = splitCSVLine(lines[0], delimiter);
   const headers = rawHeaders.map(normalizeHeader);
 
-  // Flexible column mapping — ordered by specificity (first match wins)
+  // Flexible column mapping for the NEW 12-field CSV structure
+  // Key: DB field name → array of possible normalized header aliases (first match wins)
   const colAliases = {
-    brand: ['brand'],
-    model: ['model'],
-    length_m: ['length_m', 'length', 'lenght_m', 'lenght', 'length_meters', 'loa_m'],
-    delivery: ['delivery', 'delivery_date', 'available_date'],
-    location: ['location', 'loc', 'country', 'port'],
-    price_eur: ['price_eur', 'price_euro', 'price', 'asking_price', 'list_price'],
-    notes: ['notes', 'note', 'remarks', 'comments', 'description'],
-    is_available: ['is_available', 'available', 'active', 'status', 'display_miami', 'display'],
-    has_discount: ['has_discount'],
-    discount_pct: ['discount_pct', 'discount_percent', 'discount___', 'discount', 'disc_pct', 'disc'],
-    broker_commission_pct: ['broker_commission_pct', 'commission_pct', 'commission', 'broker_comm', 'comm_pct'],
-    yacht_type: ['yacht_type', 'type', 'vessel_type'],
+    // The 12 priority fields
+    is_active:     ['active_', 'active', 'is_active', 'actif'],
+    is_approved:   ['approved_', 'approved', 'is_approved', 'approuv'],
+    brokers:       ['_brokers', 'brokers', 'broker', 'agent', 'courtier'],
+    builder:       ['builder_os', 'builder', 'shipyard', 'chantier', 'constructeur', 'brand'],
+    currency:      ['currency', 'devise', 'curr'],
+    length:        ['length', 'length_m', 'lenght', 'loa', 'loa_m', 'taille', 'metres'],
+    lob:           ['lob', 'lob_m', 'lhb', 'beam'],
+    location_text: ['location_text', 'location', 'loc', 'port', 'country', 'lieu', 'position'],
+    price:         ['price', 'prix', 'price_eur', 'asking_price', 'list_price', 'valeur'],
+    name:          ['name', 'nom', 'yacht_name', 'vessel_name', 'model', 'modele'],
+    year_refit:    ['year_refit', 'refit_year', 'refit', 'year_of_refit', 'annee_refit'],
+    year_built:    ['yearbuilt', 'year_built', 'build_year', 'annee_construction', 'built', 'year'],
   };
 
   const colIdx = {};
@@ -1834,59 +1881,89 @@ function parseYachtCSV(text) {
     }
   }
 
+  // Track which column indices are mapped to known fields
+  const mappedIndices = new Set(Object.values(colIdx));
+
   const rows = [];
   const errors = [];
 
   for (let i = 1; i < lines.length; i++) {
     const cols = splitCSVLine(lines[i], delimiter);
-    if (cols.length < 2) continue;
+    if (cols.every(c => !c.trim())) continue; // skip blank rows
 
     const get = (field) => {
       const idx = colIdx[field];
       return idx !== undefined && idx < cols.length ? (cols[idx] || '').trim() : '';
     };
 
-    const brand = get('brand');
-    if (!brand) {
-      errors.push(`Row ${i + 1}: Missing brand — skipped`);
+    const name = get('name');
+    const builder = get('builder');
+
+    if (!name && !builder) {
+      errors.push(`Row ${i + 1}: Missing name and builder — skipped`);
       continue;
     }
 
-    const priceRaw = get('price_eur');
+    // Parse price
+    const priceRaw = get('price');
     const price = parsePrice(priceRaw);
 
-    const lengthRaw = get('length_m');
-    const length = parseLength(lengthRaw);
+    // Parse lengths
+    const length = parseLength(get('length'));
+    const lob = parseLength(get('lob'));
 
-    const discountPct = parsePercent(get('discount_pct'));
-    const commissionPct = parsePercent(get('broker_commission_pct'));
+    // Parse years
+    const parseYear = (s) => {
+      if (!s) return null;
+      const y = parseInt(s.replace(/[^0-9]/g, ''), 10);
+      return y > 1900 && y < 2100 ? y : null;
+    };
+    const yearBuilt  = parseYear(get('year_built'));
+    const yearRefit  = parseYear(get('year_refit'));
 
-    const availRaw = get('is_available').toLowerCase();
-    let isAvailable = true;
-    if (['false', '0', 'no', 'sold', 'inactive', 'unavailable'].includes(availRaw)) {
-      isAvailable = false;
+    // Parse boolean fields — handles checkmarks, yes/no, true/false, x/✓/✅
+    const parseBool = (s, defaultVal = true) => {
+      if (!s) return defaultVal;
+      const lower = s.toLowerCase().trim();
+      if (['false', '0', 'no', 'non', 'n', '', '-'].includes(lower)) return false;
+      // Any truthy value: yes, true, 1, x, ✓, ✅, checked
+      return true;
+    };
+
+    const isActive   = parseBool(get('is_active'), true);
+    const isApproved = parseBool(get('is_approved'), false);
+
+    // Parse currency
+    let currency = get('currency') || null;
+    if (!currency && priceRaw) {
+      // Try to detect from price string
+      if (priceRaw.includes('€') || priceRaw.toUpperCase().includes('EUR')) currency = 'EUR';
+      else if (priceRaw.includes('$') || priceRaw.toUpperCase().includes('USD')) currency = 'USD';
+      else if (priceRaw.includes('£') || priceRaw.toUpperCase().includes('GBP')) currency = 'GBP';
     }
 
-    const hasDiscountRaw = get('has_discount').toLowerCase();
-    const hasDiscount = discountPct > 0
-      || ['true', '1', 'yes'].includes(hasDiscountRaw);
-
-    const yachtType = get('yacht_type') || 'motor';
+    // Collect extra columns not in the known mapping into JSONB
+    const extraData = {};
+    for (let ci = 0; ci < rawHeaders.length; ci++) {
+      if (!mappedIndices.has(ci) && rawHeaders[ci] && cols[ci] && cols[ci].trim()) {
+        extraData[rawHeaders[ci].trim()] = cols[ci].trim();
+      }
+    }
 
     rows.push({
-      brand,
-      model: get('model') || null,
-      length_m: length,
-      delivery: get('delivery') || null,
-      location: get('location') || null,
-      price_eur: price,
-      notes: get('notes') || null,
-      is_available: isAvailable,
-      has_discount: hasDiscount,
-      discount_pct: discountPct,
-      broker_commission_pct: commissionPct,
-      yacht_type: ['motor', 'sail', 'catamaran', 'expedition'].includes(yachtType.toLowerCase())
-        ? yachtType.toLowerCase() : 'motor',
+      name:          name || null,
+      builder:       builder || null,
+      length,
+      lob,
+      year_built:    yearBuilt,
+      year_refit:    yearRefit,
+      price,
+      currency,
+      location_text: get('location_text') || null,
+      is_active:     isActive,
+      is_approved:   isApproved,
+      brokers:       get('brokers') || null,
+      extra_data:    Object.keys(extraData).length > 0 ? extraData : null,
     });
   }
 
@@ -1916,12 +1993,12 @@ app.get('/api/inventory/stats', async (req, res) => {
   try {
     const { rows } = await pool.query(
       `SELECT COUNT(*) as total,
-              COUNT(*) FILTER (WHERE is_available = TRUE) as available,
-              COUNT(*) FILTER (WHERE has_discount = TRUE) as discounted,
-              COALESCE(AVG(price_eur), 0)::numeric(14,2) as avg_price
+              COUNT(*) FILTER (WHERE is_active = TRUE)   as available,
+              COUNT(*) FILTER (WHERE is_approved = TRUE) as approved,
+              COALESCE(AVG(price), 0)::numeric(15,2) as avg_price
        FROM yachts`
     );
-    res.json({ success: true, stats: rows[0] });
+    res.json({ success: true, stats: { ...rows[0], discounted: rows[0].approved } });
   } catch (err) {
     console.error('Error fetching inventory stats:', err.message);
     res.status(500).json({ success: false, message: 'Failed to fetch stats' });
@@ -2000,49 +2077,14 @@ app.post('/api/inventory/import', requireAuth, express.json({ limit: '20mb' }), 
             try {
               await client.query('BEGIN');
               for (const row of batch) {
-                if (mode === 'merge') {
-                  // Upsert by brand+model (or just insert if no match found)
-                  if (row.model) {
-                    await client.query(
-                      `INSERT INTO yachts (brand, model, length_m, delivery, location, price_eur, notes,
-                         is_available, has_discount, discount_pct, broker_commission_pct, yacht_type, updated_at)
-                       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
-                       ON CONFLICT (brand, model) DO UPDATE SET
-                         length_m = EXCLUDED.length_m,
-                         delivery = EXCLUDED.delivery,
-                         location = EXCLUDED.location,
-                         price_eur = EXCLUDED.price_eur,
-                         notes = EXCLUDED.notes,
-                         is_available = EXCLUDED.is_available,
-                         has_discount = EXCLUDED.has_discount,
-                         discount_pct = EXCLUDED.discount_pct,
-                         broker_commission_pct = EXCLUDED.broker_commission_pct,
-                         yacht_type = EXCLUDED.yacht_type,
-                         updated_at = NOW()`,
-                      [row.brand, row.model, row.length_m, row.delivery, row.location,
-                       row.price_eur, row.notes, row.is_available, row.has_discount,
-                       row.discount_pct, row.broker_commission_pct, row.yacht_type]
-                    );
-                  } else {
-                    await client.query(
-                      `INSERT INTO yachts (brand, model, length_m, delivery, location, price_eur, notes,
-                         is_available, has_discount, discount_pct, broker_commission_pct, yacht_type)
-                       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-                      [row.brand, row.model, row.length_m, row.delivery, row.location,
-                       row.price_eur, row.notes, row.is_available, row.has_discount,
-                       row.discount_pct, row.broker_commission_pct, row.yacht_type]
-                    );
-                  }
-                } else {
-                  await client.query(
-                    `INSERT INTO yachts (brand, model, length_m, delivery, location, price_eur, notes,
-                       is_available, has_discount, discount_pct, broker_commission_pct, yacht_type)
-                     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-                    [row.brand, row.model, row.length_m, row.delivery, row.location,
-                     row.price_eur, row.notes, row.is_available, row.has_discount,
-                     row.discount_pct, row.broker_commission_pct, row.yacht_type]
-                  );
-                }
+                await client.query(
+                  `INSERT INTO yachts (name, builder, length, lob, year_built, year_refit,
+                     price, currency, location_text, is_active, is_approved, brokers, extra_data)
+                   VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb)`,
+                  [row.name, row.builder, row.length, row.lob, row.year_built, row.year_refit,
+                   row.price, row.currency, row.location_text, row.is_active, row.is_approved,
+                   row.brokers, row.extra_data ? JSON.stringify(row.extra_data) : '{}']
+                );
                 insertedCount++;
               }
               await client.query('COMMIT');
@@ -2086,6 +2128,132 @@ app.post('/api/inventory/import', requireAuth, express.json({ limit: '20mb' }), 
   } catch (err) {
     console.error('Error starting import:', err.message);
     res.status(500).json({ success: false, message: 'Failed to start import' });
+  }
+});
+
+// ─── API: Broker portal image scraper ────────────────────────────────────────
+// Attempts to log in to hub.barnes-yachting.com/broker_portal and scrape
+// yacht images, then match them to DB yachts by name/builder.
+// Falls back gracefully if the portal requires JS rendering.
+
+app.post('/api/yachts/scrape-images', requireAuth, async (req, res) => {
+  try {
+    res.json({ success: true, message: 'Image scraping started. Runs in background — refresh inventory in ~30 seconds.' });
+
+    setImmediate(async () => {
+      try {
+        console.log('[Scraper] Starting broker portal image scrape...');
+        const PORTAL_BASE    = 'https://hub.barnes-yachting.com';
+        const PORTAL_URL     = `${PORTAL_BASE}/broker_portal`;
+        const PORTAL_EMAIL   = 'b.delahaye@barnes-yachting.com';
+        const PORTAL_PASS    = 'MR!6P8o$j4FKtDyp';
+        const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+        let cookies = '';
+
+        // ── 1. Fetch login page to collect any session cookies / CSRF token ──
+        const loginPageResp = await fetch(`${PORTAL_URL}?view=fleet`, { headers: { 'User-Agent': UA }, redirect: 'follow' }).catch(() => null);
+        if (loginPageResp) {
+          const sc = loginPageResp.headers.get('set-cookie');
+          if (sc) cookies = sc.split(',').map(c => c.split(';')[0].trim()).join('; ');
+          const html = await loginPageResp.text().catch(() => '');
+          const m = html.match(/name=["'](?:_token|csrf_token|csrfmiddlewaretoken)["'][^>]*value=["']([^"']+)["']/i)
+                 || html.match(/value=["']([^"']{30,})["'][^>]*name=["'](?:_token|csrf)[^"']*["']/i);
+          const csrf = m ? m[1] : '';
+
+          // ── 2. Attempt login POST ───────────────────────────────────────────
+          for (const ep of [`${PORTAL_BASE}/login`, `${PORTAL_BASE}/auth/login`, `${PORTAL_BASE}/broker_portal/login`, `${PORTAL_URL}`]) {
+            try {
+              const body = new URLSearchParams({ email: PORTAL_EMAIL, password: PORTAL_PASS });
+              if (csrf) { body.append('_token', csrf); body.append('csrf_token', csrf); }
+              const lr = await fetch(ep, {
+                method: 'POST', body: body.toString(), redirect: 'manual',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded', Cookie: cookies, 'User-Agent': UA, Referer: PORTAL_URL }
+              }).catch(() => null);
+              if (lr) {
+                const lc = lr.headers.get('set-cookie');
+                if (lc) cookies += '; ' + lc.split(',').map(c => c.split(';')[0].trim()).join('; ');
+                if ([200,302,301].includes(lr.status)) { console.log(`[Scraper] Login at ${ep}: ${lr.status}`); break; }
+              }
+            } catch (_) {}
+          }
+        }
+
+        // ── 3. Fetch fleet page ───────────────────────────────────────────────
+        const fleetResp = await fetch(`${PORTAL_URL}?view=fleet`, {
+          headers: { Cookie: cookies, 'User-Agent': UA, Accept: 'text/html' }
+        }).catch(() => null);
+
+        if (!fleetResp) {
+          console.error('[Scraper] Cannot reach portal');
+          return;
+        }
+
+        const fleetHtml = await fleetResp.text().catch(() => '');
+        console.log(`[Scraper] Fleet page: ${fleetHtml.length} chars, status ${fleetResp.status}`);
+
+        // ── 4. Extract image URLs ─────────────────────────────────────────────
+        const imgSeen = new Set();
+        const images = [];
+        const imgRx = /<img[^>]+(?:src|data-src)=["']([^"']+)["'][^>]*(?:alt=["']([^"']*)["'])?[^>]*>|background(?:-image)?:\s*url\(["']?([^"')]+)["']?\)/gi;
+        let m2;
+        while ((m2 = imgRx.exec(fleetHtml)) !== null) {
+          const raw = m2[1] || m2[3] || '';
+          const alt = m2[2] || '';
+          if (!raw) continue;
+          const src = raw.startsWith('http') ? raw : raw.startsWith('/') ? `${PORTAL_BASE}${raw}` : `${PORTAL_BASE}/${raw}`;
+          if (!imgSeen.has(src) && /\.(jpe?g|png|webp)/i.test(src)) {
+            imgSeen.add(src);
+            images.push({ src, alt });
+          }
+        }
+        console.log(`[Scraper] Found ${images.length} image candidates`);
+
+        if (images.length === 0) {
+          console.log('[Scraper] No images extracted — portal likely requires JavaScript to render.');
+          console.log('[Scraper] Portal HTML preview:', fleetHtml.substring(0, 800));
+          return;
+        }
+
+        // ── 5. Match images to DB yachts ──────────────────────────────────────
+        const { rows: dbYachts } = await pool.query('SELECT id, name, builder FROM yachts WHERE image_url IS NULL ORDER BY id');
+        let updated = 0;
+        for (const yacht of dbYachts) {
+          const yName = (yacht.name || '').toLowerCase();
+          const yBuild = (yacht.builder || '').toLowerCase();
+          const best = images.find(img => {
+            const a = (img.alt || img.src).toLowerCase();
+            const words = yName.split(/\s+/).filter(w => w.length > 4);
+            return words.some(w => a.includes(w)) || (yBuild.length > 3 && a.includes(yBuild.substring(0, 6)));
+          });
+          if (best) {
+            await pool.query('UPDATE yachts SET image_url = $1, updated_at = NOW() WHERE id = $2', [best.src, yacht.id]);
+            updated++;
+            console.log(`[Scraper] Matched image for yacht ${yacht.id}: ${yacht.name}`);
+          }
+        }
+        console.log(`[Scraper] Done. Updated ${updated} of ${dbYachts.length} yachts with images.`);
+
+      } catch (e) {
+        console.error('[Scraper] Background error:', e.message);
+      }
+    });
+
+  } catch (err) {
+    console.error('[Scraper] Error:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to start scraper' });
+  }
+});
+
+// ─── API: Set image URL for a single yacht ───────────────────────────────────
+app.patch('/api/yachts/:id/image', requireAuth, express.json(), async (req, res) => {
+  try {
+    const { image_url } = req.body;
+    if (!image_url) return res.status(400).json({ success: false, message: 'image_url required' });
+    await pool.query('UPDATE yachts SET image_url = $1, updated_at = NOW() WHERE id = $2', [image_url, req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
   }
 });
 
