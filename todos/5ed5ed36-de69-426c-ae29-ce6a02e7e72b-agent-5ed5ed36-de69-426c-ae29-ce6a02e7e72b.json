@@ -1,0 +1,32 @@
+[
+  {
+    "content": "Install express-session",
+    "status": "completed",
+    "activeForm": "Installing express-session"
+  },
+  {
+    "content": "Create login.html page (matching dark navy/gold theme)",
+    "status": "completed",
+    "activeForm": "Creating login.html"
+  },
+  {
+    "content": "Update server.js: add auth middleware, protect all routes, login/logout endpoints",
+    "status": "completed",
+    "activeForm": "Updating server.js with auth gate"
+  },
+  {
+    "content": "Remove Polsia analytics beacon from index.html",
+    "status": "completed",
+    "activeForm": "Removing analytics beacon"
+  },
+  {
+    "content": "Set SITE_PASSWORD env var on production instance",
+    "status": "completed",
+    "activeForm": "Setting env var"
+  },
+  {
+    "content": "Push and verify deployment",
+    "status": "in_progress",
+    "activeForm": "Pushing and verifying"
+  }
+]
