@@ -915,7 +915,16 @@ app.get('/api/prospects', async (req, res) => {
     let query = `SELECT p.*,
       (SELECT COUNT(*) FROM prospect_signals ps WHERE ps.prospect_id = p.id) as signal_count,
       (SELECT MAX(ps.detected_at) FROM prospect_signals ps WHERE ps.prospect_id = p.id) as latest_signal_date,
-      (SELECT ps.title FROM prospect_signals ps WHERE ps.prospect_id = p.id ORDER BY ps.detected_at DESC LIMIT 1) as latest_signal_title
+      (SELECT ps.title FROM prospect_signals ps WHERE ps.prospect_id = p.id ORDER BY ps.score DESC, ps.detected_at DESC LIMIT 1) as latest_signal_title,
+      (SELECT COALESCE(json_agg(sq ORDER BY sq.score DESC, sq.detected_at DESC), '[]'::json) FROM (
+        SELECT ps.id, ps.signal_type, ps.title, ps.summary, ps.source_url, ps.source_name, ps.score, ps.detected_at,
+               tr.category as trigger_category
+        FROM prospect_signals ps
+        LEFT JOIN trigger_rules tr ON ps.trigger_rule_id = tr.id
+        WHERE ps.prospect_id = p.id
+        ORDER BY ps.score DESC, ps.detected_at DESC
+        LIMIT 3
+      ) sq) as top_signals
       FROM prospects p WHERE 1=1`;
     const params = [];
 
