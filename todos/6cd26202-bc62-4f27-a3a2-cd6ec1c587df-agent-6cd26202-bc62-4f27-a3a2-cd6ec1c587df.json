@@ -1,0 +1,27 @@
+[
+  {
+    "content": "Add migration for outreach_emails table",
+    "status": "completed",
+    "activeForm": "Adding outreach_emails migration"
+  },
+  {
+    "content": "Update outreach API to generate signal-based 3-message suite",
+    "status": "completed",
+    "activeForm": "Updating outreach API"
+  },
+  {
+    "content": "Add email send API endpoint with Polsia proxy",
+    "status": "completed",
+    "activeForm": "Adding email send API"
+  },
+  {
+    "content": "Update prospect card + outreach modal UI for 3-section suite",
+    "status": "completed",
+    "activeForm": "Updating outreach UI"
+  },
+  {
+    "content": "Deploy and verify",
+    "status": "in_progress",
+    "activeForm": "Deploying and verifying"
+  }
+]
