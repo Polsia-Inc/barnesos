@@ -46,11 +46,13 @@ function requireAuth(req, res, next) {
   return res.redirect('/login');
 }
 
-// Block direct .html file access for unauthenticated users (except login.html)
+// Block unauthenticated access to HTML pages and root
+// (Runs before express.static to intercept static file serving)
 app.use((req, res, next) => {
   if (req.path === '/login' || req.path === '/login.html') return next();
   if (req.path.startsWith('/api/') || req.path === '/health') return next();
-  if (req.path.endsWith('.html')) {
+  // Block root (express.static would serve public/index.html) and .html files
+  if (req.path === '/' || req.path.endsWith('.html')) {
     if (!req.session || !req.session.authenticated) {
       return res.redirect('/login');
     }
