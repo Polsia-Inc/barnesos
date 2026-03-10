@@ -1,4 +1,5 @@
 const express = require('express');
+const session = require('express-session');
 const { Pool } = require('pg');
 const path = require('path');
 const fs = require('fs');
@@ -15,6 +16,88 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
   ssl: process.env.DATABASE_URL?.includes('localhost') ? false : { rejectUnauthorized: false }
 });
+
+// ─── AUTH SETUP ──────────────────────────────────────────────────────────────
+
+// Trust first proxy (Render load balancer) — required for secure cookies
+app.set('trust proxy', 1);
+
+// Session middleware
+const SITE_PASSWORD = process.env.SITE_PASSWORD || 'Barnesos2024!';
+const SESSION_SECRET = process.env.SESSION_SECRET || 'barnesos-internal-session-secret-2024';
+
+app.use(session({
+  secret: SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    httpOnly: true,
+    maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+  }
+}));
+
+// requireAuth middleware — redirects pages, returns 401 for API
+function requireAuth(req, res, next) {
+  if (req.session && req.session.authenticated) return next();
+  if (req.path && req.path.startsWith('/api/')) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+  return res.redirect('/login');
+}
+
+// Block direct .html file access for unauthenticated users (except login.html)
+app.use((req, res, next) => {
+  if (req.path === '/login' || req.path === '/login.html') return next();
+  if (req.path.startsWith('/api/') || req.path === '/health') return next();
+  if (req.path.endsWith('.html')) {
+    if (!req.session || !req.session.authenticated) {
+      return res.redirect('/login');
+    }
+  }
+  next();
+});
+
+// ─── AUTH ROUTES ─────────────────────────────────────────────────────────────
+
+// Serve login page
+app.get('/login', (req, res) => {
+  if (req.session && req.session.authenticated) return res.redirect('/');
+  res.sendFile(path.join(__dirname, 'public', 'login.html'));
+});
+
+// Login endpoint
+app.post('/api/auth/login', express.json(), (req, res) => {
+  const { password } = req.body;
+  if (!password) {
+    return res.status(400).json({ success: false, message: 'Password is required' });
+  }
+  if (password === SITE_PASSWORD) {
+    req.session.authenticated = true;
+    req.session.authenticatedAt = new Date().toISOString();
+    return res.json({ success: true, redirect: '/' });
+  }
+  return res.status(401).json({ success: false, message: 'Incorrect access code. Try again.' });
+});
+
+// Logout endpoint
+app.get('/api/auth/logout', (req, res) => {
+  req.session.destroy(() => {
+    res.redirect('/login');
+  });
+});
+
+// ─── API AUTH GUARD ───────────────────────────────────────────────────────────
+// Protect all /api routes except auth endpoints
+app.use('/api', (req, res, next) => {
+  if (req.path.startsWith('/auth/')) return next();
+  if (!req.session || !req.session.authenticated) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+  next();
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
@@ -1310,21 +1393,18 @@ async function recalcProspectHeat(prospectId) {
 // PAGE SERVING
 // ═══════════════════════════════════════════════════════════════════════════════
 
-// Serve landing page for root
-app.get('/', (req, res) => {
-  const slug = process.env.POLSIA_ANALYTICS_SLUG || '';
+// Serve landing page for root (requires auth)
+app.get('/', requireAuth, (req, res) => {
   const htmlPath = path.join(__dirname, 'public', 'index.html');
   if (fs.existsSync(htmlPath)) {
-    let html = fs.readFileSync(htmlPath, 'utf8');
-    html = html.replace('__POLSIA_SLUG__', slug);
-    res.type('html').send(html);
+    res.type('html').sendFile(htmlPath);
   } else {
     res.json({ message: 'BarnesOS Yacht Matchmaker' });
   }
 });
 
-// Serve deal flow tracker admin page
-app.get('/deals', (req, res) => {
+// Serve deal flow tracker admin page (requires auth)
+app.get('/deals', requireAuth, (req, res) => {
   const htmlPath = path.join(__dirname, 'public', 'deals.html');
   if (fs.existsSync(htmlPath)) {
     res.type('html').sendFile(htmlPath);
@@ -1333,8 +1413,8 @@ app.get('/deals', (req, res) => {
   }
 });
 
-// Serve Command Center
-app.get('/command-center', (req, res) => {
+// Serve Command Center (requires auth)
+app.get('/command-center', requireAuth, (req, res) => {
   const htmlPath = path.join(__dirname, 'public', 'command-center.html');
   if (fs.existsSync(htmlPath)) {
     res.type('html').sendFile(htmlPath);

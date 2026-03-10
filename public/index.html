@@ -522,6 +522,7 @@
             <div class="nav-links">
                 <a href="#" class="active" onclick="showSection('matchmaker')">Matchmaker</a>
                 <a href="#" onclick="showSection('inventory')">Inventory</a>
+                <a href="/api/auth/logout" style="color:var(--mist);font-size:13px;opacity:0.7;">Logout</a>
             </div>
         </nav>
 
@@ -833,21 +834,5 @@
     init();
     </script>
 
-    <!-- Polsia Analytics -->
-    <script>
-    (function() {
-        var slug = 'barnesos';
-        if (!slug || slug === '__POLSIA_' + 'SLUG__') return;
-        var vid = localStorage.getItem('polsia_vid');
-        if (!vid) {
-            vid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-                var r = Math.random() * 16 | 0;
-                return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
-            });
-            localStorage.setItem('polsia_vid', vid);
-        }
-        new Image().src = 'https://polsia.com/api/beacon/pixel?s=' + encodeURIComponent(slug) + '&v=' + encodeURIComponent(vid);
-    })();
-    </script>
 </body>
 </html>

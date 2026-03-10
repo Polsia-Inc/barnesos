@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BarnesOS — Access Required</title>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,700;1,400&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        :root {
+            --navy: #0a1628;
+            --deep: #0d1f3c;
+            --slate: #1a2d4a;
+            --gold: #c9a96e;
+            --gold-light: #dfc799;
+            --cream: #f5f0e8;
+            --white: #ffffff;
+            --mist: #8a9bb5;
+            --red: #f87171;
+        }
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background: var(--navy);
+            color: var(--cream);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* Background texture */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            opacity: 0.03;
+            background: repeating-linear-gradient(-45deg, transparent, transparent 80px, rgba(201,169,110,0.3) 80px, rgba(201,169,110,0.3) 81px);
+            pointer-events: none;
+        }
+
+        .login-wrap {
+            position: relative;
+            z-index: 1;
+            width: 100%;
+            max-width: 420px;
+            padding: 24px;
+        }
+
+        .card {
+            background: var(--deep);
+            border: 1px solid rgba(201,169,110,0.15);
+            border-radius: 16px;
+            padding: 48px 40px;
+        }
+
+        .logo-area {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .logo-mark {
+            width: 52px;
+            height: 52px;
+            margin: 0 auto 16px;
+            background: linear-gradient(135deg, rgba(201,169,110,0.15), rgba(201,169,110,0.05));
+            border: 1px solid rgba(201,169,110,0.3);
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .logo-mark svg {
+            width: 26px;
+            height: 26px;
+            fill: var(--gold);
+        }
+
+        .logo-name {
+            font-family: 'Syne', sans-serif;
+            font-weight: 800;
+            font-size: 20px;
+            letter-spacing: 2px;
+            color: var(--gold);
+            text-transform: uppercase;
+        }
+
+        .logo-sub {
+            color: var(--mist);
+            font-size: 13px;
+            margin-top: 4px;
+            letter-spacing: 0.5px;
+        }
+
+        h1 {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--cream);
+            margin-bottom: 6px;
+            text-align: center;
+        }
+
+        .subtitle {
+            font-size: 13px;
+            color: var(--mist);
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .field {
+            margin-bottom: 16px;
+        }
+
+        label {
+            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            color: var(--mist);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+
+        input[type="password"] {
+            width: 100%;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(138,155,181,0.2);
+            border-radius: 10px;
+            padding: 12px 16px;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 15px;
+            color: var(--cream);
+            outline: none;
+            transition: border-color 0.2s, background 0.2s;
+            letter-spacing: 0.5px;
+        }
+
+        input[type="password"]:focus {
+            border-color: rgba(201,169,110,0.5);
+            background: rgba(201,169,110,0.04);
+        }
+
+        input[type="password"]::placeholder {
+            color: rgba(138,155,181,0.4);
+            letter-spacing: 3px;
+        }
+
+        .error-msg {
+            display: none;
+            background: rgba(248,113,113,0.1);
+            border: 1px solid rgba(248,113,113,0.25);
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-size: 13px;
+            color: var(--red);
+            margin-bottom: 16px;
+            text-align: center;
+        }
+
+        .error-msg.visible {
+            display: block;
+        }
+
+        .btn-submit {
+            width: 100%;
+            background: linear-gradient(135deg, var(--gold), #b8924a);
+            border: none;
+            border-radius: 10px;
+            padding: 13px 24px;
+            font-family: 'DM Sans', sans-serif;
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--navy);
+            cursor: pointer;
+            transition: opacity 0.2s, transform 0.1s;
+            letter-spacing: 0.3px;
+        }
+
+        .btn-submit:hover {
+            opacity: 0.9;
+        }
+
+        .btn-submit:active {
+            transform: scale(0.99);
+        }
+
+        .btn-submit:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .lock-hint {
+            text-align: center;
+            margin-top: 24px;
+            font-size: 12px;
+            color: rgba(138,155,181,0.5);
+        }
+    </style>
+</head>
+<body>
+    <div class="login-wrap">
+        <div class="card">
+            <div class="logo-area">
+                <div class="logo-mark">
+                    <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                    </svg>
+                </div>
+                <div class="logo-name">BarnesOS</div>
+                <div class="logo-sub">Command Center</div>
+            </div>
+
+            <h1>Restricted Access</h1>
+            <p class="subtitle">Enter your access code to continue</p>
+
+            <form id="loginForm">
+                <div class="field">
+                    <label for="password">Access Code</label>
+                    <input
+                        type="password"
+                        id="password"
+                        name="password"
+                        placeholder="••••••••"
+                        autocomplete="current-password"
+                        autofocus
+                        required
+                    />
+                </div>
+
+                <div class="error-msg" id="errorMsg">Incorrect access code. Try again.</div>
+
+                <button type="submit" class="btn-submit" id="submitBtn">
+                    Access Command Center
+                </button>
+            </form>
+
+            <p class="lock-hint">🔒 Barnes team members only</p>
+        </div>
+    </div>
+
+    <script>
+    const form = document.getElementById('loginForm');
+    const errorMsg = document.getElementById('errorMsg');
+    const submitBtn = document.getElementById('submitBtn');
+    const passwordInput = document.getElementById('password');
+
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        errorMsg.classList.remove('visible');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Verifying…';
+
+        try {
+            const res = await fetch('/api/auth/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password: passwordInput.value })
+            });
+
+            const data = await res.json();
+
+            if (res.ok && data.success) {
+                window.location.href = data.redirect || '/';
+            } else {
+                errorMsg.textContent = data.message || 'Incorrect access code. Try again.';
+                errorMsg.classList.add('visible');
+                passwordInput.value = '';
+                passwordInput.focus();
+            }
+        } catch (err) {
+            errorMsg.textContent = 'Connection error. Please try again.';
+            errorMsg.classList.add('visible');
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Access Command Center';
+        }
+    });
+    </script>
+</body>
+</html>
