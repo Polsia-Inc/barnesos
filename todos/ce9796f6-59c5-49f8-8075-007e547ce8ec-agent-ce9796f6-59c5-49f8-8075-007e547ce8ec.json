@@ -1,0 +1,22 @@
+[
+  {
+    "content": "Create migration 011 for cockpit schema (outreach_chains, fund_entries)",
+    "status": "completed",
+    "activeForm": "Creating migration 011 for cockpit schema"
+  },
+  {
+    "content": "Add cockpit routes + API endpoints to server.js",
+    "status": "completed",
+    "activeForm": "Adding cockpit routes and API endpoints to server.js"
+  },
+  {
+    "content": "Build public/cockpit.html (full cockpit shell)",
+    "status": "completed",
+    "activeForm": "Building cockpit HTML with top bar and panels"
+  },
+  {
+    "content": "Push to git and deploy",
+    "status": "in_progress",
+    "activeForm": "Pushing to git and deploying"
+  }
+]
