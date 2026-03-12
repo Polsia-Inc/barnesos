@@ -1,0 +1,17 @@
+[
+  {
+    "content": "Add hard exclusion guards for brand and location filters in /api/match",
+    "status": "completed",
+    "activeForm": "Adding hard exclusion guards to /api/match handler"
+  },
+  {
+    "content": "Commit and deploy the fix",
+    "status": "in_progress",
+    "activeForm": "Committing and deploying the fix"
+  },
+  {
+    "content": "Verify fix via logs",
+    "status": "pending",
+    "activeForm": "Verifying the fix via logs"
+  }
+]
