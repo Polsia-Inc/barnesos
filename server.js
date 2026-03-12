@@ -1499,7 +1499,8 @@ app.post('/api/prospects/:id/outreach', requireAuth, async (req, res) => {
       return `${i + 1}. ${y.builder || ''}${y.name ? ' ' + y.name : ''} — ${y.length || '?'}m — ${priceStr} — Location: ${y.location_text || 'TBD'} — Built: ${y.year_built || 'N/A'}${y.year_refit ? ` / Refit: ${y.year_refit}` : ''}${y.brokers ? ` — Brokers: ${y.brokers}` : ''}`;
     }).join('\n');
 
-    // 4. Build signal context (the "why" behind this prospect being HOT)
+    // 4. Build signal context and tier-specific prompt instructions
+    const prospectTier = (prospect.heat_tier || 'cold').toUpperCase();
     const signalContext = signals.length > 0
       ? signals.map(s => {
           const date = s.detected_at ? new Date(s.detected_at).toISOString().slice(0, 10) : '';
@@ -1507,9 +1508,17 @@ app.post('/api/prospects/:id/outreach', requireAuth, async (req, res) => {
         }).join('\n')
       : '- No specific signals detected yet — use general luxury wealth context';
 
+    const signalSectionHeader = signals.length > 0
+      ? `INTELLIGENCE SIGNALS (${prospectTier} prospect — reference these specifically):`
+      : `PROSPECT CONTEXT (${prospectTier} prospect — no signals yet; reference their profile, yacht interest, company, or location instead):`;
+
+    const linkedinPieceInstruction = signals.length > 0
+      ? `- Directly reference the most impactful signal (e.g., "Congratulations on your recent exit…", "Saw your appearance at Monaco Yacht Show…", "Congrats on the new role at…")`
+      : `- Reference their profile context: yacht interest (${prospect.current_yacht_interest || 'luxury yachts'}), company (${prospect.company || 'their industry'}), or location (${prospect.location || 'their region'}) — make it feel researched and personal, not cold`;
+
     const firstName = prospect.name ? prospect.name.split(' ')[0] : 'there';
 
-    // 5. Generate signal-based 3-message outreach suite in one AI call
+    // 5. Generate 3-message outreach suite in one AI call (adapts to HOT/WARM/COLD tier)
     const prompt = `You are a senior copywriter for Barnes Yachting, a luxury yacht brokerage in Marseille/Monaco. You write elegant, high-touch outreach for ultra-high-net-worth individuals. Never sound generic or salesy.
 
 PROSPECT:
@@ -1519,19 +1528,20 @@ PROSPECT:
 - Yacht Interest: ${prospect.current_yacht_interest || 'Luxury yachts'}
 - Preferred Brand: ${prospect.yacht_brand || 'N/A'}
 - Notes: ${prospect.notes || 'N/A'}
+- Prospect Tier: ${prospectTier}
 
-INTELLIGENCE SIGNALS (why this prospect is HOT right now — MUST reference these specifically):
+${signalSectionHeader}
 ${signalContext}
 
 MATCHING INVENTORY (reference at least one yacht in the emails):
 ${yachtSummary || 'No exact matches — reference our Marseille/Monaco-based luxury fleet'}
 
-Generate THREE pieces of signal-driven outreach. Return ONLY valid JSON (no markdown).
+Generate THREE pieces of outreach tailored to this prospect's tier. Return ONLY valid JSON (no markdown).
 
 PIECE 1 — LinkedIn Intro Message:
 - MAX 280 characters (hard limit — count carefully)
 - Warm and personal, not salesy
-- Directly reference the most impactful signal (e.g., "Congratulations on your recent exit…", "Saw your appearance at Monaco Yacht Show…", "Congrats on the new role at…")
+${linkedinPieceInstruction}
 - First-name basis (use "${firstName}")
 - End with a gentle hook, not a hard ask
 

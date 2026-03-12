@@ -2136,7 +2136,6 @@ function renderProspectTier(tier) {
     const scanned = p.last_scanned_at || p.last_scanned || p.lastScanned;
     const topSignals = p.top_signals || [];
     const signalCount = parseInt(p.signal_count || 0);
-    const isHot = (p.tier || tier) === 'hot';
     const pName = escapeHtml(p.name).replace(/'/g, "\\'");
     return `
       <div class="prospect-card" onclick="openProspectDetail('${p.id}')">
@@ -2150,7 +2149,7 @@ function renderProspectTier(tier) {
           ? renderTopSignals(topSignals, signalCount, p.id)
           : (scanned ? `<div class="prospect-scanned" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);">Scanned ${formatDate(scanned)} · No signals yet</div>` : '')
         }
-        ${isHot ? `<button class="card-outreach-btn" onclick="event.stopPropagation();launchCampaign(${p.id}, '${pName}')">&#x1F4E1; Launch Outreach Suite</button>` : ''}
+        <button class="card-outreach-btn" onclick="event.stopPropagation();launchCampaign(${p.id}, '${pName}')">&#x1F4E1; Launch Outreach Suite</button>
       </div>
     `;
   }).join('');
