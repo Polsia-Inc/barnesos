@@ -236,6 +236,24 @@ app.post('/api/match', async (req, res) => {
       // Filter: only_approved strict filter
       if (only_approved && !yacht.is_approved) return null;
 
+      // Hard exclusion: brand filter — if user specified brands, exclude non-matching yachts entirely
+      if (builderList && builderList.length > 0) {
+        const builderMatch = builderList.some(b =>
+          (yacht.builder || '').toLowerCase().includes(b.toLowerCase()) ||
+          b.toLowerCase().includes((yacht.builder || '').toLowerCase())
+        );
+        if (!builderMatch) return null;
+      }
+
+      // Hard exclusion: location filter — if user specified locations, exclude non-matching yachts entirely
+      if (locations && locations.length > 0) {
+        const loc = (yacht.location_text || '').toLowerCase();
+        const locationMatch = locations.some(l =>
+          loc.includes(l.toLowerCase()) || l.toLowerCase().includes(loc)
+        );
+        if (!locationMatch) return null;
+      }
+
       // Budget match (40 points)
       maxScore += 40;
       const price = Number(yacht.price);
@@ -250,12 +268,16 @@ app.post('/api/match', async (req, res) => {
         if (diff < 0.3) {
           score += Math.round(40 * (1 - diff));
           reasons.push('Slightly below budget range');
+        } else {
+          return null; // Hard exclusion: >30% below budget min
         }
       } else if (bMax !== Infinity && price > bMax) {
         const diff = (price - bMax) / bMax;
         if (diff < 0.3) {
           score += Math.round(40 * (1 - diff));
           reasons.push('Slightly above budget');
+        } else {
+          return null; // Hard exclusion: >30% above budget max
         }
       }
 
@@ -275,6 +297,8 @@ app.post('/api/match', async (req, res) => {
         if (dist < 0.25) {
           score += Math.round(25 * (1 - dist));
           reasons.push('Close to desired size');
+        } else if (length_min || length_max) {
+          return null; // Hard exclusion: >25% outside length range when length filter was specified
         }
       }
 
