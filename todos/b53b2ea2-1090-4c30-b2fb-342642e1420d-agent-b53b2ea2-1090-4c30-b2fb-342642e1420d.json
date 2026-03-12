@@ -1,0 +1,17 @@
+[
+  {
+    "content": "Remove HOT-only gate from prospect card render in command-center.html",
+    "status": "completed",
+    "activeForm": "Removing HOT-only gate from frontend card render"
+  },
+  {
+    "content": "Update AI prompt in server.js to adapt for WARM/COLD (no signals)",
+    "status": "completed",
+    "activeForm": "Updating AI prompt for WARM/COLD tier adaptation"
+  },
+  {
+    "content": "Commit and push changes",
+    "status": "in_progress",
+    "activeForm": "Committing and pushing changes"
+  }
+]
