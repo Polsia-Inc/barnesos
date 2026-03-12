@@ -1784,6 +1784,314 @@ async function recalcProspectHeat(prospectId) {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // Serve landing page for root (requires auth)
+// ═══════════════════════════════════════════════════════════════════════════════
+// COCKPIT — Top bar stats + Fund entries + Outreach chains
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── Cockpit page routes (all served by cockpit.html) ────────────────────────
+const cockpitHtmlPath = path.join(__dirname, 'public', 'cockpit.html');
+function serveCockpit(req, res) {
+  if (fs.existsSync(cockpitHtmlPath)) {
+    res.type('html').sendFile(cockpitHtmlPath);
+  } else {
+    res.status(404).json({ message: 'Cockpit not found' });
+  }
+}
+app.get('/cockpit', requireAuth, serveCockpit);
+app.get('/cockpit/radar', requireAuth, serveCockpit);
+app.get('/cockpit/matchmaker', requireAuth, serveCockpit);
+app.get('/cockpit/fund', requireAuth, serveCockpit);
+
+// ─── API: Cockpit top bar stats ───────────────────────────────────────────────
+app.get('/api/cockpit/stats', async (req, res) => {
+  try {
+    const FUND_TARGET = 30_000_000;
+
+    const [hotRes, chainsRes, fundRes, signalRes] = await Promise.all([
+      // 1. Hot prospects count
+      pool.query(`SELECT COUNT(*) AS count FROM prospects WHERE heat_tier = 'hot'`),
+
+      // 2. Active outreach chains: has ≥1 sent step, no replied step, ≥1 pending step
+      pool.query(`
+        SELECT COUNT(DISTINCT oc.id) AS count
+        FROM outreach_chains oc
+        WHERE EXISTS (
+          SELECT 1 FROM outreach_chain_steps s WHERE s.chain_id = oc.id AND s.status = 'sent'
+        )
+        AND NOT EXISTS (
+          SELECT 1 FROM outreach_chain_steps s WHERE s.chain_id = oc.id AND s.status = 'replied'
+        )
+        AND EXISTS (
+          SELECT 1 FROM outreach_chain_steps s WHERE s.chain_id = oc.id AND s.status = 'pending'
+        )
+      `),
+
+      // 3. Fund confirmed capital (hard_commit + wired)
+      pool.query(`
+        SELECT COALESCE(SUM(amount_eur), 0) AS total
+        FROM fund_entries WHERE status IN ('hard_commit','wired')
+      `),
+
+      // 4. Most recent signal
+      pool.query(`
+        SELECT ps.signal_type, ps.detected_at, p.name AS prospect_name, p.id AS prospect_id
+        FROM prospect_signals ps
+        JOIN prospects p ON p.id = ps.prospect_id
+        ORDER BY ps.detected_at DESC
+        LIMIT 1
+      `)
+    ]);
+
+    const fundTotal = parseFloat(fundRes.rows[0].total) || 0;
+    const pct = fundTotal / FUND_TARGET * 100;
+    const fundMillion = fundTotal / 1_000_000;
+
+    res.json({
+      success: true,
+      hot_prospects: parseInt(hotRes.rows[0].count) || 0,
+      active_chains: parseInt(chainsRes.rows[0].count) || 0,
+      fund: {
+        total_eur: fundTotal,
+        percentage: parseFloat(pct.toFixed(1)),
+        formatted: `€${fundMillion.toFixed(1)}M / ${pct.toFixed(1)}%`
+      },
+      last_signal: signalRes.rows[0] ? {
+        prospect_name: signalRes.rows[0].prospect_name,
+        prospect_id: signalRes.rows[0].prospect_id,
+        signal_type: signalRes.rows[0].signal_type,
+        detected_at: signalRes.rows[0].detected_at
+      } : null
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─── API: Fund entries ────────────────────────────────────────────────────────
+app.get('/api/fund/entries', async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT * FROM fund_entries ORDER BY committed_at DESC, created_at DESC`
+    );
+    const total = rows.reduce((s, r) => s + (parseFloat(r.amount_eur) || 0), 0);
+    const confirmed = rows
+      .filter(r => r.status === 'hard_commit' || r.status === 'wired')
+      .reduce((s, r) => s + (parseFloat(r.amount_eur) || 0), 0);
+    res.json({ success: true, entries: rows, total_eur: total, confirmed_eur: confirmed });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.post('/api/fund/entries', async (req, res) => {
+  try {
+    const { investor_name, amount_eur, status = 'soft_commit', notes, committed_at } = req.body;
+    if (!investor_name || !amount_eur) {
+      return res.status(400).json({ success: false, message: 'investor_name and amount_eur required' });
+    }
+    const { rows } = await pool.query(
+      `INSERT INTO fund_entries (investor_name, amount_eur, status, notes, committed_at)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [investor_name, parseFloat(amount_eur), status, notes || null,
+       committed_at || new Date().toISOString().split('T')[0]]
+    );
+    res.json({ success: true, entry: rows[0] });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.put('/api/fund/entries/:id', async (req, res) => {
+  try {
+    const { investor_name, amount_eur, status, notes, committed_at } = req.body;
+    const { rows } = await pool.query(
+      `UPDATE fund_entries SET
+         investor_name = COALESCE($1, investor_name),
+         amount_eur    = COALESCE($2, amount_eur),
+         status        = COALESCE($3, status),
+         notes         = COALESCE($4, notes),
+         committed_at  = COALESCE($5, committed_at),
+         updated_at    = NOW()
+       WHERE id = $6 RETURNING *`,
+      [investor_name || null, amount_eur ? parseFloat(amount_eur) : null,
+       status || null, notes !== undefined ? notes : null,
+       committed_at || null, req.params.id]
+    );
+    if (rows.length === 0) return res.status(404).json({ success: false, message: 'Entry not found' });
+    res.json({ success: true, entry: rows[0] });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.delete('/api/fund/entries/:id', async (req, res) => {
+  try {
+    const { rowCount } = await pool.query('DELETE FROM fund_entries WHERE id = $1', [req.params.id]);
+    if (rowCount === 0) return res.status(404).json({ success: false, message: 'Entry not found' });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─── API: Outreach chains ─────────────────────────────────────────────────────
+app.get('/api/outreach/chains', async (req, res) => {
+  try {
+    const { prospect_id, status } = req.query;
+    const params = [];
+    let where = '';
+
+    if (prospect_id) { params.push(prospect_id); where += ` AND oc.prospect_id = $${params.length}`; }
+
+    const { rows: chains } = await pool.query(
+      `SELECT oc.*, p.name AS prospect_name, p.heat_tier, p.company AS prospect_company,
+              (SELECT json_agg(s ORDER BY s.step_number) FROM outreach_chain_steps s WHERE s.chain_id = oc.id) AS steps,
+              (SELECT COUNT(*) FROM outreach_chain_steps s WHERE s.chain_id = oc.id AND s.status = 'sent') AS sent_count,
+              (SELECT COUNT(*) FROM outreach_chain_steps s WHERE s.chain_id = oc.id AND s.status = 'replied') AS replied_count,
+              (SELECT COUNT(*) FROM outreach_chain_steps s WHERE s.chain_id = oc.id AND s.status = 'pending') AS pending_count
+       FROM outreach_chains oc
+       JOIN prospects p ON p.id = oc.prospect_id
+       WHERE 1=1 ${where}
+       ORDER BY oc.updated_at DESC`,
+      params
+    );
+
+    let filtered = chains;
+    if (status === 'active') {
+      filtered = chains.filter(c =>
+        parseInt(c.sent_count) > 0 &&
+        parseInt(c.replied_count) === 0 &&
+        parseInt(c.pending_count) > 0
+      );
+    } else if (status === 'replied') {
+      filtered = chains.filter(c => parseInt(c.replied_count) > 0);
+    } else if (status === 'completed') {
+      filtered = chains.filter(c => parseInt(c.pending_count) === 0);
+    }
+
+    res.json({ success: true, chains: filtered, count: filtered.length });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.post('/api/outreach/chains', async (req, res) => {
+  try {
+    const { prospect_id, title, notes, steps = [] } = req.body;
+    if (!prospect_id) return res.status(400).json({ success: false, message: 'prospect_id required' });
+
+    const chainRes = await pool.query(
+      `INSERT INTO outreach_chains (prospect_id, title, notes) VALUES ($1, $2, $3) RETURNING *`,
+      [prospect_id, title || null, notes || null]
+    );
+    const chain = chainRes.rows[0];
+
+    for (const step of steps) {
+      await pool.query(
+        `INSERT INTO outreach_chain_steps (chain_id, step_number, channel, subject, body, scheduled_for)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [chain.id, step.step_number || 1, step.channel || 'email',
+         step.subject || null, step.body || null, step.scheduled_for || null]
+      );
+    }
+
+    res.json({ success: true, chain });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.post('/api/outreach/chains/:id/steps', async (req, res) => {
+  try {
+    const { step_number, channel = 'email', subject, body, scheduled_for } = req.body;
+    const { rows: existingRows } = await pool.query(
+      'SELECT COUNT(*) AS cnt FROM outreach_chain_steps WHERE chain_id = $1', [req.params.id]
+    );
+    const stepNum = step_number || (parseInt(existingRows[0]?.cnt || 0) + 1);
+    const { rows } = await pool.query(
+      `INSERT INTO outreach_chain_steps (chain_id, step_number, channel, subject, body, scheduled_for)
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+      [req.params.id, stepNum, channel, subject || null, body || null, scheduled_for || null]
+    );
+    await pool.query('UPDATE outreach_chains SET updated_at = NOW() WHERE id = $1', [req.params.id]);
+    res.json({ success: true, step: rows[0] });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.patch('/api/outreach/chains/:chainId/steps/:stepId', async (req, res) => {
+  try {
+    const { status, sent_at, replied_at } = req.body;
+    const updates = [];
+    const params = [];
+
+    if (status) { params.push(status); updates.push(`status = $${params.length}`); }
+    if (status === 'sent' && !sent_at) { updates.push(`sent_at = NOW()`); }
+    else if (sent_at) { params.push(sent_at); updates.push(`sent_at = $${params.length}`); }
+    if (status === 'replied' && !replied_at) { updates.push(`replied_at = NOW()`); }
+    else if (replied_at) { params.push(replied_at); updates.push(`replied_at = $${params.length}`); }
+    updates.push(`updated_at = NOW()`);
+
+    params.push(req.params.stepId, req.params.chainId);
+    const { rows } = await pool.query(
+      `UPDATE outreach_chain_steps SET ${updates.join(', ')}
+       WHERE id = $${params.length - 1} AND chain_id = $${params.length} RETURNING *`,
+      params
+    );
+    if (rows.length === 0) return res.status(404).json({ success: false, message: 'Step not found' });
+
+    // bump chain updated_at
+    await pool.query(`UPDATE outreach_chains SET updated_at = NOW() WHERE id = $1`, [req.params.chainId]);
+    res.json({ success: true, step: rows[0] });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.delete('/api/outreach/chains/:id', async (req, res) => {
+  try {
+    const { rowCount } = await pool.query('DELETE FROM outreach_chains WHERE id = $1', [req.params.id]);
+    if (rowCount === 0) return res.status(404).json({ success: false, message: 'Chain not found' });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─── Sync outreach_emails → outreach_chains (one-time import) ────────────────
+// Converts legacy outreach_emails rows into chain+step records
+app.post('/api/outreach/import-legacy', async (req, res) => {
+  try {
+    const { rows: emails } = await pool.query(
+      `SELECT * FROM outreach_emails ORDER BY created_at ASC`
+    );
+
+    let imported = 0;
+    for (const email of emails) {
+      // Create chain per prospect (one chain per email for now)
+      const chainRes = await pool.query(
+        `INSERT INTO outreach_chains (prospect_id, title, created_at, updated_at)
+         VALUES ($1, $2, $3, $3) RETURNING id`,
+        [email.prospect_id, `Legacy: ${email.template_type || 'email'}`, email.created_at]
+      );
+      await pool.query(
+        `INSERT INTO outreach_chain_steps (chain_id, step_number, channel, subject, body, status, sent_at)
+         VALUES ($1, 1, 'email', $2, $3, 'sent', $4)`,
+        [chainRes.rows[0].id, email.subject || null, email.body || null, email.created_at]
+      );
+      imported++;
+    }
+    res.json({ success: true, imported });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PAGE ROUTES
+// ═══════════════════════════════════════════════════════════════════════════════
+
 app.get('/', requireAuth, (req, res) => {
   const htmlPath = path.join(__dirname, 'public', 'index.html');
   if (fs.existsSync(htmlPath)) {

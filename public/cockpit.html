@@ -1,0 +1,1519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BarnesOS Cockpit</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #080d1a;
+      --surface:   #111827;
+      --card:      #1a2235;
+      --border:    #2a3550;
+      --gold:      #c9a84c;
+      --gold-dim:  #9a7a35;
+      --text:      #e5e7eb;
+      --muted:     #6b7280;
+      --red:       #ef4444;
+      --orange:    #f97316;
+      --green:     #22c55e;
+      --blue:      #3b82f6;
+      --topbar-h:  48px;
+      --nav-h:     48px;
+    }
+
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 14px; }
+
+    /* ─── TOP BAR ─────────────────────────────────────────────────────────── */
+    #topbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: var(--topbar-h);
+      z-index: 100;
+      background: #060b17;
+      border-bottom: 1px solid var(--gold-dim);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 4px;
+    }
+    #topbar-brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      text-decoration: none;
+      color: var(--gold);
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 14px;
+      letter-spacing: 0.05em;
+      white-space: nowrap;
+      padding-right: 16px;
+      border-right: 1px solid var(--border);
+      margin-right: 8px;
+    }
+    #topbar-brand span { opacity: 0.6; font-weight: 400; }
+    #topbar-metrics {
+      display: flex;
+      align-items: center;
+      flex: 1;
+      gap: 4px;
+      overflow: hidden;
+    }
+    .tb-metric {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0 14px;
+      height: 32px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.15s;
+      white-space: nowrap;
+      flex: 1;
+      min-width: 0;
+    }
+    .tb-metric:hover { background: rgba(201,168,76,0.1); }
+    .tb-metric-label {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-weight: 500;
+    }
+    .tb-metric-value {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text);
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .tb-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 22px;
+      height: 22px;
+      padding: 0 6px;
+      border-radius: 11px;
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1;
+    }
+    .tb-badge.red  { background: rgba(239,68,68,0.2); color: var(--red); border: 1px solid rgba(239,68,68,0.4); }
+    .tb-badge.blue { background: rgba(59,130,246,0.2); color: var(--blue); border: 1px solid rgba(59,130,246,0.4); }
+    .tb-badge.gold { background: rgba(201,168,76,0.2); color: var(--gold); border: 1px solid rgba(201,168,76,0.4); }
+    .tb-divider { width: 1px; height: 24px; background: var(--border); flex-shrink: 0; }
+    #topbar-actions { display: flex; align-items: center; gap: 8px; margin-left: 8px; }
+    .tb-btn {
+      padding: 0 12px;
+      height: 30px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+    }
+    .tb-btn.ghost { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+    .tb-btn.ghost:hover { color: var(--text); border-color: var(--muted); }
+
+    /* ─── PANEL NAV ───────────────────────────────────────────────────────── */
+    #panel-nav {
+      position: fixed;
+      top: var(--topbar-h);
+      left: 0; right: 0;
+      height: var(--nav-h);
+      z-index: 99;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      padding: 0 16px;
+      gap: 4px;
+    }
+    .nav-tab {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 0 14px;
+      height: 36px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--muted);
+      text-decoration: none;
+      transition: all 0.15s;
+      white-space: nowrap;
+    }
+    .nav-tab:hover { color: var(--text); background: rgba(255,255,255,0.05); }
+    .nav-tab.active { color: var(--gold); background: rgba(201,168,76,0.1); }
+    .nav-tab .tab-badge {
+      min-width: 18px; height: 18px; padding: 0 4px;
+      border-radius: 9px; font-size: 10px; font-weight: 700;
+      display: inline-flex; align-items: center; justify-content: center;
+      background: rgba(201,168,76,0.2); color: var(--gold);
+    }
+    .nav-tab.active .tab-badge { background: var(--gold); color: #000; }
+    #nav-refresh {
+      margin-left: auto;
+      color: var(--muted); font-size: 12px; cursor: pointer;
+      padding: 4px 8px; border-radius: 4px; transition: all 0.15s;
+    }
+    #nav-refresh:hover { color: var(--gold); }
+    #refresh-indicator { font-size: 11px; color: var(--muted); margin-left: 4px; }
+
+    /* ─── MAIN CONTENT ────────────────────────────────────────────────────── */
+    #main {
+      margin-top: calc(var(--topbar-h) + var(--nav-h));
+      min-height: calc(100vh - var(--topbar-h) - var(--nav-h));
+      padding: 24px 20px;
+    }
+
+    /* ─── LOADING / EMPTY ─────────────────────────────────────────────────── */
+    .loading { text-align: center; padding: 60px 20px; color: var(--muted); }
+    .loading .spin { display: inline-block; animation: spin 1s linear infinite; font-size: 24px; }
+    @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    .empty { text-align: center; padding: 48px 20px; color: var(--muted); }
+    .empty-icon { font-size: 40px; margin-bottom: 12px; }
+
+    /* ─── CARDS ───────────────────────────────────────────────────────────── */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 20px;
+    }
+    .card-title {
+      font-family: 'Syne', sans-serif;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      margin-bottom: 8px;
+    }
+    .card-value {
+      font-family: 'Syne', sans-serif;
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--text);
+      line-height: 1.1;
+    }
+    .card-sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+
+    /* ─── HOME PANEL ──────────────────────────────────────────────────────── */
+    .home-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 28px;
+    }
+    .metric-card { cursor: pointer; transition: border-color 0.15s, transform 0.1s; }
+    .metric-card:hover { border-color: var(--gold-dim); transform: translateY(-1px); }
+    .metric-card .card-value.red   { color: var(--red); }
+    .metric-card .card-value.blue  { color: var(--blue); }
+    .metric-card .card-value.gold  { color: var(--gold); }
+    .metric-card .card-value.green { color: var(--green); }
+
+    .home-bottom { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .section-title {
+      font-family: 'Syne', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .section-title .count-badge {
+      background: rgba(201,168,76,0.15);
+      color: var(--gold);
+      border-radius: 10px;
+      padding: 2px 8px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    /* Signal list */
+    .signal-list { display: flex; flex-direction: column; gap: 8px; }
+    .signal-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      padding: 10px 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: border-color 0.15s;
+    }
+    .signal-row:hover { border-color: var(--gold-dim); }
+    .signal-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
+    .signal-dot.hot    { background: var(--red); box-shadow: 0 0 6px rgba(239,68,68,0.5); }
+    .signal-dot.warm   { background: var(--orange); }
+    .signal-dot.cold   { background: #6b7280; }
+    .signal-body { flex: 1; min-width: 0; }
+    .signal-name { font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .signal-detail { font-size: 11px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .signal-time { font-size: 11px; color: var(--muted); flex-shrink: 0; }
+
+    /* Quick links */
+    .quick-links { display: flex; flex-direction: column; gap: 10px; }
+    .quick-link {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      cursor: pointer;
+      text-decoration: none;
+      transition: border-color 0.15s;
+    }
+    .quick-link:hover { border-color: var(--gold-dim); }
+    .quick-link-icon { font-size: 20px; }
+    .quick-link-info { flex: 1; }
+    .quick-link-title { font-weight: 600; font-size: 14px; color: var(--text); }
+    .quick-link-sub { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .quick-link-arrow { color: var(--gold-dim); font-size: 16px; }
+
+    /* ─── RADAR PANEL (prospects) ─────────────────────────────────────────── */
+    .filter-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 18px;
+      flex-wrap: wrap;
+    }
+    .filter-tabs { display: flex; gap: 4px; }
+    .filter-tab {
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      transition: all 0.15s;
+    }
+    .filter-tab:hover { color: var(--text); }
+    .filter-tab.active { background: var(--gold); color: #000; border-color: var(--gold); }
+    .filter-tab.all.active { background: var(--card); color: var(--text); border-color: var(--muted); }
+    .search-input {
+      padding: 6px 12px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--card);
+      color: var(--text);
+      font-size: 13px;
+      outline: none;
+      width: 220px;
+      transition: border-color 0.15s;
+    }
+    .search-input:focus { border-color: var(--gold-dim); }
+    .search-input::placeholder { color: var(--muted); }
+    .ml-auto { margin-left: auto; }
+
+    /* Prospect grid */
+    .prospect-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 14px;
+    }
+    .prospect-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      cursor: pointer;
+      transition: border-color 0.15s, transform 0.1s;
+      position: relative;
+    }
+    .prospect-card:hover { border-color: var(--gold-dim); transform: translateY(-1px); }
+    .prospect-card.hot  { border-left: 3px solid var(--red); }
+    .prospect-card.warm { border-left: 3px solid var(--orange); }
+    .prospect-card.cold { border-left: 3px solid var(--muted); }
+    .prospect-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+    .prospect-name { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 14px; }
+    .prospect-company { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .tier-pill {
+      padding: 3px 8px; border-radius: 10px; font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.06em; flex-shrink: 0;
+    }
+    .tier-pill.hot  { background: rgba(239,68,68,0.15); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
+    .tier-pill.warm { background: rgba(249,115,22,0.15); color: var(--orange); border: 1px solid rgba(249,115,22,0.3); }
+    .tier-pill.cold { background: rgba(107,114,128,0.15); color: var(--muted); border: 1px solid rgba(107,114,128,0.3); }
+    .prospect-meta { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+    .prospect-score {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 32px; height: 32px; border-radius: 50%;
+      font-size: 11px; font-weight: 700;
+      position: absolute; top: 14px; right: 14px;
+    }
+    .score-high { background: rgba(239,68,68,0.2); color: var(--red); border: 1px solid rgba(239,68,68,0.3); }
+    .score-med  { background: rgba(249,115,22,0.2); color: var(--orange); border: 1px solid rgba(249,115,22,0.3); }
+    .score-low  { background: rgba(107,114,128,0.2); color: var(--muted); border: 1px solid rgba(107,114,128,0.2); }
+    .prospect-signals { display: flex; flex-direction: column; gap: 4px; }
+    .signal-chip {
+      font-size: 11px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      background: rgba(59,130,246,0.1);
+      color: #93c5fd;
+      border: 1px solid rgba(59,130,246,0.2);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .no-signals { font-size: 11px; color: var(--muted); font-style: italic; }
+    .prospect-footer { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 8px; }
+    .prospect-yacht { font-size: 11px; color: var(--gold-dim); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* Prospect detail modal */
+    .modal-overlay {
+      position: fixed; inset: 0; z-index: 200;
+      background: rgba(0,0,0,0.75);
+      display: flex; align-items: center; justify-content: center;
+      padding: 20px;
+    }
+    .modal-overlay.hidden { display: none; }
+    .modal {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      width: 100%; max-width: 640px;
+      max-height: 80vh;
+      overflow-y: auto;
+      padding: 24px;
+    }
+    .modal-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 20px; }
+    .modal-title { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 700; }
+    .modal-close { font-size: 20px; cursor: pointer; color: var(--muted); padding: 4px; line-height: 1; }
+    .modal-close:hover { color: var(--text); }
+    .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+    .detail-field label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; display: block; margin-bottom: 4px; }
+    .detail-field .val { font-size: 13px; color: var(--text); font-weight: 500; }
+    .signal-timeline { display: flex; flex-direction: column; gap: 8px; }
+    .signal-timeline-item {
+      padding: 10px 12px; background: var(--surface); border-radius: 6px; border-left: 2px solid var(--blue);
+    }
+    .signal-timeline-item .st-title { font-size: 13px; font-weight: 600; }
+    .signal-timeline-item .st-meta  { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    /* ─── MATCHMAKER PANEL (outreach chains) ──────────────────────────────── */
+    .chain-list { display: flex; flex-direction: column; gap: 12px; }
+    .chain-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px 18px;
+      transition: border-color 0.15s;
+    }
+    .chain-card:hover { border-color: var(--border); }
+    .chain-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+    .chain-name { font-weight: 600; font-size: 14px; flex: 1; }
+    .chain-company { font-size: 12px; color: var(--muted); }
+    .chain-steps { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .step-pill {
+      display: flex; align-items: center; gap: 5px;
+      padding: 4px 10px; border-radius: 14px; font-size: 11px; font-weight: 600;
+      border: 1px solid; cursor: pointer; transition: all 0.15s;
+    }
+    .step-pill.pending  { background: rgba(107,114,128,0.1); color: var(--muted);   border-color: rgba(107,114,128,0.3); }
+    .step-pill.sent     { background: rgba(59,130,246,0.1);  color: var(--blue);    border-color: rgba(59,130,246,0.3); }
+    .step-pill.replied  { background: rgba(34,197,94,0.1);   color: var(--green);   border-color: rgba(34,197,94,0.3); }
+    .step-pill.bounced  { background: rgba(239,68,68,0.1);   color: var(--red);     border-color: rgba(239,68,68,0.3); }
+    .step-pill.skipped  { background: rgba(107,114,128,0.05); color: #374151; border-color: rgba(107,114,128,0.2); }
+    .step-icon { font-size: 12px; }
+    .chain-footer { margin-top: 10px; display: flex; align-items: center; gap: 8px; }
+    .chain-date { font-size: 11px; color: var(--muted); }
+    .action-btn {
+      padding: 4px 10px; border-radius: 4px; font-size: 11px; font-weight: 600;
+      cursor: pointer; border: 1px solid var(--border); background: transparent;
+      color: var(--muted); transition: all 0.15s;
+    }
+    .action-btn:hover { color: var(--text); border-color: var(--muted); }
+    .action-btn.danger:hover { color: var(--red); border-color: var(--red); }
+    .action-btn.gold  { color: var(--gold); border-color: var(--gold-dim); background: rgba(201,168,76,0.1); }
+    .step-status-menu {
+      position: absolute; z-index: 150;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 6px; padding: 4px;
+      display: flex; flex-direction: column; gap: 2px;
+      min-width: 120px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    }
+    .step-status-option {
+      padding: 6px 10px; border-radius: 4px; font-size: 12px; cursor: pointer;
+      transition: background 0.1s; color: var(--text);
+    }
+    .step-status-option:hover { background: rgba(255,255,255,0.08); }
+
+    /* New chain modal */
+    .modal-form { display: flex; flex-direction: column; gap: 14px; }
+    .form-field label { font-size: 12px; color: var(--muted); display: block; margin-bottom: 5px; font-weight: 500; }
+    .form-input, .form-select, .form-textarea {
+      width: 100%; padding: 8px 12px; border-radius: 6px;
+      border: 1px solid var(--border); background: var(--surface);
+      color: var(--text); font-size: 13px; font-family: inherit;
+      outline: none; transition: border-color 0.15s;
+    }
+    .form-input:focus, .form-select:focus, .form-textarea:focus { border-color: var(--gold-dim); }
+    .form-textarea { resize: vertical; min-height: 80px; }
+    .form-select option { background: var(--surface); }
+    .btn {
+      padding: 8px 18px; border-radius: 6px; font-size: 13px; font-weight: 600;
+      cursor: pointer; border: none; transition: all 0.15s; font-family: inherit;
+    }
+    .btn-primary { background: var(--gold); color: #000; }
+    .btn-primary:hover { background: #d4b45a; }
+    .btn-secondary { background: transparent; color: var(--muted); border: 1px solid var(--border); }
+    .btn-secondary:hover { color: var(--text); border-color: var(--muted); }
+    .btn-row { display: flex; gap: 8px; justify-content: flex-end; }
+
+    /* ─── FUND PANEL ──────────────────────────────────────────────────────── */
+    .fund-progress-card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+      padding: 24px; margin-bottom: 20px;
+    }
+    .fund-headline { display: flex; align-items: baseline; gap: 12px; margin-bottom: 6px; }
+    .fund-total { font-family: 'Syne', sans-serif; font-size: 36px; font-weight: 800; color: var(--gold); }
+    .fund-target { font-size: 14px; color: var(--muted); }
+    .fund-pct { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 700; color: var(--text); }
+    .progress-track {
+      width: 100%; height: 8px; background: var(--surface); border-radius: 4px;
+      margin: 14px 0; overflow: hidden;
+    }
+    .progress-fill {
+      height: 100%; border-radius: 4px;
+      background: linear-gradient(90deg, var(--gold-dim), var(--gold));
+      transition: width 0.6s ease;
+    }
+    .fund-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 16px; }
+    .fund-stat { padding: 14px; background: var(--surface); border-radius: 6px; border: 1px solid var(--border); }
+    .fund-stat-label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px; }
+    .fund-stat-value { font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 700; }
+    .fund-stat-value.green { color: var(--green); }
+    .fund-stat-value.gold  { color: var(--gold); }
+    .fund-stat-value.muted { color: var(--muted); }
+
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; }
+    thead th {
+      text-align: left; padding: 8px 12px;
+      font-size: 11px; font-weight: 600; text-transform: uppercase;
+      letter-spacing: 0.06em; color: var(--muted);
+      border-bottom: 1px solid var(--border);
+    }
+    tbody tr { border-bottom: 1px solid rgba(42,53,80,0.6); transition: background 0.1s; }
+    tbody tr:hover { background: rgba(255,255,255,0.03); }
+    tbody td { padding: 11px 12px; font-size: 13px; }
+    .status-pill {
+      padding: 3px 8px; border-radius: 10px; font-size: 11px; font-weight: 600;
+      display: inline-block;
+    }
+    .status-pill.soft_commit { background: rgba(107,114,128,0.15); color: var(--muted); border: 1px solid rgba(107,114,128,0.3); }
+    .status-pill.hard_commit { background: rgba(59,130,246,0.15); color: var(--blue); border: 1px solid rgba(59,130,246,0.3); }
+    .status-pill.wired       { background: rgba(34,197,94,0.15); color: var(--green); border: 1px solid rgba(34,197,94,0.3); }
+    .status-pill.withdrawn   { background: rgba(239,68,68,0.1); color: var(--red); border: 1px solid rgba(239,68,68,0.2); }
+    .row-actions { display: flex; gap: 6px; }
+
+    /* Inline add-entry form */
+    #add-entry-form {
+      background: var(--card); border: 1px solid var(--gold-dim);
+      border-radius: 8px; padding: 16px; margin-bottom: 16px;
+    }
+    #add-entry-form.hidden { display: none; }
+    .add-form-grid { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 10px; align-items: end; }
+
+    /* ─── RESPONSIVE ──────────────────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      .home-grid { grid-template-columns: 1fr 1fr; }
+      .home-bottom { grid-template-columns: 1fr; }
+      .prospect-grid { grid-template-columns: 1fr; }
+      .detail-grid { grid-template-columns: 1fr; }
+      .fund-stats { grid-template-columns: 1fr; }
+      .add-form-grid { grid-template-columns: 1fr 1fr; }
+      .tb-metric-label { display: none; }
+      #main { padding: 16px 12px; }
+    }
+    @media (max-width: 480px) {
+      .home-grid { grid-template-columns: 1fr; }
+      .tb-metric { padding: 0 8px; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══ PERSISTENT TOP BAR ═══════════════════════════════════════════════════ -->
+<header id="topbar">
+  <a id="topbar-brand" href="/cockpit" onclick="navigate('/cockpit');return false;">
+    <span style="font-size:16px;">⚓</span>
+    BarnesOS <span>Cockpit</span>
+  </a>
+
+  <div id="topbar-metrics">
+    <!-- Metric 1: Hot Prospects -->
+    <div class="tb-metric" id="tb-hot" onclick="navigate('/cockpit/radar?tier=hot')" title="Hot Prospects">
+      <span class="tb-badge red" id="tb-hot-count">—</span>
+      <span class="tb-metric-label">Hot Prospects</span>
+    </div>
+    <div class="tb-divider"></div>
+
+    <!-- Metric 2: Active Outreach -->
+    <div class="tb-metric" id="tb-chains" onclick="navigate('/cockpit/matchmaker?status=active')" title="Active Outreach Chains">
+      <span class="tb-badge blue" id="tb-chains-count">—</span>
+      <span class="tb-metric-label">Active Chains</span>
+    </div>
+    <div class="tb-divider"></div>
+
+    <!-- Metric 3: Fund Progress -->
+    <div class="tb-metric" id="tb-fund" onclick="navigate('/cockpit/fund')" title="Fund Progress">
+      <span class="tb-badge gold" id="tb-fund-pct">—</span>
+      <span class="tb-metric-value" id="tb-fund-val">€— / —</span>
+    </div>
+    <div class="tb-divider"></div>
+
+    <!-- Metric 4: Last Signal -->
+    <div class="tb-metric" style="flex:2;" id="tb-signal" onclick="handleSignalClick()" title="Last Signal Detected">
+      <span style="font-size:13px; flex-shrink:0;">📡</span>
+      <span class="tb-metric-value" id="tb-signal-val" style="font-size:12px;">—</span>
+    </div>
+  </div>
+
+  <div id="topbar-actions">
+    <a class="tb-btn ghost" href="/command-center">← Command Center</a>
+  </div>
+</header>
+
+<!-- ═══ PANEL NAVIGATION ═════════════════════════════════════════════════════ -->
+<nav id="panel-nav">
+  <a class="nav-tab" data-path="/cockpit" onclick="navigate('/cockpit');return false;" href="/cockpit">
+    🏠 Home
+  </a>
+  <a class="nav-tab" data-path="/cockpit/radar" onclick="navigate('/cockpit/radar');return false;" href="/cockpit/radar">
+    🛰 Radar
+    <span class="tab-badge" id="nav-hot-badge">0</span>
+  </a>
+  <a class="nav-tab" data-path="/cockpit/matchmaker" onclick="navigate('/cockpit/matchmaker');return false;" href="/cockpit/matchmaker">
+    📡 Matchmaker
+    <span class="tab-badge" id="nav-chain-badge">0</span>
+  </a>
+  <a class="nav-tab" data-path="/cockpit/fund" onclick="navigate('/cockpit/fund');return false;" href="/cockpit/fund">
+    💰 Fund
+  </a>
+
+  <div id="nav-refresh" onclick="refreshAll()" title="Refresh all data">
+    ↻ <span id="refresh-indicator">auto-refresh 30s</span>
+  </div>
+</nav>
+
+<!-- ═══ MAIN CONTENT ══════════════════════════════════════════════════════════ -->
+<main id="main">
+  <div class="loading"><div class="spin">⏳</div><p style="margin-top:12px">Loading cockpit…</p></div>
+</main>
+
+<!-- ═══ MODALS ════════════════════════════════════════════════════════════════ -->
+
+<!-- Prospect detail modal -->
+<div class="modal-overlay hidden" id="prospect-modal" onclick="closeProspectModal(event)">
+  <div class="modal" id="prospect-modal-inner">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title" id="pm-name">—</div>
+        <div style="font-size:13px;color:var(--muted);margin-top:2px" id="pm-company">—</div>
+      </div>
+      <span class="modal-close" onclick="closeProspectModal()">✕</span>
+    </div>
+    <div class="detail-grid">
+      <div class="detail-field"><label>Location</label><div class="val" id="pm-location">—</div></div>
+      <div class="detail-field"><label>Tier</label><div class="val" id="pm-tier">—</div></div>
+      <div class="detail-field"><label>Yacht Interest</label><div class="val" id="pm-yacht">—</div></div>
+      <div class="detail-field"><label>Heat Score</label><div class="val" id="pm-score">—</div></div>
+      <div class="detail-field"><label>Email</label><div class="val" id="pm-email">—</div></div>
+      <div class="detail-field"><label>Last Scanned</label><div class="val" id="pm-scanned">—</div></div>
+    </div>
+    <div class="section-title" style="margin-bottom:10px">📡 Signal History</div>
+    <div id="pm-signals" class="signal-timeline"></div>
+  </div>
+</div>
+
+<!-- New chain modal -->
+<div class="modal-overlay hidden" id="chain-modal" onclick="closeChainModal(event)">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">New Outreach Chain</div>
+      <span class="modal-close" onclick="closeChainModal()">✕</span>
+    </div>
+    <div class="modal-form" id="chain-form">
+      <div class="form-field">
+        <label>Prospect</label>
+        <select class="form-select" id="cf-prospect"></select>
+      </div>
+      <div class="form-field">
+        <label>Chain title (optional)</label>
+        <input class="form-input" id="cf-title" placeholder="e.g. Monaco Yacht Show follow-up" />
+      </div>
+      <div class="form-field">
+        <label>Notes</label>
+        <textarea class="form-textarea" id="cf-notes" placeholder="Context for this outreach sequence…"></textarea>
+      </div>
+      <div style="border-top:1px solid var(--border);padding-top:14px;">
+        <div class="section-title" style="margin-bottom:10px;font-size:11px;">Steps</div>
+        <div id="cf-steps"></div>
+        <button class="btn btn-secondary" style="margin-top:8px;font-size:12px;" onclick="addChainStep()">+ Add Step</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-secondary" onclick="closeChainModal()">Cancel</button>
+        <button class="btn btn-primary" onclick="submitChain()">Create Chain</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Step status popover -->
+<div id="step-menu" class="step-status-menu" style="display:none;position:fixed;"></div>
+
+<script>
+'use strict';
+
+// ═══ STATE ══════════════════════════════════════════════════════════════════
+let _stats = null;
+let _lastSignalProspectId = null;
+let _activeFilter = { radar: 'all', matchmaker: 'all' };
+let _radarSearch = '';
+let _prospects = [];
+let _chains = [];
+let _fundEntries = [];
+let _signals = [];
+let _refreshInterval = null;
+let _stepMenuTarget = null;
+
+const FUND_TARGET = 30_000_000;
+
+// ═══ ROUTER ═════════════════════════════════════════════════════════════════
+function getPath() {
+  return window.location.pathname;
+}
+
+function navigate(path, pushState = true) {
+  if (pushState) history.pushState({}, '', path);
+  updateNavTabs();
+  renderPanel(path);
+}
+
+function updateNavTabs() {
+  const path = getPath();
+  document.querySelectorAll('.nav-tab').forEach(tab => {
+    const tabPath = tab.dataset.path;
+    tab.classList.toggle('active', path === tabPath || (tabPath !== '/cockpit' && path.startsWith(tabPath)));
+  });
+}
+
+window.addEventListener('popstate', () => {
+  updateNavTabs();
+  renderPanel(getPath());
+});
+
+// ═══ TOP BAR ════════════════════════════════════════════════════════════════
+async function loadStats() {
+  try {
+    const r = await fetch('/api/cockpit/stats');
+    const data = await r.json();
+    if (!data.success) return;
+    _stats = data;
+    renderTopBar(data);
+  } catch(e) { console.warn('Stats error:', e); }
+}
+
+function renderTopBar(d) {
+  // Hot prospects
+  const hotEl = document.getElementById('tb-hot-count');
+  hotEl.textContent = d.hot_prospects;
+  document.getElementById('nav-hot-badge').textContent = d.hot_prospects;
+
+  // Active chains
+  const chainEl = document.getElementById('tb-chains-count');
+  chainEl.textContent = d.active_chains;
+  document.getElementById('nav-chain-badge').textContent = d.active_chains;
+
+  // Fund
+  document.getElementById('tb-fund-pct').textContent = d.fund.percentage + '%';
+  document.getElementById('tb-fund-val').textContent = d.fund.formatted;
+
+  // Last signal
+  if (d.last_signal) {
+    _lastSignalProspectId = d.last_signal.prospect_id;
+    const elapsed = timeAgo(d.last_signal.detected_at);
+    const type = formatSignalType(d.last_signal.signal_type);
+    document.getElementById('tb-signal-val').textContent =
+      `${d.last_signal.prospect_name} · ${type} · ${elapsed}`;
+  } else {
+    document.getElementById('tb-signal-val').textContent = 'No signals yet';
+  }
+}
+
+function handleSignalClick() {
+  if (_lastSignalProspectId) {
+    navigate('/cockpit/radar');
+    setTimeout(() => openProspectModal(_lastSignalProspectId), 200);
+  } else {
+    navigate('/cockpit/radar');
+  }
+}
+
+// ═══ PANEL RENDERER ═════════════════════════════════════════════════════════
+function renderPanel(path) {
+  const main = document.getElementById('main');
+  const params = new URLSearchParams(window.location.search);
+
+  if (path === '/cockpit' || path === '/cockpit/') {
+    renderHome(main);
+  } else if (path.startsWith('/cockpit/radar')) {
+    const tierFilter = params.get('tier') || _activeFilter.radar;
+    _activeFilter.radar = tierFilter;
+    renderRadar(main, tierFilter);
+  } else if (path.startsWith('/cockpit/matchmaker')) {
+    const statusFilter = params.get('status') || _activeFilter.matchmaker;
+    _activeFilter.matchmaker = statusFilter;
+    renderMatchmaker(main, statusFilter);
+  } else if (path.startsWith('/cockpit/fund')) {
+    renderFund(main);
+  } else {
+    renderHome(main);
+  }
+}
+
+async function refreshAll() {
+  const ind = document.getElementById('refresh-indicator');
+  ind.textContent = 'refreshing…';
+  await Promise.all([loadStats(), reloadCurrentPanel()]);
+  ind.textContent = 'auto-refresh 30s';
+}
+
+async function reloadCurrentPanel() {
+  const path = getPath();
+  if (path.startsWith('/cockpit/radar')) {
+    await loadProspects();
+    await loadSignals();
+  } else if (path.startsWith('/cockpit/matchmaker')) {
+    await loadChains();
+  } else if (path.startsWith('/cockpit/fund')) {
+    await loadFundEntries();
+  } else {
+    await Promise.all([loadSignals(), loadProspects()]);
+  }
+  renderPanel(path);
+}
+
+// ═══ HOME PANEL ═════════════════════════════════════════════════════════════
+async function renderHome(container) {
+  container.innerHTML = '<div class="loading"><div class="spin">⏳</div></div>';
+  await Promise.all([loadSignals(), loadProspects(), loadStats()]);
+
+  const d = _stats || { hot_prospects: 0, active_chains: 0, fund: { total_eur: 0, percentage: 0, formatted: '€0M / 0%' }, last_signal: null };
+  const hotCount = _prospects.filter(p => p.heat_tier === 'hot').length;
+  const warmCount = _prospects.filter(p => p.heat_tier === 'warm').length;
+
+  container.innerHTML = `
+    <div style="display:flex;align-items:baseline;gap:12px;margin-bottom:24px;">
+      <h1 style="font-family:Syne;font-size:22px;font-weight:800;color:var(--gold);">BarnesOS Cockpit</h1>
+      <span style="color:var(--muted);font-size:13px;">${new Date().toLocaleDateString('en-GB',{weekday:'long',year:'numeric',month:'long',day:'numeric'})}</span>
+    </div>
+
+    <div class="home-grid" id="home-metrics"></div>
+
+    <div class="home-bottom">
+      <div>
+        <div class="section-title">📡 Recent Signals <span class="count-badge" id="signals-count">0</span></div>
+        <div id="signals-list"></div>
+      </div>
+      <div>
+        <div class="section-title">🗂 Quick Access</div>
+        <div class="quick-links">
+          <a class="quick-link" href="/cockpit/radar" onclick="navigate('/cockpit/radar');return false;">
+            <span class="quick-link-icon">🛰</span>
+            <div class="quick-link-info">
+              <div class="quick-link-title">Signal Radar</div>
+              <div class="quick-link-sub">${hotCount} hot · ${warmCount} warm · ${_prospects.length} total prospects</div>
+            </div>
+            <span class="quick-link-arrow">→</span>
+          </a>
+          <a class="quick-link" href="/cockpit/matchmaker" onclick="navigate('/cockpit/matchmaker');return false;">
+            <span class="quick-link-icon">📡</span>
+            <div class="quick-link-info">
+              <div class="quick-link-title">Outreach Matchmaker</div>
+              <div class="quick-link-sub">${d.active_chains} active chains in flight</div>
+            </div>
+            <span class="quick-link-arrow">→</span>
+          </a>
+          <a class="quick-link" href="/cockpit/fund" onclick="navigate('/cockpit/fund');return false;">
+            <span class="quick-link-icon">💰</span>
+            <div class="quick-link-info">
+              <div class="quick-link-title">Yacht Trade-In Fund</div>
+              <div class="quick-link-sub">${d.fund.formatted} toward €30M target</div>
+            </div>
+            <span class="quick-link-arrow">→</span>
+          </a>
+          <a class="quick-link" href="/command-center">
+            <span class="quick-link-icon">⚡</span>
+            <div class="quick-link-info">
+              <div class="quick-link-title">Command Center</div>
+              <div class="quick-link-sub">Full UHNWI radar + outreach suite</div>
+            </div>
+            <span class="quick-link-arrow">→</span>
+          </a>
+        </div>
+      </div>
+    </div>
+  `;
+
+  // Render metric cards
+  const metricsEl = document.getElementById('home-metrics');
+  metricsEl.innerHTML = `
+    <div class="card metric-card" onclick="navigate('/cockpit/radar?tier=hot')">
+      <div class="card-title">🔴 Hot Prospects</div>
+      <div class="card-value red">${d.hot_prospects}</div>
+      <div class="card-sub">Tier = HOT in prospect DB</div>
+    </div>
+    <div class="card metric-card" onclick="navigate('/cockpit/matchmaker?status=active')">
+      <div class="card-title">📡 Active Chains</div>
+      <div class="card-value blue">${d.active_chains}</div>
+      <div class="card-sub">In-flight outreach sequences</div>
+    </div>
+    <div class="card metric-card" onclick="navigate('/cockpit/fund')">
+      <div class="card-title">💰 Fund Progress</div>
+      <div class="card-value gold">${d.fund.formatted}</div>
+      <div class="card-sub">Confirmed capital toward €30M</div>
+    </div>
+    <div class="card metric-card" onclick="handleSignalClick()">
+      <div class="card-title">📡 Last Signal</div>
+      ${d.last_signal
+        ? `<div class="card-value" style="font-size:15px;color:var(--text)">${d.last_signal.prospect_name}</div>
+           <div class="card-sub">${formatSignalType(d.last_signal.signal_type)} · ${timeAgo(d.last_signal.detected_at)}</div>`
+        : `<div class="card-value" style="font-size:18px;color:var(--muted)">None yet</div>
+           <div class="card-sub">Run a scan to detect signals</div>`
+      }
+    </div>
+  `;
+
+  // Render signals list
+  const signalsEl = document.getElementById('signals-list');
+  document.getElementById('signals-count').textContent = _signals.length;
+  if (_signals.length === 0) {
+    signalsEl.innerHTML = '<div class="empty"><div class="empty-icon">📭</div><p>No signals detected yet. Run a scan from Command Center.</p></div>';
+  } else {
+    const recent = _signals.slice(0, 8);
+    signalsEl.innerHTML = `<div class="signal-list">${recent.map(s => `
+      <div class="signal-row" onclick="navigate('/cockpit/radar');setTimeout(()=>openProspectModal(${s.prospect_id}),200)">
+        <div class="signal-dot ${s.heat_tier || 'cold'}"></div>
+        <div class="signal-body">
+          <div class="signal-name">${esc(s.prospect_name)}</div>
+          <div class="signal-detail">${esc(s.title || formatSignalType(s.signal_type))} ${s.prospect_company ? '· ' + esc(s.prospect_company) : ''}</div>
+        </div>
+        <div class="signal-time">${timeAgo(s.detected_at)}</div>
+      </div>`).join('')}</div>`;
+  }
+}
+
+// ═══ RADAR PANEL (prospects) ═════════════════════════════════════════════════
+async function renderRadar(container, tierFilter = 'all') {
+  container.innerHTML = '<div class="loading"><div class="spin">⏳</div></div>';
+  await loadProspects();
+
+  container.innerHTML = `
+    <div class="filter-bar">
+      <div class="filter-tabs">
+        <button class="filter-tab all ${tierFilter === 'all' ? 'active' : ''}" onclick="setRadarFilter('all')">All (${_prospects.length})</button>
+        <button class="filter-tab ${tierFilter === 'hot' ? 'active' : ''}" onclick="setRadarFilter('hot')" style="color:var(--red)">🔴 Hot (${_prospects.filter(p=>p.heat_tier==='hot').length})</button>
+        <button class="filter-tab ${tierFilter === 'warm' ? 'active' : ''}" onclick="setRadarFilter('warm')" style="color:var(--orange)">🟠 Warm (${_prospects.filter(p=>p.heat_tier==='warm').length})</button>
+        <button class="filter-tab ${tierFilter === 'cold' ? 'active' : ''}" onclick="setRadarFilter('cold')">🟡 Cold (${_prospects.filter(p=>p.heat_tier==='cold').length})</button>
+      </div>
+      <input class="search-input" placeholder="Search prospects…" value="${esc(_radarSearch)}"
+        oninput="_radarSearch=this.value;renderProspectGrid()" />
+    </div>
+    <div id="prospect-grid" class="prospect-grid"></div>
+  `;
+
+  renderProspectGrid();
+}
+
+function setRadarFilter(tier) {
+  _activeFilter.radar = tier;
+  history.replaceState({}, '', tier === 'all' ? '/cockpit/radar' : '/cockpit/radar?tier=' + tier);
+  renderRadar(document.getElementById('main'), tier);
+}
+
+function renderProspectGrid() {
+  const grid = document.getElementById('prospect-grid');
+  if (!grid) return;
+  let list = _prospects;
+  if (_activeFilter.radar !== 'all') list = list.filter(p => p.heat_tier === _activeFilter.radar);
+  if (_radarSearch) {
+    const q = _radarSearch.toLowerCase();
+    list = list.filter(p =>
+      (p.name||'').toLowerCase().includes(q) ||
+      (p.company||'').toLowerCase().includes(q) ||
+      (p.location||'').toLowerCase().includes(q)
+    );
+  }
+
+  if (list.length === 0) {
+    grid.innerHTML = '<div class="empty"><div class="empty-icon">🔍</div><p>No prospects match this filter.</p></div>';
+    return;
+  }
+
+  grid.innerHTML = list.map(p => {
+    const signals = p.top_signals || [];
+    const scoreClass = p.heat_score >= 20 ? 'score-high' : p.heat_score >= 8 ? 'score-med' : 'score-low';
+    const yachtInfo = [p.yacht_brand, p.yacht_model].filter(Boolean).join(' ') || p.current_yacht_interest || '—';
+    return `
+      <div class="prospect-card ${p.heat_tier}" onclick="openProspectModal(${p.id})">
+        <div class="prospect-score ${scoreClass}">${p.heat_score || 0}</div>
+        <div class="prospect-header">
+          <div>
+            <div class="prospect-name">${esc(p.name)}</div>
+            <div class="prospect-company">${esc(p.company || '')}</div>
+          </div>
+          <span class="tier-pill ${p.heat_tier}">${p.heat_tier.toUpperCase()}</span>
+        </div>
+        <div class="prospect-meta">${esc(p.location || '—')}</div>
+        <div class="prospect-signals">
+          ${signals.length > 0
+            ? signals.map(s => `<div class="signal-chip">${esc(s.title || formatSignalType(s.signal_type))}</div>`).join('')
+            : `<div class="no-signals">No signals detected</div>`
+          }
+        </div>
+        <div class="prospect-footer">
+          <div class="prospect-yacht" title="${esc(yachtInfo)}">🛥 ${esc(yachtInfo)}</div>
+          ${parseInt(p.signal_count) > 0 ? `<span style="font-size:11px;color:var(--muted)">${p.signal_count} signals</span>` : ''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function openProspectModal(id) {
+  try {
+    const r = await fetch('/api/prospects/' + id);
+    const data = await r.json();
+    if (!data.success) return;
+    const p = data.prospect;
+    const signals = data.signals || [];
+
+    document.getElementById('pm-name').textContent = p.name;
+    document.getElementById('pm-company').textContent = p.company || '—';
+    document.getElementById('pm-location').textContent = p.location || '—';
+    document.getElementById('pm-tier').innerHTML = `<span class="tier-pill ${p.heat_tier}">${p.heat_tier.toUpperCase()}</span>`;
+    document.getElementById('pm-yacht').textContent = [p.yacht_brand, p.yacht_model].filter(Boolean).join(' ') || p.current_yacht_interest || '—';
+    document.getElementById('pm-score').textContent = p.heat_score || 0;
+    document.getElementById('pm-email').textContent = p.email || '—';
+    document.getElementById('pm-scanned').textContent = p.last_scanned_at ? timeAgo(p.last_scanned_at) : 'Never';
+
+    const sigsEl = document.getElementById('pm-signals');
+    if (signals.length === 0) {
+      sigsEl.innerHTML = '<div class="empty" style="padding:20px 0"><p>No signals detected yet.</p></div>';
+    } else {
+      sigsEl.innerHTML = `<div class="signal-timeline">${signals.slice(0,20).map(s => `
+        <div class="signal-timeline-item">
+          <div class="st-title">${esc(s.title || formatSignalType(s.signal_type))}</div>
+          <div class="st-meta">${esc(s.source_name || s.signal_type)} · ${timeAgo(s.detected_at)}
+            ${s.source_url ? ` · <a href="${esc(s.source_url)}" target="_blank" style="color:var(--blue);text-decoration:none;">↗ source</a>` : ''}
+          </div>
+          ${s.summary ? `<div style="font-size:12px;color:var(--muted);margin-top:4px">${esc(s.summary)}</div>` : ''}
+        </div>`).join('')}
+      </div>`;
+    }
+
+    document.getElementById('prospect-modal').classList.remove('hidden');
+  } catch(e) { console.error('Prospect modal error:', e); }
+}
+
+function closeProspectModal(e) {
+  if (!e || e.target === document.getElementById('prospect-modal')) {
+    document.getElementById('prospect-modal').classList.add('hidden');
+  }
+}
+
+// ═══ MATCHMAKER PANEL ════════════════════════════════════════════════════════
+async function renderMatchmaker(container, statusFilter = 'all') {
+  container.innerHTML = '<div class="loading"><div class="spin">⏳</div></div>';
+  await loadChains();
+
+  let filtered = _chains;
+  if (statusFilter === 'active') {
+    filtered = _chains.filter(c => parseInt(c.sent_count) > 0 && parseInt(c.replied_count) === 0 && parseInt(c.pending_count) > 0);
+  } else if (statusFilter === 'replied') {
+    filtered = _chains.filter(c => parseInt(c.replied_count) > 0);
+  } else if (statusFilter === 'pending') {
+    filtered = _chains.filter(c => parseInt(c.sent_count) === 0);
+  }
+
+  const counts = {
+    all: _chains.length,
+    active: _chains.filter(c => parseInt(c.sent_count) > 0 && parseInt(c.replied_count) === 0 && parseInt(c.pending_count) > 0).length,
+    replied: _chains.filter(c => parseInt(c.replied_count) > 0).length,
+    pending: _chains.filter(c => parseInt(c.sent_count) === 0).length
+  };
+
+  container.innerHTML = `
+    <div class="filter-bar">
+      <div class="filter-tabs">
+        ${['all','active','replied','pending'].map(s => `
+          <button class="filter-tab ${s === 'all' ? 'all' : ''} ${statusFilter === s ? 'active' : ''}"
+            onclick="setMatchmakerFilter('${s}')">
+            ${s.charAt(0).toUpperCase()+s.slice(1)} (${counts[s]})
+          </button>`).join('')}
+      </div>
+      <button class="btn btn-primary ml-auto" onclick="openChainModal()" style="font-size:12px;padding:6px 14px;">+ New Chain</button>
+    </div>
+    <div id="chain-list" class="chain-list"></div>
+  `;
+
+  renderChainList(filtered);
+}
+
+function setMatchmakerFilter(status) {
+  _activeFilter.matchmaker = status;
+  history.replaceState({}, '', status === 'all' ? '/cockpit/matchmaker' : '/cockpit/matchmaker?status=' + status);
+  renderMatchmaker(document.getElementById('main'), status);
+}
+
+function renderChainList(chains) {
+  const el = document.getElementById('chain-list');
+  if (!el) return;
+  if (chains.length === 0) {
+    el.innerHTML = `<div class="empty"><div class="empty-icon">📭</div>
+      <p>No chains here.</p>
+      <button class="btn btn-primary" onclick="openChainModal()" style="margin-top:12px">+ New Outreach Chain</button>
+    </div>`;
+    return;
+  }
+
+  el.innerHTML = chains.map(c => {
+    const steps = c.steps || [];
+    const stepPills = steps.map(s => {
+      const icons = { pending:'○', sent:'→', replied:'✓', bounced:'✗', skipped:'⊘' };
+      const label = s.channel === 'linkedin' ? 'LI' : s.channel === 'phone' ? '☎' : 'Email';
+      return `<span class="step-pill ${s.status}" onclick="openStepMenu(event,${c.id},${s.id},'${s.status}')" title="Step ${s.step_number}: ${esc(s.subject || s.channel)} — click to change status">
+        <span class="step-icon">${icons[s.status] || '○'}</span>
+        ${label} D${s.scheduled_for ? '' : s.step_number * 3 - 3}
+      </span>`;
+    }).join('');
+
+    const chainStatus = parseInt(c.replied_count) > 0 ? 'replied'
+      : parseInt(c.sent_count) > 0 && parseInt(c.pending_count) > 0 ? 'active'
+      : parseInt(c.sent_count) > 0 ? 'completed' : 'pending';
+
+    const statusColors = { replied: 'var(--green)', active: 'var(--blue)', pending: 'var(--muted)', completed: 'var(--gold)' };
+
+    return `
+      <div class="chain-card" id="chain-${c.id}">
+        <div class="chain-header">
+          <div>
+            <div class="chain-name">${esc(c.prospect_name)}</div>
+            <div class="chain-company">${esc(c.prospect_company || '')} · <span class="tier-pill ${c.heat_tier}" style="font-size:9px;padding:2px 6px">${c.heat_tier.toUpperCase()}</span></div>
+          </div>
+          <span style="font-size:11px;font-weight:600;color:${statusColors[chainStatus]}">${chainStatus.toUpperCase()}</span>
+        </div>
+        <div class="chain-steps">${stepPills || '<span style="font-size:12px;color:var(--muted)">No steps yet</span>'}</div>
+        ${c.title ? `<div style="font-size:11px;color:var(--muted);margin-top:8px;font-style:italic">"${esc(c.title)}"</div>` : ''}
+        <div class="chain-footer">
+          <span class="chain-date">Created ${timeAgo(c.created_at)}</span>
+          <button class="action-btn" onclick="addStepToChain(${c.id})">+ Step</button>
+          <button class="action-btn danger" onclick="deleteChain(${c.id})">Delete</button>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// Step status popover
+let _stepMenuChainId = null, _stepMenuStepId = null;
+function openStepMenu(e, chainId, stepId, currentStatus) {
+  e.stopPropagation();
+  _stepMenuChainId = chainId;
+  _stepMenuStepId = stepId;
+  const menu = document.getElementById('step-menu');
+  const statuses = ['pending','sent','replied','bounced','skipped'];
+  menu.innerHTML = statuses.map(s =>
+    `<div class="step-status-option ${s === currentStatus ? 'active' : ''}" onclick="setStepStatus('${s}')" style="${s === currentStatus ? 'color:var(--gold)' : ''}">
+      ${s === currentStatus ? '✓ ' : ''}${s.charAt(0).toUpperCase()+s.slice(1)}
+    </div>`
+  ).join('');
+  const rect = e.currentTarget.getBoundingClientRect();
+  menu.style.top = (rect.bottom + 4) + 'px';
+  menu.style.left = rect.left + 'px';
+  menu.style.display = 'flex';
+  setTimeout(() => document.addEventListener('click', closeStepMenu, { once: true }), 10);
+}
+
+function closeStepMenu() {
+  document.getElementById('step-menu').style.display = 'none';
+}
+
+async function setStepStatus(status) {
+  closeStepMenu();
+  if (!_stepMenuChainId || !_stepMenuStepId) return;
+  try {
+    await fetch(`/api/outreach/chains/${_stepMenuChainId}/steps/${_stepMenuStepId}`, {
+      method: 'PATCH', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ status })
+    });
+    await loadChains();
+    renderMatchmaker(document.getElementById('main'), _activeFilter.matchmaker);
+    await loadStats();
+    if (_stats) renderTopBar(_stats);
+  } catch(e) { console.error(e); }
+}
+
+async function deleteChain(id) {
+  if (!confirm('Delete this outreach chain?')) return;
+  await fetch('/api/outreach/chains/' + id, { method: 'DELETE' });
+  await loadChains();
+  renderMatchmaker(document.getElementById('main'), _activeFilter.matchmaker);
+}
+
+async function addStepToChain(chainId) {
+  const channel = prompt('Channel (email/linkedin/phone):', 'email') || 'email';
+  const subject = prompt('Subject/title:', '') || '';
+  const stepNum = (_chains.find(c => c.id === chainId)?.steps?.length || 0) + 1;
+  await fetch(`/api/outreach/chains/${chainId}/steps`, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ step_number: stepNum, channel, subject })
+  }).catch(() => {
+    // Fallback: create chain with steps via PATCH workaround using steps endpoint
+    return fetch(`/api/outreach/chains`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ prospect_id: _chains.find(c=>c.id===chainId)?.prospect_id, steps:[{step_number:stepNum,channel,subject}] })
+    });
+  });
+  // Use the existing POST /api/outreach/chains with a steps override
+  // Actually, let's just refresh and handle that the step-add button opens the chain modal pre-filled
+  await loadChains();
+  renderMatchmaker(document.getElementById('main'), _activeFilter.matchmaker);
+}
+
+// New chain modal
+let _chainStepCount = 0;
+async function openChainModal() {
+  _chainStepCount = 0;
+  const select = document.getElementById('cf-prospect');
+  if (_prospects.length === 0) await loadProspects();
+  select.innerHTML = _prospects.map(p =>
+    `<option value="${p.id}">${esc(p.name)} (${p.heat_tier.toUpperCase()})</option>`
+  ).join('');
+  document.getElementById('cf-title').value = '';
+  document.getElementById('cf-notes').value = '';
+  document.getElementById('cf-steps').innerHTML = '';
+  addChainStep(); // default 3 steps
+  addChainStep();
+  addChainStep();
+  document.getElementById('chain-modal').classList.remove('hidden');
+}
+
+function closeChainModal(e) {
+  if (!e || e.target === document.getElementById('chain-modal')) {
+    document.getElementById('chain-modal').classList.add('hidden');
+  }
+}
+
+function addChainStep() {
+  _chainStepCount++;
+  const n = _chainStepCount;
+  const stepsEl = document.getElementById('cf-steps');
+  const div = document.createElement('div');
+  div.id = `cf-step-${n}`;
+  div.style.cssText = 'display:grid;grid-template-columns:60px 1fr 1fr;gap:8px;margin-bottom:8px;align-items:end';
+  div.innerHTML = `
+    <div class="form-field"><label>Step ${n}</label>
+      <select class="form-select" id="cf-s${n}-channel">
+        <option value="email">Email</option>
+        <option value="linkedin">LinkedIn</option>
+        <option value="phone">Phone</option>
+      </select>
+    </div>
+    <div class="form-field"><label>Subject</label><input class="form-input" id="cf-s${n}-subject" placeholder="Subject…"/></div>
+    <div class="form-field"><label>Date</label><input class="form-input" id="cf-s${n}-date" type="date"/></div>
+  `;
+  stepsEl.appendChild(div);
+}
+
+async function submitChain() {
+  const prospectId = document.getElementById('cf-prospect').value;
+  const title = document.getElementById('cf-title').value.trim();
+  const notes = document.getElementById('cf-notes').value.trim();
+  const steps = [];
+  for (let i = 1; i <= _chainStepCount; i++) {
+    const channel = document.getElementById(`cf-s${i}-channel`)?.value || 'email';
+    const subject = document.getElementById(`cf-s${i}-subject`)?.value || '';
+    const date = document.getElementById(`cf-s${i}-date`)?.value || null;
+    steps.push({ step_number: i, channel, subject, scheduled_for: date || null });
+  }
+  try {
+    const r = await fetch('/api/outreach/chains', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ prospect_id: prospectId, title: title || null, notes: notes || null, steps })
+    });
+    const data = await r.json();
+    if (!data.success) { alert('Error: ' + data.message); return; }
+    closeChainModal();
+    await loadChains();
+    renderMatchmaker(document.getElementById('main'), _activeFilter.matchmaker);
+    await loadStats();
+    if (_stats) renderTopBar(_stats);
+  } catch(e) { console.error(e); alert('Failed to create chain'); }
+}
+
+// ═══ FUND PANEL ══════════════════════════════════════════════════════════════
+async function renderFund(container) {
+  container.innerHTML = '<div class="loading"><div class="spin">⏳</div></div>';
+  await loadFundEntries();
+
+  const confirmed = _fundEntries
+    .filter(e => e.status === 'hard_commit' || e.status === 'wired')
+    .reduce((s, e) => s + parseFloat(e.amount_eur), 0);
+  const softTotal = _fundEntries
+    .filter(e => e.status === 'soft_commit')
+    .reduce((s, e) => s + parseFloat(e.amount_eur), 0);
+  const pct = Math.min((confirmed / FUND_TARGET) * 100, 100);
+
+  container.innerHTML = `
+    <div class="fund-progress-card">
+      <div style="font-family:Syne;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:12px">
+        Yacht Trade-In Arbitrage Fund · €30M Target
+      </div>
+      <div class="fund-headline">
+        <div class="fund-total">€${(confirmed/1_000_000).toFixed(2)}M</div>
+        <div class="fund-target">of €30M</div>
+        <div class="fund-pct">${pct.toFixed(1)}%</div>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" style="width:${pct}%"></div>
+      </div>
+      <div class="fund-stats">
+        <div class="fund-stat">
+          <div class="fund-stat-label">💸 Wired</div>
+          <div class="fund-stat-value green">€${(_fundEntries.filter(e=>e.status==='wired').reduce((s,e)=>s+parseFloat(e.amount_eur),0)/1_000_000).toFixed(2)}M</div>
+        </div>
+        <div class="fund-stat">
+          <div class="fund-stat-label">🤝 Hard Commit</div>
+          <div class="fund-stat-value gold">€${(_fundEntries.filter(e=>e.status==='hard_commit').reduce((s,e)=>s+parseFloat(e.amount_eur),0)/1_000_000).toFixed(2)}M</div>
+        </div>
+        <div class="fund-stat">
+          <div class="fund-stat-label">🔮 Soft Commit</div>
+          <div class="fund-stat-value muted">€${(softTotal/1_000_000).toFixed(2)}M</div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+      <div class="section-title">Investor Commitments</div>
+      <button class="btn btn-primary" onclick="toggleAddEntry()" style="font-size:12px;padding:6px 14px;">+ Add Entry</button>
+    </div>
+
+    <div id="add-entry-form" class="hidden">
+      <div class="add-form-grid">
+        <div class="form-field"><label>Investor Name</label><input class="form-input" id="fe-name" placeholder="e.g. Jean-Marc Durand"/></div>
+        <div class="form-field"><label>Amount (€)</label><input class="form-input" id="fe-amount" type="number" placeholder="500000"/></div>
+        <div class="form-field"><label>Status</label>
+          <select class="form-select" id="fe-status">
+            <option value="soft_commit">Soft Commit</option>
+            <option value="hard_commit">Hard Commit</option>
+            <option value="wired">Wired</option>
+          </select>
+        </div>
+        <div class="form-field"><label>Date</label><input class="form-input" id="fe-date" type="date" value="${new Date().toISOString().split('T')[0]}"/></div>
+      </div>
+      <div class="form-field" style="margin-top:8px"><label>Notes</label><input class="form-input" id="fe-notes" placeholder="Optional notes…"/></div>
+      <div class="btn-row" style="margin-top:10px">
+        <button class="btn btn-secondary" onclick="toggleAddEntry()">Cancel</button>
+        <button class="btn btn-primary" onclick="submitFundEntry()">Save Entry</button>
+      </div>
+    </div>
+
+    <div class="card" style="padding:0;overflow:hidden;">
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Investor</th>
+            <th>Amount</th>
+            <th>Status</th>
+            <th>Date</th>
+            <th>Notes</th>
+            <th></th>
+          </tr></thead>
+          <tbody id="fund-table-body"></tbody>
+        </table>
+      </div>
+    </div>
+  `;
+
+  renderFundTable();
+}
+
+function renderFundTable() {
+  const tbody = document.getElementById('fund-table-body');
+  if (!tbody) return;
+  if (_fundEntries.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--muted)">No entries yet. Add your first investor.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = _fundEntries.map(e => `
+    <tr>
+      <td style="font-weight:600">${esc(e.investor_name)}</td>
+      <td style="font-family:Syne;font-weight:700;color:${e.status==='wired'?'var(--green)':e.status==='hard_commit'?'var(--gold)':'var(--text)'}">
+        €${parseFloat(e.amount_eur).toLocaleString('fr-FR')}
+      </td>
+      <td><span class="status-pill ${e.status}">${statusLabel(e.status)}</span></td>
+      <td style="color:var(--muted)">${e.committed_at ? new Date(e.committed_at).toLocaleDateString('en-GB') : '—'}</td>
+      <td style="color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.notes || '')}</td>
+      <td>
+        <div class="row-actions">
+          <button class="action-btn" onclick="promptEditEntry(${e.id})">Edit</button>
+          <button class="action-btn danger" onclick="deleteEntry(${e.id})">Delete</button>
+        </div>
+      </td>
+    </tr>`).join('');
+}
+
+function toggleAddEntry() {
+  const f = document.getElementById('add-entry-form');
+  f.classList.toggle('hidden');
+}
+
+async function submitFundEntry() {
+  const name = document.getElementById('fe-name').value.trim();
+  const amount = document.getElementById('fe-amount').value;
+  const status = document.getElementById('fe-status').value;
+  const date = document.getElementById('fe-date').value;
+  const notes = document.getElementById('fe-notes').value.trim();
+  if (!name || !amount) { alert('Investor name and amount required'); return; }
+  const r = await fetch('/api/fund/entries', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ investor_name: name, amount_eur: parseFloat(amount), status, committed_at: date, notes })
+  });
+  const data = await r.json();
+  if (!data.success) { alert('Error: ' + data.message); return; }
+  document.getElementById('add-entry-form').classList.add('hidden');
+  await loadFundEntries();
+  renderFund(document.getElementById('main'));
+  await loadStats();
+  if (_stats) renderTopBar(_stats);
+}
+
+async function promptEditEntry(id) {
+  const e = _fundEntries.find(x => x.id === id);
+  if (!e) return;
+  const name = prompt('Investor name:', e.investor_name); if (name === null) return;
+  const amount = prompt('Amount (€):', e.amount_eur); if (amount === null) return;
+  const status = prompt('Status (soft_commit/hard_commit/wired/withdrawn):', e.status); if (status === null) return;
+  await fetch('/api/fund/entries/' + id, {
+    method: 'PUT', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ investor_name: name, amount_eur: parseFloat(amount), status })
+  });
+  await loadFundEntries();
+  renderFund(document.getElementById('main'));
+  await loadStats();
+  if (_stats) renderTopBar(_stats);
+}
+
+async function deleteEntry(id) {
+  if (!confirm('Delete this entry?')) return;
+  await fetch('/api/fund/entries/' + id, { method: 'DELETE' });
+  await loadFundEntries();
+  renderFund(document.getElementById('main'));
+  await loadStats();
+  if (_stats) renderTopBar(_stats);
+}
+
+// ═══ DATA LOADERS ════════════════════════════════════════════════════════════
+async function loadProspects() {
+  try {
+    const r = await fetch('/api/prospects');
+    const data = await r.json();
+    if (data.success) _prospects = data.prospects;
+  } catch(e) { console.warn(e); }
+}
+
+async function loadSignals() {
+  try {
+    const r = await fetch('/api/signals/feed?limit=20&days=90');
+    const data = await r.json();
+    if (data.success) _signals = data.signals;
+  } catch(e) { console.warn(e); }
+}
+
+async function loadChains() {
+  try {
+    const r = await fetch('/api/outreach/chains');
+    const data = await r.json();
+    if (data.success) _chains = data.chains;
+  } catch(e) { console.warn(e); }
+}
+
+async function loadFundEntries() {
+  try {
+    const r = await fetch('/api/fund/entries');
+    const data = await r.json();
+    if (data.success) _fundEntries = data.entries;
+  } catch(e) { console.warn(e); }
+}
+
+// ═══ UTILS ══════════════════════════════════════════════════════════════════
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function timeAgo(dateStr) {
+  if (!dateStr) return '—';
+  const diff = (Date.now() - new Date(dateStr)) / 1000;
+  if (diff < 60)   return 'just now';
+  if (diff < 3600) return Math.floor(diff/60) + 'm ago';
+  if (diff < 86400) return Math.floor(diff/3600) + 'h ago';
+  if (diff < 604800) return Math.floor(diff/86400) + 'd ago';
+  return new Date(dateStr).toLocaleDateString('en-GB', { day:'numeric', month:'short' });
+}
+
+function formatSignalType(t) {
+  if (!t) return 'Signal';
+  return t.replace(/_/g,' ').replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function statusLabel(s) {
+  const labels = { soft_commit: 'Soft Commit', hard_commit: 'Hard Commit', wired: 'Wired', withdrawn: 'Withdrawn' };
+  return labels[s] || s;
+}
+
+// ═══ INIT ════════════════════════════════════════════════════════════════════
+async function init() {
+  updateNavTabs();
+  await loadStats();
+  renderPanel(getPath());
+
+  // Auto-refresh every 30s
+  _refreshInterval = setInterval(async () => {
+    await loadStats();
+    if (_stats) renderTopBar(_stats);
+    // Update badge counts
+    document.getElementById('nav-hot-badge').textContent = _stats?.hot_prospects || 0;
+    document.getElementById('nav-chain-badge').textContent = _stats?.active_chains || 0;
+  }, 30000);
+}
+
+init();
+</script>
+</body>
+</html>
