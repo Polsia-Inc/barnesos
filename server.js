@@ -2093,12 +2093,7 @@ app.post('/api/outreach/import-legacy', async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 app.get('/', requireAuth, (req, res) => {
-  const htmlPath = path.join(__dirname, 'public', 'index.html');
-  if (fs.existsSync(htmlPath)) {
-    res.type('html').sendFile(htmlPath);
-  } else {
-    res.json({ message: 'BarnesOS Yacht Matchmaker' });
-  }
+  res.redirect('/cockpit');
 });
 
 // Serve deal flow tracker admin page (requires auth)
