@@ -1,0 +1,17 @@
+[
+  {
+    "content": "Write migration to replace demo prospects with real UHNWI data",
+    "status": "completed",
+    "activeForm": "Writing migration file"
+  },
+  {
+    "content": "Add missing cities (Seattle, Palo Alto, Dallas, Montreal) to geocoding map",
+    "status": "completed",
+    "activeForm": "Updating geocoding map in command-center.html"
+  },
+  {
+    "content": "Push to remote and verify",
+    "status": "in_progress",
+    "activeForm": "Pushing to remote"
+  }
+]
