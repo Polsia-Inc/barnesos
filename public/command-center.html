@@ -62,9 +62,33 @@ input, textarea, select { font-family: inherit; }
   --transition: 0.2s ease;
 }
 
+/* ===== GLOBAL PAGE NAV ===== */
+.global-nav {
+  position: sticky; top: 0; z-index: 200;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 28px; height: 40px;
+  background: #060c18;
+  border-bottom: 1px solid rgba(201,168,76,0.18);
+}
+.global-nav-links { display: flex; align-items: center; gap: 4px; }
+.gn-link {
+  padding: 4px 14px; border-radius: 6px;
+  font-size: 0.8rem; font-weight: 500; letter-spacing: 0.01em;
+  color: var(--text-secondary); text-decoration: none;
+  transition: all 0.2s ease;
+}
+.gn-link:hover { color: var(--text-primary); background: rgba(255,255,255,0.05); }
+.gn-link.active { color: var(--gold); background: var(--gold-dim); font-weight: 600; }
+.gn-logout {
+  font-size: 0.75rem; color: var(--text-muted); opacity: 0.6;
+  text-decoration: none; padding: 4px 10px; border-radius: 6px;
+  transition: opacity 0.2s;
+}
+.gn-logout:hover { opacity: 1; }
+
 /* ===== TOP NAV ===== */
 .top-nav {
-  position: sticky; top: 0; z-index: 100;
+  position: sticky; top: 40px; z-index: 100;
   display: flex; align-items: center; justify-content: space-between;
   padding: 0 28px; height: 60px;
   background: rgba(17,24,39,0.92);
@@ -1251,6 +1275,15 @@ input, textarea, select { font-family: inherit; }
 </head>
 <body>
 
+<!-- ===== GLOBAL PAGE NAV ===== -->
+<nav class="global-nav">
+  <div class="global-nav-links">
+    <a href="/" class="gn-link active">⌘ Command Center</a>
+    <a href="/matchmaker" class="gn-link">Matchmaker</a>
+  </div>
+  <a href="/api/auth/logout" class="gn-logout">Logout</a>
+</nav>
+
 <!-- ===== TOP NAV ===== -->
 <nav class="top-nav">
   <div class="top-nav-logo">
@@ -1264,7 +1297,6 @@ input, textarea, select { font-family: inherit; }
     <button class="nav-tab" data-panel="inventory">🗂 Inventory</button>
   </div>
   <div class="nav-date" id="navDate"></div>
-  <a href="/api/auth/logout" style="color:var(--text-muted);font-size:12px;text-decoration:none;padding:4px 10px;border-radius:6px;opacity:0.65;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.65'">Logout</a>
 </nav>
 
 <!-- ===== KPI STRIP ===== -->

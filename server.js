@@ -2093,7 +2093,22 @@ app.post('/api/outreach/import-legacy', async (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 app.get('/', requireAuth, (req, res) => {
-  res.redirect('/cockpit');
+  const htmlPath = path.join(__dirname, 'public', 'command-center.html');
+  if (fs.existsSync(htmlPath)) {
+    res.type('html').sendFile(htmlPath);
+  } else {
+    res.redirect('/command-center');
+  }
+});
+
+// Serve Matchmaker page (requires auth)
+app.get('/matchmaker', requireAuth, (req, res) => {
+  const htmlPath = path.join(__dirname, 'public', 'index.html');
+  if (fs.existsSync(htmlPath)) {
+    res.type('html').sendFile(htmlPath);
+  } else {
+    res.status(404).json({ message: 'Matchmaker not found' });
+  }
 });
 
 // Serve deal flow tracker admin page (requires auth)

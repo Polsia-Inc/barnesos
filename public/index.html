@@ -42,6 +42,30 @@
             padding: 0 32px;
         }
 
+        /* ─── GLOBAL PAGE NAV ─────────────── */
+        .global-nav {
+            position: sticky; top: 0; z-index: 200;
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 0 28px; height: 40px;
+            background: #060c18;
+            border-bottom: 1px solid rgba(201,168,76,0.18);
+        }
+        .global-nav-links { display: flex; align-items: center; gap: 4px; }
+        .gn-link {
+            padding: 4px 14px; border-radius: 6px;
+            font-size: 0.8rem; font-weight: 500; letter-spacing: 0.01em;
+            color: var(--mist); text-decoration: none;
+            transition: all 0.2s ease;
+        }
+        .gn-link:hover { color: var(--cream); background: rgba(255,255,255,0.05); }
+        .gn-link.active { color: var(--gold); background: rgba(201,169,110,0.1); font-weight: 600; }
+        .gn-logout {
+            font-size: 0.75rem; color: var(--mist); opacity: 0.6;
+            text-decoration: none; padding: 4px 10px; border-radius: 6px;
+            transition: opacity 0.2s;
+        }
+        .gn-logout:hover { opacity: 1; }
+
         /* ─── NAV ─────────────────────────── */
         nav {
             padding: 32px 0;
@@ -518,6 +542,14 @@
     </style>
 </head>
 <body>
+    <!-- GLOBAL PAGE NAV -->
+    <nav class="global-nav">
+      <div class="global-nav-links">
+        <a href="/" class="gn-link">⌘ Command Center</a>
+        <a href="/matchmaker" class="gn-link active">Matchmaker</a>
+      </div>
+      <a href="/api/auth/logout" class="gn-logout">Logout</a>
+    </nav>
     <div class="wave-bg"></div>
     <div class="container">
         <nav>
@@ -525,7 +557,7 @@
             <div class="nav-links">
                 <a href="#" class="active" onclick="showSection('matchmaker')">Matchmaker</a>
                 <a href="#" onclick="showSection('inventory')">Inventory</a>
-                <a href="/api/auth/logout" style="color:var(--mist);font-size:13px;opacity:0.7;">Logout</a>
+
             </div>
         </nav>
 
