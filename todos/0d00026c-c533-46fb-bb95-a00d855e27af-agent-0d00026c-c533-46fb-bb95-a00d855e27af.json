@@ -1,0 +1,22 @@
+[
+  {
+    "content": "Add / and /matchmaker routes to server.js",
+    "status": "completed",
+    "activeForm": "Adding routes to server.js"
+  },
+  {
+    "content": "Add sticky top nav to command-center.html",
+    "status": "completed",
+    "activeForm": "Adding sticky top nav to command-center.html"
+  },
+  {
+    "content": "Add sticky top nav to index.html (Matchmaker)",
+    "status": "completed",
+    "activeForm": "Adding sticky top nav to index.html"
+  },
+  {
+    "content": "Push to remote and verify",
+    "status": "in_progress",
+    "activeForm": "Pushing to remote and verifying"
+  }
+]
