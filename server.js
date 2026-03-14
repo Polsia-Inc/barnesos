@@ -2876,3 +2876,261 @@ app.patch('/api/yachts/:id/image', requireAuth, express.json(), async (req, res)
   }
 });
 
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// WHATSAPP PRESS FEED — Signal source from exported WhatsApp chats
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Ensure the press imports table exists (graceful if migration hasn't run yet)
+async function ensurePressFeedTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS whatsapp_press_imports (
+      id SERIAL PRIMARY KEY,
+      filename VARCHAR(500),
+      articles_parsed INTEGER DEFAULT 0,
+      matches_found INTEGER DEFAULT 0,
+      status VARCHAR(20) DEFAULT 'completed',
+      error_message TEXT,
+      imported_at TIMESTAMPTZ DEFAULT NOW()
+    )
+  `);
+  // Add source_type to prospect_signals if not present
+  await pool.query(`
+    ALTER TABLE prospect_signals
+      ADD COLUMN IF NOT EXISTS source_type VARCHAR(50) DEFAULT 'web'
+  `);
+}
+ensurePressFeedTable().catch(err => console.error('[PressFeed] Table init error:', err.message));
+
+// Extract all HTTP/HTTPS URLs from a block of text
+function extractUrlsFromText(text) {
+  const urlRegex = /https?:\/\/[^\s\]>)'"]+/g;
+  const raw = text.match(urlRegex) || [];
+  return [...new Set(raw.map(u => u.replace(/[.,;!?:)]+$/, '')))];
+}
+
+// Parse a WhatsApp exported .txt file into articles (URL + context snippet)
+// Handles both iOS: [DD/MM/YYYY, HH:MM:SS] Name: msg
+//            and Android: DD/MM/YYYY, HH:MM:SS - Name: msg
+function parseWhatsAppExport(content) {
+  const lines = content.split(/\r?\n/);
+  // Loose pattern: optional [ timestamp ] or timestamp - before "Name: message"
+  const linePattern = /^\[?[\d\/\.\-]+,?\s+[\d:]+(?:\s*[APM]+)?\]?\s*[-–]\s*(.+?):\s+(.+)$/i;
+  const articles = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+
+    const match = line.match(linePattern);
+    if (!match) continue;
+
+    const message = match[2] || '';
+    const urls = extractUrlsFromText(message);
+    if (urls.length === 0) continue;
+
+    // Grab surrounding context (prev line + this line + next 2)
+    const contextLines = lines.slice(Math.max(0, i - 1), Math.min(lines.length, i + 3));
+    const snippet = contextLines
+      .join(' ')
+      .replace(/\[?[\d\/\.\-]+,?\s+[\d:]+(?:\s*[APM]+)?\]?\s*[-–]\s*[^:]+:\s*/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .substring(0, 600);
+
+    for (const url of urls) {
+      articles.push({ url, snippet });
+    }
+  }
+
+  // Deduplicate by normalised URL
+  const seen = new Set();
+  return articles.filter(a => {
+    const key = a.url.toLowerCase().split('?')[0];
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+// Match a list of articles against all prospects; returns signal records to insert
+async function matchArticlesToProspects(articles, prospects, triggerRules) {
+  const matches = [];
+
+  for (const article of articles) {
+    const searchText = `${article.snippet} ${article.url}`.toLowerCase();
+
+    for (const prospect of prospects) {
+      // Must match all first-name+last-name tokens OR company (≥4 chars)
+      const nameTokens = prospect.name.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+      const compTokens = (prospect.company || '').toLowerCase().split(/\s+/).filter(w => w.length > 3);
+
+      const nameHit = nameTokens.length > 0 && nameTokens.every(w => searchText.includes(w));
+      const compHit = compTokens.length > 0 && compTokens.some(w => {
+        // require exact word boundary match to avoid "Ford" matching "afford"
+        const re = new RegExp(`\\b${w}\\b`);
+        return re.test(searchText);
+      });
+
+      if (!nameHit && !compHit) continue;
+
+      // Score: use trigger rules if any keyword matches, else default 2
+      const { rule, baseScore } = matchArticleToRules(
+        { title: article.snippet, summary: article.url },
+        triggerRules
+      );
+      const multiplier = getSourceMultiplier('WhatsApp Press Feed', article.url);
+      const finalScore = Math.max(1, Math.round((baseScore || 2) * multiplier));
+
+      matches.push({
+        prospectId: prospect.id,
+        ruleId: rule ? rule.id : null,
+        signalType: rule ? rule.category : 'press_mention',
+        title: article.snippet.substring(0, 255) || article.url,
+        summary: `Mentioned in international press feed. Match: ${nameHit ? prospect.name : prospect.company}`,
+        sourceUrl: article.url,
+        sourceName: 'WhatsApp Press Feed',
+        sourceType: 'whatsapp_press',
+        score: finalScore
+      });
+
+      // Only one match per article per prospect
+      break;
+    }
+  }
+
+  return matches;
+}
+
+// ─── API: Import a WhatsApp press feed export ─────────────────────────────────
+app.post('/api/press-feed/import', requireAuth, express.json({ limit: '5mb' }), async (req, res) => {
+  try {
+    const { content, filename } = req.body;
+    if (!content || typeof content !== 'string') {
+      return res.status(400).json({ success: false, message: 'content (WhatsApp export text) is required' });
+    }
+
+    // Parse articles from WhatsApp export
+    const articles = parseWhatsAppExport(content);
+    if (articles.length === 0) {
+      // Record the attempt even if no URLs found
+      await pool.query(
+        `INSERT INTO whatsapp_press_imports (filename, articles_parsed, matches_found, status, error_message)
+         VALUES ($1, 0, 0, 'no_urls', 'No URLs found in export')`,
+        [filename || 'unknown.txt']
+      );
+      return res.json({
+        success: true,
+        articles_parsed: 0,
+        matches_found: 0,
+        signals_created: 0,
+        message: 'No URLs found in the export file.'
+      });
+    }
+
+    // Fetch all prospects + active trigger rules
+    const { rows: prospects } = await pool.query(
+      'SELECT id, name, company, heat_tier FROM prospects WHERE name IS NOT NULL ORDER BY heat_score DESC'
+    );
+    const { rows: triggerRules } = await pool.query(
+      'SELECT * FROM trigger_rules WHERE is_active = TRUE'
+    );
+
+    // Match articles to prospects
+    const matches = await matchArticlesToProspects(articles, prospects, triggerRules);
+
+    // Dedup: skip if same source_url already stored for this prospect (any time)
+    const { rows: existingSignals } = await pool.query(
+      `SELECT prospect_id, source_url FROM prospect_signals
+       WHERE source_name = 'WhatsApp Press Feed' AND source_url IS NOT NULL`
+    );
+    const existingKeys = new Set(
+      existingSignals.map(s => `${s.prospect_id}::${(s.source_url || '').split('?')[0].toLowerCase()}`)
+    );
+
+    let signalsCreated = 0;
+    const prospectIdsToRecalc = new Set();
+
+    for (const m of matches) {
+      const dedupKey = `${m.prospectId}::${(m.sourceUrl || '').split('?')[0].toLowerCase()}`;
+      if (existingKeys.has(dedupKey)) continue;
+      existingKeys.add(dedupKey);
+
+      await pool.query(
+        `INSERT INTO prospect_signals
+           (prospect_id, trigger_rule_id, signal_type, title, summary, source_url, source_name, source_type, score)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [m.prospectId, m.ruleId, m.signalType, m.title, m.summary,
+         m.sourceUrl, m.sourceName, m.sourceType, m.score]
+      );
+      signalsCreated++;
+      prospectIdsToRecalc.add(m.prospectId);
+    }
+
+    // Recalculate heat for all matched prospects
+    for (const pid of prospectIdsToRecalc) {
+      await recalcProspectHeat(pid);
+    }
+
+    // Record import run
+    const { rows: importRows } = await pool.query(
+      `INSERT INTO whatsapp_press_imports (filename, articles_parsed, matches_found, status)
+       VALUES ($1, $2, $3, 'completed') RETURNING id, imported_at`,
+      [filename || 'export.txt', articles.length, signalsCreated]
+    );
+
+    console.log(`[PressFeed] Import complete: ${articles.length} articles, ${signalsCreated} signals created, ${prospectIdsToRecalc.size} prospects updated`);
+
+    res.json({
+      success: true,
+      import_id: importRows[0].id,
+      imported_at: importRows[0].imported_at,
+      articles_parsed: articles.length,
+      matches_found: matches.length,
+      signals_created: signalsCreated,
+      prospects_updated: prospectIdsToRecalc.size,
+      message: `Parsed ${articles.length} articles, created ${signalsCreated} new signal${signalsCreated !== 1 ? 's' : ''} across ${prospectIdsToRecalc.size} prospect${prospectIdsToRecalc.size !== 1 ? 's' : ''}.`
+    });
+  } catch (err) {
+    console.error('[PressFeed] Import error:', err.message);
+    // Try to record failed import
+    try {
+      await pool.query(
+        `INSERT INTO whatsapp_press_imports (filename, status, error_message) VALUES ($1, 'failed', $2)`,
+        [req.body?.filename || 'unknown.txt', err.message]
+      );
+    } catch (_) { /* ignore */ }
+    res.status(500).json({ success: false, message: 'Import failed: ' + err.message });
+  }
+});
+
+// ─── API: Press feed import history ──────────────────────────────────────────
+app.get('/api/press-feed/imports', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, filename, articles_parsed, matches_found, status, error_message, imported_at
+       FROM whatsapp_press_imports
+       ORDER BY imported_at DESC
+       LIMIT 20`
+    );
+
+    const { rows: totalRows } = await pool.query(
+      `SELECT COUNT(*) as total_imports,
+              COALESCE(SUM(articles_parsed), 0) as total_articles,
+              COALESCE(SUM(matches_found), 0) as total_signals,
+              MAX(imported_at) as last_import_at
+       FROM whatsapp_press_imports
+       WHERE status = 'completed'`
+    );
+
+    res.json({
+      success: true,
+      imports: rows,
+      stats: totalRows[0]
+    });
+  } catch (err) {
+    console.error('[PressFeed] History error:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to fetch import history' });
+  }
+});
+
