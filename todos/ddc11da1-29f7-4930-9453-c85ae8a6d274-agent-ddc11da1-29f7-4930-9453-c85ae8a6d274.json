@@ -1,0 +1,22 @@
+[
+  {
+    "content": "Create migration 013_whatsapp_press_feed.js",
+    "status": "completed",
+    "activeForm": "Creating migration"
+  },
+  {
+    "content": "Add backend API routes to server.js (parse, import, history)",
+    "status": "completed",
+    "activeForm": "Adding backend API routes"
+  },
+  {
+    "content": "Add Press Feed UI to command-center.html",
+    "status": "completed",
+    "activeForm": "Adding Press Feed UI"
+  },
+  {
+    "content": "Push and verify",
+    "status": "in_progress",
+    "activeForm": "Pushing and verifying"
+  }
+]
