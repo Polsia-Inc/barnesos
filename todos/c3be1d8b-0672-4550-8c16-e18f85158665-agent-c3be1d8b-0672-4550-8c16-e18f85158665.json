@@ -1,0 +1,22 @@
+[
+  {
+    "content": "Read current scanner + schema code",
+    "status": "completed",
+    "activeForm": "Reading current scanner + schema code"
+  },
+  {
+    "content": "Build multi-query Google News scanner engine",
+    "status": "completed",
+    "activeForm": "Building multi-query search engine"
+  },
+  {
+    "content": "Add source scoring, deduplication, tier-based depth",
+    "status": "completed",
+    "activeForm": "Adding source scoring + deduplication"
+  },
+  {
+    "content": "Deploy and verify",
+    "status": "in_progress",
+    "activeForm": "Deploying and verifying"
+  }
+]
