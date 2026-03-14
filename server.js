@@ -3,6 +3,7 @@ const session = require('express-session');
 const { Pool } = require('pg');
 const path = require('path');
 const fs = require('fs');
+const https = require('https');
 const OpenAI = require('openai');
 
 const app = express();
@@ -1332,19 +1333,31 @@ app.post('/api/scanner/scan/:id', async (req, res) => {
 // ─── SCANNER: Trigger scan for all prospects ─────────────────────────────────
 app.post('/api/scanner/scan-all', async (req, res) => {
   try {
+    // HOT prospects first (most valuable), then WARM, then COLD
+    // Within each tier, scan stale ones first (last_scanned_at ASC NULLS FIRST)
     const { rows: prospects } = await pool.query(
-      'SELECT * FROM prospects ORDER BY last_scanned_at ASC NULLS FIRST LIMIT 50'
+      `SELECT * FROM prospects
+       ORDER BY
+         CASE heat_tier WHEN 'hot' THEN 1 WHEN 'warm' THEN 2 ELSE 3 END ASC,
+         last_scanned_at ASC NULLS FIRST
+       LIMIT 50`
     );
-    const results = { scanned: 0, signals_found: 0, errors: 0 };
+    const results = { scanned: 0, signals_found: 0, errors: 0, details: [] };
 
     for (const prospect of prospects) {
       try {
         const result = await scanProspect(prospect);
         results.scanned++;
         results.signals_found += result.signals_found;
+        results.details.push({ name: prospect.name, tier: prospect.heat_tier, signals: result.signals_found });
       } catch (err) {
         results.errors++;
         console.error(`Scan error for ${prospect.name}:`, err.message);
+        results.details.push({ name: prospect.name, tier: prospect.heat_tier, error: err.message });
+      }
+      // Small delay between prospects to be courteous to upstream APIs
+      if (prospects.indexOf(prospect) < prospects.length - 1) {
+        await new Promise(r => setTimeout(r, 500));
       }
     }
 
@@ -1355,67 +1368,320 @@ app.post('/api/scanner/scan-all', async (req, res) => {
   }
 });
 
-// ─── Signal Scanner Engine ───────────────────────────────────────────────────
+// ─── Signal Scanner Engine (Enhanced) ────────────────────────────────────────
+
+// Source quality tiers for score multipliers
+const SOURCE_TIERS = {
+  // Tier 1: Major business/wealth media — 1.5x
+  tier1: {
+    names: ['bloomberg', 'financial times', 'ft.com', 'forbes', 'reuters', 'wsj', 'wall street journal', 'fortune', 'business insider', 'cnbc', 'the economist'],
+    multiplier: 1.5
+  },
+  // Tier 2: Yacht-specific media — 2x
+  tier2: {
+    names: ['superyachtnews', 'boatinternational', 'boat international', 'yachtcharterfleet', 'superyachtfan', 'thesuperyachtreport', 'superyacht report', 'yachtingworld', 'yachting world', 'yachtingmagazine', 'yachting magazine', 'theyachtmarket', 'yacht market', 'yachts.co', 'superyachts.com', 'charterworld', 'burgess', 'camper nicholsons', 'edmiston', 'fraser yachts', 'northrop & johnson'],
+    multiplier: 2.0
+  },
+  // Social media — 0.5x
+  social: {
+    names: ['twitter', 'x.com', 'instagram', 'linkedin', 'facebook', 'tiktok', 'reddit'],
+    multiplier: 0.5
+  }
+};
+
+// Get source quality multiplier based on source name or URL
+function getSourceMultiplier(sourceName, url) {
+  const text = `${(sourceName || '')} ${(url || '')}`.toLowerCase();
+  for (const [tier, config] of Object.entries(SOURCE_TIERS)) {
+    if (config.names.some(n => text.includes(n))) return config.multiplier;
+  }
+  return 1.0;
+}
+
+// Fetch Google News RSS for a query (real live results)
+function fetchGoogleNewsRSS(query, maxResults = 10) {
+  return new Promise((resolve) => {
+    const encodedQuery = encodeURIComponent(query);
+    const path = `/rss/search?q=${encodedQuery}&hl=en-US&gl=US&ceid=US:en`;
+    const options = {
+      hostname: 'news.google.com',
+      path,
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; BarnesOS/1.0; Signal Scanner)',
+        'Accept': 'application/rss+xml, application/xml, text/xml'
+      },
+      timeout: 8000
+    };
+
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', chunk => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const items = parseRSSItems(data, maxResults);
+          resolve(items);
+        } catch (e) {
+          resolve([]);
+        }
+      });
+    });
+    req.on('error', () => resolve([]));
+    req.on('timeout', () => { req.destroy(); resolve([]); });
+    req.end();
+  });
+}
+
+// Simple RSS XML parser (no external deps needed)
+function parseRSSItems(xml, maxResults = 10) {
+  const items = [];
+  const itemRe = /<item>([\s\S]*?)<\/item>/g;
+  let match;
+  while ((match = itemRe.exec(xml)) !== null && items.length < maxResults) {
+    const chunk = match[1];
+    const title = extractXmlTag(chunk, 'title');
+    const link = extractXmlTag(chunk, 'link') || extractXmlTag(chunk, 'guid');
+    const pubDate = extractXmlTag(chunk, 'pubDate');
+    const description = extractXmlTag(chunk, 'description');
+    // Google News RSS puts source name in <source> tag
+    const sourceMatch = chunk.match(/<source[^>]*url="([^"]*)"[^>]*>([\s\S]*?)<\/source>/);
+    const sourceUrl = sourceMatch ? sourceMatch[1] : null;
+    const sourceName = sourceMatch ? cleanXml(sourceMatch[2]) : extractDomain(link);
+
+    if (title) {
+      items.push({
+        title: cleanXml(title),
+        url: cleanXml(link) || sourceUrl,
+        publishedAt: pubDate ? new Date(pubDate) : new Date(),
+        sourceName: sourceName || 'Web',
+        sourceUrl: sourceUrl || cleanXml(link),
+        summary: cleanXml(description)
+      });
+    }
+  }
+  return items;
+}
+
+function extractXmlTag(xml, tag) {
+  const m = xml.match(new RegExp(`<${tag}(?:\\s[^>]*)?>(?:<!\\[CDATA\\[)?([\\s\\S]*?)(?:\\]\\]>)?<\\/${tag}>`, 'i'));
+  return m ? m[1].trim() : null;
+}
+
+function cleanXml(text) {
+  if (!text) return '';
+  return text
+    .replace(/<[^>]+>/g, '')
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function extractDomain(url) {
+  if (!url) return 'Web';
+  try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return 'Web'; }
+}
+
+// Deduplicate articles across multiple query results
+// Same URL → keep once; very similar titles (fuzzy) → keep highest-quality source
+function deduplicateArticles(articles) {
+  const seen = new Map(); // url → article
+  const titleSeen = new Map(); // normalized title → article
+
+  for (const article of articles) {
+    const url = (article.url || '').toLowerCase().split('?')[0];
+    const normTitle = (article.title || '').toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim().substring(0, 80);
+
+    // Deduplicate by URL
+    if (url && url.length > 10) {
+      const existing = seen.get(url);
+      if (!existing || article.qualityScore > existing.qualityScore) {
+        seen.set(url, article);
+      }
+      continue;
+    }
+
+    // Deduplicate by title similarity
+    if (normTitle) {
+      const existing = titleSeen.get(normTitle);
+      if (!existing || article.qualityScore > existing.qualityScore) {
+        titleSeen.set(normTitle, article);
+      }
+    }
+  }
+
+  const byUrl = Array.from(seen.values());
+  const byTitle = Array.from(titleSeen.values()).filter(a => {
+    const url = (a.url || '').toLowerCase().split('?')[0];
+    return !url || !seen.has(url);
+  });
+
+  return [...byUrl, ...byTitle];
+}
+
+// Match an article against trigger rules — returns best matching rule + score
+function matchArticleToRules(article, rules) {
+  const text = `${article.title || ''} ${article.summary || ''}`.toLowerCase();
+  let bestRule = null;
+  let bestScore = 0;
+
+  for (const rule of rules) {
+    const keywords = rule.keywords || [];
+    const matched = keywords.filter(kw => text.includes(kw.toLowerCase()));
+    if (matched.length > 0) {
+      const ruleScore = rule.score_weight * matched.length;
+      if (ruleScore > bestScore) {
+        bestScore = ruleScore;
+        bestRule = rule;
+      }
+    }
+  }
+  return { rule: bestRule, baseScore: bestScore };
+}
+
+// Build the multi-query search plan for a prospect
+function buildSearchQueries(prospect) {
+  const name = prospect.name;
+  const company = prospect.company || '';
+  const queries = [];
+
+  // Core name queries
+  queries.push(`"${name}"`);
+  queries.push(`"${name}" yacht OR superyacht OR boat`);
+  queries.push(`"${name}" sold company OR exit OR IPO OR acquisition`);
+  queries.push(`"${name}" funding OR investment OR "raised"`);
+
+  // Luxury wealth signals
+  queries.push(`"${name}" Monaco OR "Cannes" OR "boat show" OR "Fort Lauderdale"`);
+  queries.push(`"${name}" Forbes OR Bloomberg OR "net worth" OR billionaire`);
+  queries.push(`"${name}" luxury OR "private jet" OR "real estate" OR "art auction"`);
+
+  // Yacht-specific
+  queries.push(`"${name}" superyacht OR megayacht OR charter`);
+
+  // Company-level signals (if company known)
+  if (company) {
+    queries.push(`"${company}" acquisition OR merger OR IPO OR funding`);
+    queries.push(`"${company}" revenue OR "company sold" OR exit`);
+  }
+
+  return queries;
+}
+
+// Main scanner — replaces the stub with real live searches
 async function scanProspect(prospect) {
   const scanStart = new Date();
   let signalsFound = 0;
 
   try {
     // Get active trigger rules
-    const { rows: rules } = await pool.query(
-      'SELECT * FROM trigger_rules WHERE is_active = TRUE'
+    const { rows: rules } = await pool.query('SELECT * FROM trigger_rules WHERE is_active = TRUE');
+
+    // Determine search depth based on heat tier
+    const tier = (prospect.heat_tier || 'cold').toLowerCase();
+    const maxPerQuery = tier === 'hot' ? 20 : tier === 'warm' ? 10 : 5;
+
+    // Build queries
+    const searchQueries = buildSearchQueries(prospect);
+
+    console.log(`[Scanner] ${prospect.name} (${tier}) — running ${searchQueries.length} queries, ${maxPerQuery} results each`);
+
+    // Fetch all articles in parallel (batches of 4 to avoid hammering)
+    const allRawArticles = [];
+    const batchSize = 4;
+    for (let i = 0; i < searchQueries.length; i += batchSize) {
+      const batch = searchQueries.slice(i, i + batchSize);
+      const batchResults = await Promise.all(
+        batch.map(q => fetchGoogleNewsRSS(q, maxPerQuery))
+      );
+      batchResults.forEach(articles => allRawArticles.push(...articles));
+      // Small courtesy delay between batches
+      if (i + batchSize < searchQueries.length) {
+        await new Promise(r => setTimeout(r, 300));
+      }
+    }
+
+    console.log(`[Scanner] ${prospect.name} — fetched ${allRawArticles.length} raw articles`);
+
+    // Annotate each article with quality score before dedup
+    const annotated = allRawArticles.map(a => ({
+      ...a,
+      qualityScore: getSourceMultiplier(a.sourceName, a.url)
+    }));
+
+    // Deduplicate
+    const unique = deduplicateArticles(annotated);
+    console.log(`[Scanner] ${prospect.name} — ${unique.length} unique articles after dedup`);
+
+    // Get existing signals to avoid duplicate DB entries (last 14 days)
+    const { rows: recentSignals } = await pool.query(
+      `SELECT source_url, title FROM prospect_signals
+       WHERE prospect_id = $1 AND detected_at > NOW() - INTERVAL '14 days'`,
+      [prospect.id]
     );
+    const recentUrls = new Set(recentSignals.map(s => (s.source_url || '').toLowerCase().split('?')[0]).filter(Boolean));
+    const recentTitles = new Set(recentSignals.map(s => (s.title || '').toLowerCase().substring(0, 80)));
 
-    // Build search queries for this prospect
-    const searchQueries = [
-      `"${prospect.name}" news`,
-      `"${prospect.name}" ${prospect.company || ''} business`,
-      `"${prospect.name}" yacht OR boat OR marine`,
-    ];
+    // Process each unique article
+    for (const article of unique) {
+      // Skip if already stored recently
+      const artUrl = (article.url || '').toLowerCase().split('?')[0];
+      const artTitle = (article.title || '').toLowerCase().substring(0, 80);
+      if ((artUrl && recentUrls.has(artUrl)) || (artTitle && recentTitles.has(artTitle))) continue;
 
-    // For each query, simulate signal detection
-    // In production, this would use Google News API, Brave Search, or web scraping
-    // For now, we use keyword matching against the prospect's existing data + generate demo signals
-    for (const rule of rules) {
-      const keywords = rule.keywords || [];
-      const matchedKeywords = [];
+      // Match to trigger rules
+      const { rule, baseScore } = matchArticleToRules(article, rules);
 
-      // Check if any keywords match the prospect's notes or interests
-      for (const kw of keywords) {
-        const kwLower = kw.toLowerCase();
-        const searchText = `${prospect.notes || ''} ${prospect.current_yacht_interest || ''} ${prospect.company || ''}`.toLowerCase();
-        if (searchText.includes(kwLower)) {
-          matchedKeywords.push(kw);
-        }
-      }
+      // Only save if it matches a rule OR comes from a premium source with "yacht" content
+      const isYachtSource = getSourceMultiplier(article.sourceName, article.url) >= 2.0;
+      const isYachtContent = /(yacht|superyacht|megayacht|charter|boat show|FLIBS|Monaco Yacht|Cannes Yachting)/i.test(article.title + article.summary);
+      const isPremiumSource = getSourceMultiplier(article.sourceName, article.url) >= 1.5;
 
-      if (matchedKeywords.length > 0) {
-        // Check if we already have a recent signal of this type
-        const { rows: existing } = await pool.query(
-          `SELECT id FROM prospect_signals
-           WHERE prospect_id = $1 AND trigger_rule_id = $2
-           AND detected_at > NOW() - INTERVAL '7 days'`,
-          [prospect.id, rule.id]
-        );
+      if (!rule && !(isYachtSource && isYachtContent) && !isPremiumSource) continue;
 
-        if (existing.length === 0) {
-          // Create new signal
-          await pool.query(
-            `INSERT INTO prospect_signals (prospect_id, trigger_rule_id, signal_type, title, summary, source_name, score)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-            [
-              prospect.id,
-              rule.id,
-              rule.category,
-              `${rule.name}: ${prospect.name}`,
-              `Keywords matched: ${matchedKeywords.join(', ')}. Source: prospect profile analysis.`,
-              'Profile Scan',
-              rule.score_weight
-            ]
-          );
-          signalsFound++;
-        }
-      }
+      // Calculate final score
+      const multiplier = getSourceMultiplier(article.sourceName, article.url);
+      const rawScore = rule ? rule.score_weight : (isYachtContent ? 3 : 2);
+      const finalScore = Math.round(rawScore * multiplier);
+
+      // Determine signal type
+      const signalType = rule ? rule.category : (isYachtContent ? 'low' : 'medium');
+
+      // Build title (concise, signal-forward)
+      const signalTitle = article.title.length > 120
+        ? article.title.substring(0, 117) + '...'
+        : article.title;
+
+      // Build summary
+      const publishedStr = article.publishedAt
+        ? new Date(article.publishedAt).toISOString().slice(0, 10)
+        : '';
+      const signalSummary = [
+        article.summary ? article.summary.substring(0, 300) : '',
+        `Source: ${article.sourceName}`,
+        publishedStr ? `Published: ${publishedStr}` : ''
+      ].filter(Boolean).join(' | ');
+
+      await pool.query(
+        `INSERT INTO prospect_signals
+           (prospect_id, trigger_rule_id, signal_type, title, summary, source_url, source_name, score, raw_data)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
+        [
+          prospect.id,
+          rule ? rule.id : null,
+          signalType,
+          signalTitle,
+          signalSummary,
+          article.url || null,
+          article.sourceName,
+          finalScore,
+          JSON.stringify({ multiplier, publishedAt: article.publishedAt })
+        ]
+      );
+
+      // Track in local sets to avoid double-inserting within this scan run
+      if (artUrl) recentUrls.add(artUrl);
+      if (artTitle) recentTitles.add(artTitle);
+      signalsFound++;
     }
 
     // Update last scanned timestamp
@@ -1434,9 +1700,10 @@ async function scanProspect(prospect) {
       [prospect.id, signalsFound, searchQueries]
     );
 
+    console.log(`[Scanner] ${prospect.name} — done. ${signalsFound} new signals saved.`);
     return { prospect_id: prospect.id, prospect_name: prospect.name, signals_found: signalsFound };
+
   } catch (err) {
-    // Log failed scan
     await pool.query(
       `INSERT INTO scan_history (prospect_id, scan_type, signals_found, status, error_message, completed_at)
        VALUES ($1, 'manual', 0, 'failed', $2, NOW())`,
