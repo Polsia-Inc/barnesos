@@ -1,0 +1,22 @@
+[
+  {
+    "content": "Add POST /api/prospects/import backend endpoint",
+    "status": "completed",
+    "activeForm": "Adding bulk import API endpoint"
+  },
+  {
+    "content": "Add CSV Import modal HTML to command-center.html",
+    "status": "completed",
+    "activeForm": "Adding CSV import modal HTML"
+  },
+  {
+    "content": "Add choice modal + CSV parsing + import JS",
+    "status": "completed",
+    "activeForm": "Adding choice modal and JS logic"
+  },
+  {
+    "content": "Deploy to instance 12284",
+    "status": "in_progress",
+    "activeForm": "Deploying to instance 12284"
+  }
+]
