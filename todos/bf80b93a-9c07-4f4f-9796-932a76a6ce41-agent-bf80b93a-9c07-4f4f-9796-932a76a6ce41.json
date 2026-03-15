@@ -1,0 +1,32 @@
+[
+  {
+    "content": "Add Signal History CSS styles",
+    "status": "completed",
+    "activeForm": "Adding CSS styles"
+  },
+  {
+    "content": "Add History button to prospect cards",
+    "status": "completed",
+    "activeForm": "Adding History button to cards"
+  },
+  {
+    "content": "Add History button to prospect detail modal",
+    "status": "completed",
+    "activeForm": "Adding History button to detail modal"
+  },
+  {
+    "content": "Add Signal History modal HTML",
+    "status": "completed",
+    "activeForm": "Adding Signal History modal HTML"
+  },
+  {
+    "content": "Add openSignalHistory JS function",
+    "status": "completed",
+    "activeForm": "Adding JS functions"
+  },
+  {
+    "content": "Push to remote and verify",
+    "status": "in_progress",
+    "activeForm": "Pushing to remote"
+  }
+]
