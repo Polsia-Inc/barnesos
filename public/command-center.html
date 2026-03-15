@@ -646,6 +646,58 @@ input, textarea, select { font-family: inherit; }
   color: var(--text-muted); font-size: 0.85rem;
 }
 
+/* ===== SIGNAL HISTORY MODAL ===== */
+.sh-filter-bar {
+  display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap;
+}
+.sh-filter-select {
+  padding: 6px 10px; border-radius: var(--radius-sm);
+  background: var(--bg-primary); color: var(--text-secondary);
+  border: 1px solid var(--border); font-size: 0.78rem; cursor: pointer;
+  flex: 1; min-width: 140px;
+}
+.sh-filter-select:focus { outline: none; border-color: var(--gold); }
+.sh-score-summary {
+  display: flex; gap: 16px; align-items: center;
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 12px 16px; margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.sh-score-box { text-align: center; }
+.sh-score-num { font-size: 1.5rem; font-weight: 700; line-height: 1.2; }
+.sh-score-lbl { font-size: 0.62rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 2px; }
+.sh-running-header {
+  display: flex; align-items: center; padding: 0 14px 8px;
+}
+.sh-running-total {
+  font-size: 0.64rem; font-weight: 700; color: var(--gold);
+  background: rgba(212,175,55,0.1); border: 1px solid rgba(212,175,55,0.25);
+  padding: 1px 6px; border-radius: 3px; margin-left: 4px; white-space: nowrap;
+}
+.sh-rule-tag {
+  font-size: 0.6rem; padding: 1px 5px;
+  background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+  border-radius: 3px; color: var(--text-muted);
+}
+.card-history-btn {
+  margin-top: 6px; width: 100%; padding: 6px 10px;
+  background: transparent; border: 1px solid var(--border);
+  color: var(--text-muted); border-radius: var(--radius-sm);
+  font-size: 0.72rem; cursor: pointer; transition: all 0.2s;
+  text-align: center; letter-spacing: 0.02em;
+}
+.card-history-btn:hover {
+  border-color: var(--gold); color: var(--gold);
+  background: var(--gold-dim);
+}
+.timeline-source-row {
+  display: flex; gap: 8px; align-items: center; margin-top: 4px; flex-wrap: wrap;
+}
+.timeline-source-link {
+  font-size: 0.65rem; color: var(--gold); text-decoration: none;
+}
+.timeline-source-link:hover { text-decoration: underline; }
+
 /* ===== LOADING STATES ===== */
 .loading-shimmer {
   background: linear-gradient(90deg, var(--bg-card) 25%, var(--bg-card-hover) 50%, var(--bg-card) 75%);
@@ -1947,6 +1999,37 @@ input, textarea, select { font-family: inherit; }
   </div>
 </div>
 
+<!-- ===== MODAL: SIGNAL HISTORY ===== -->
+<div class="modal-overlay" id="modalSignalHistory">
+  <div class="modal wide">
+    <div class="modal-header">
+      <div>
+        <div class="modal-title">&#x1F4CB; Signal History</div>
+        <div id="shProspectSubtitle" style="font-size:0.75rem;color:var(--text-muted);margin-top:2px;"></div>
+      </div>
+      <button class="modal-close" onclick="closeModal('modalSignalHistory')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="shScoreSummary"></div>
+      <div class="sh-filter-bar">
+        <select class="sh-filter-select" id="shFilterType" onchange="renderSignalHistory()">
+          <option value="">All signal types</option>
+          <option value="high">High intent (10 pts)</option>
+          <option value="medium">Medium intent (6 pts)</option>
+          <option value="low">Warm signal (3 pts)</option>
+        </select>
+        <select class="sh-filter-select" id="shSortBy" onchange="renderSignalHistory()">
+          <option value="date">Latest first</option>
+          <option value="date_asc">Oldest first</option>
+          <option value="score_desc">Highest points first</option>
+          <option value="score_asc">Lowest points first</option>
+        </select>
+      </div>
+      <div id="shSignalList"></div>
+    </div>
+  </div>
+</div>
+
 <!-- ===== MODAL: ADD/EDIT TRIGGER RULE ===== -->
 <div class="modal-overlay" id="modalRule">
   <div class="modal">
@@ -2421,6 +2504,7 @@ function renderProspectTier(tier) {
           : (scanned ? `<div class="prospect-scanned" style="margin-top:6px;padding-top:6px;border-top:1px solid var(--border);">Scanned ${formatDate(scanned)} · No signals yet</div>` : '')
         }
         <button class="card-outreach-btn" onclick="event.stopPropagation();launchCampaign(${p.id}, '${pName}')">&#x1F4E1; Launch Outreach Suite</button>
+        <button class="card-history-btn" onclick="event.stopPropagation();openSignalHistory('${p.id}', '${pName}')">&#x1F4CB; Signal History</button>
       </div>
     `;
   }).join('');
@@ -2455,6 +2539,7 @@ async function openProspectDetail(id) {
         <div class="prospect-detail-actions">
           <button class="btn-outline btn-sm" onclick="triggerScan('${p.id}')">&#x21BB; Scan</button>
           <button class="btn-outline btn-sm" onclick="openEditProspect('${p.id}')">&#x270E; Edit</button>
+          <button class="btn-outline btn-sm" onclick="openSignalHistory('${p.id}')">&#x1F4CB; History</button>
         </div>
       </div>
 
@@ -2493,6 +2578,152 @@ async function openProspectDetail(id) {
     body.innerHTML = '<div class="empty-state">Unable to load prospect details.</div>';
     showToast('Failed to load prospect', 'error');
   }
+}
+
+// ==================== SIGNAL HISTORY ====================
+let _shAllSignals = [];
+let _shProspect = null;
+
+async function openSignalHistory(id, displayName) {
+  openModal('modalSignalHistory');
+  $('#shProspectSubtitle').textContent = displayName ? displayName : '';
+  $('#shScoreSummary').innerHTML = '<div class="loading-shimmer" style="height:56px;margin-bottom:12px;"></div>';
+  $('#shSignalList').innerHTML = '<div class="loading-shimmer"></div><div class="loading-shimmer"></div><div class="loading-shimmer"></div>';
+  // Reset filters
+  const ftEl = $('#shFilterType'); if (ftEl) ftEl.value = '';
+  const sbEl = $('#shSortBy'); if (sbEl) sbEl.value = 'date';
+
+  try {
+    const data = await api('/api/prospects/' + id);
+    _shProspect = data.prospect || data;
+    _shAllSignals = (data.signals || []).slice();
+    if (!displayName) $('#shProspectSubtitle').textContent = _shProspect.name || '';
+    else $('#shProspectSubtitle').textContent = displayName + (_shProspect.company ? ' · ' + _shProspect.company : '');
+    renderSignalHistory();
+  } catch (err) {
+    $('#shSignalList').innerHTML = '<div class="empty-state">Unable to load signal history.</div>';
+    showToast('Failed to load history', 'error');
+  }
+}
+
+function renderSignalHistory() {
+  if (!_shProspect) return;
+  const p = _shProspect;
+  const filterType = ($('#shFilterType') || {}).value || '';
+  const sortBy = ($('#shSortBy') || {}).value || 'date';
+
+  let signals = _shAllSignals.slice();
+
+  // Filter by type
+  if (filterType) {
+    signals = signals.filter(s => {
+      const cat = getCategoryClass(s.trigger_category || s.category);
+      const st = (s.signal_type || '').toLowerCase();
+      return cat === filterType || st === filterType;
+    });
+  }
+
+  // Sort
+  if (sortBy === 'date') {
+    signals.sort((a, b) => new Date(b.detected_at || b.created_at) - new Date(a.detected_at || a.created_at));
+  } else if (sortBy === 'date_asc') {
+    signals.sort((a, b) => new Date(a.detected_at || a.created_at) - new Date(b.detected_at || b.created_at));
+  } else if (sortBy === 'score_desc') {
+    signals.sort((a, b) => (b.score || 0) - (a.score || 0));
+  } else if (sortBy === 'score_asc') {
+    signals.sort((a, b) => (a.score || 0) - (b.score || 0));
+  }
+
+  const totalScore = p.heat_score ?? p.heatScore ?? 0;
+  const tierClass = getTierClass(p.heat_tier || p.tier);
+
+  // Build running score map (always chronological order for accumulation)
+  const chrono = _shAllSignals.slice().sort(
+    (a, b) => new Date(a.detected_at || a.created_at) - new Date(b.detected_at || b.created_at)
+  );
+  const runMap = {};
+  let acc = 0;
+  chrono.forEach(s => { acc += (s.score || 0); runMap[s.id] = acc; });
+
+  // Score summary bar
+  const scorePct = Math.min(100, totalScore > 0 ? (totalScore / Math.max(totalScore, 20)) * 100 : 0);
+  $('#shScoreSummary').innerHTML = `
+    <div class="sh-score-summary">
+      <div class="sh-score-box">
+        <div class="sh-score-num ${tierClass}">${totalScore}</div>
+        <div class="sh-score-lbl">Heat Score</div>
+      </div>
+      <div class="sh-score-box">
+        <div class="sh-score-num" style="color:var(--text-primary);">${_shAllSignals.length}</div>
+        <div class="sh-score-lbl">All Signals</div>
+      </div>
+      <div class="sh-score-box">
+        <div class="sh-score-num" style="color:var(--text-secondary);">${signals.length}</div>
+        <div class="sh-score-lbl">${filterType ? 'Filtered' : 'Shown'}</div>
+      </div>
+      <div style="margin-left:auto;display:flex;align-items:center;gap:10px;">
+        <span class="prospect-score ${tierClass}" style="font-size:0.72rem;">${(p.heat_tier || 'cold').toUpperCase()}</span>
+        ${p.last_scanned_at ? `<span style="font-size:0.65rem;color:var(--text-muted);">Last scan: ${formatDate(p.last_scanned_at)}</span>` : ''}
+      </div>
+    </div>
+  `;
+
+  if (signals.length === 0) {
+    let nextScanMsg = 'Next scan: scheduled daily';
+    if (p.last_scanned_at) {
+      const nextDate = new Date(new Date(p.last_scanned_at).getTime() + 24 * 60 * 60 * 1000);
+      nextScanMsg = 'Next scan: ' + formatDate(nextDate);
+    }
+    $('#shSignalList').innerHTML = `
+      <div class="empty-state">
+        <div style="font-size:2.2rem;margin-bottom:10px;">&#x1F4E1;</div>
+        <div style="font-weight:600;margin-bottom:4px;">No signals detected yet</div>
+        <div style="font-size:0.75rem;color:var(--text-muted);">${nextScanMsg}</div>
+        ${filterType ? `<div style="font-size:0.72rem;margin-top:8px;color:var(--text-muted);">Try removing the type filter to see all signals.</div>` : ''}
+      </div>
+    `;
+    return;
+  }
+
+  $('#shSignalList').innerHTML = `
+    <div class="sh-running-header">
+      <span style="flex:1;color:var(--text-muted);font-size:0.7rem;text-transform:uppercase;letter-spacing:0.06em;">Signal</span>
+      <span style="color:var(--text-muted);font-size:0.7rem;text-transform:uppercase;letter-spacing:0.06em;min-width:48px;text-align:right;">Pts</span>
+      <span style="color:var(--text-muted);font-size:0.7rem;text-transform:uppercase;letter-spacing:0.06em;min-width:64px;text-align:right;margin-left:8px;">Running</span>
+    </div>
+    <div class="signal-timeline">
+      ${signals.map(s => {
+        const cat = getCategoryClass(s.trigger_category || s.category);
+        const src = getSourceIcon(s.source_name || s.source);
+        const titleText = s.title || s.summary || s.description || '';
+        const summaryText = s.summary || '';
+        const pts = s.score ?? s.score_delta ?? 0;
+        const runTotal = runMap[s.id] !== undefined ? runMap[s.id] : '?';
+        const ruleLabel = s.trigger_name
+          ? `<span class="sh-rule-tag">${escapeHtml(s.trigger_name)}</span>`
+          : '';
+        const catLabel = cat === 'high' ? 'High Intent' : cat === 'medium' ? 'Medium Intent' : cat === 'low' ? 'Warm' : (s.signal_type || 'Signal');
+        return `
+          <div class="timeline-item ${cat}">
+            <div class="timeline-top">
+              <span class="signal-badge ${cat}">${escapeHtml(catLabel)}</span>
+              <span class="src-icon ${src.cls}" style="font-size:0.6rem;">${src.label}</span>
+              ${ruleLabel}
+              <span class="timeline-date">${formatDateTime(s.detected_at || s.created_at || s.date)}</span>
+              <span class="timeline-score" style="margin-left:auto;">+${pts}</span>
+              <span class="sh-running-total">→ ${runTotal} pts</span>
+            </div>
+            ${titleText ? `<div class="timeline-summary" style="font-weight:600;color:var(--text-primary);margin-bottom:2px;">${escapeHtml(titleText)}</div>` : ''}
+            ${summaryText && summaryText !== titleText ? `<div class="timeline-summary">${escapeHtml(summaryText)}</div>` : ''}
+            <div class="timeline-source-row">
+              ${s.source_name ? `<span class="signal-source" style="font-size:0.65rem;">${escapeHtml(s.source_name)}</span>` : ''}
+              ${s.source_url ? `<a href="${escapeHtml(s.source_url)}" target="_blank" rel="noopener" class="timeline-source-link">View source ↗</a>` : ''}
+            </div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
 }
 
 // ==================== ADD/EDIT PROSPECT ====================
