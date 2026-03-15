@@ -1085,6 +1085,81 @@ app.post('/api/prospects', async (req, res) => {
   }
 });
 
+// ─── PROSPECTS: Bulk import via CSV ──────────────────────────────────────────
+app.post('/api/prospects/import', async (req, res) => {
+  try {
+    const { prospects } = req.body;
+    if (!Array.isArray(prospects) || prospects.length === 0) {
+      return res.status(400).json({ success: false, message: 'prospects array is required' });
+    }
+
+    // Load existing names + emails for duplicate detection
+    const { rows: existing } = await pool.query(
+      `SELECT LOWER(name) AS name, LOWER(COALESCE(email,'')) AS email FROM prospects`
+    );
+    const existingNames = new Set(existing.map(r => r.name));
+    const existingEmails = new Set(existing.filter(r => r.email).map(r => r.email));
+
+    let imported = 0;
+    let skipped = 0;
+    const errors = [];
+
+    for (let i = 0; i < prospects.length; i++) {
+      const p = prospects[i];
+      const rowNum = i + 1;
+
+      if (!p.name || !p.name.trim()) {
+        errors.push({ row: rowNum, name: p.name || '(empty)', reason: 'Name is required' });
+        continue;
+      }
+
+      const nameLower = p.name.trim().toLowerCase();
+      const emailLower = p.email ? p.email.trim().toLowerCase() : '';
+
+      // Duplicate: same name OR same non-empty email
+      if (existingNames.has(nameLower)) {
+        skipped++;
+        continue;
+      }
+      if (emailLower && existingEmails.has(emailLower)) {
+        skipped++;
+        continue;
+      }
+
+      try {
+        await pool.query(
+          `INSERT INTO prospects (name, email, phone, company, location, current_yacht_interest,
+            yacht_brand, yacht_model, notes, commercial_contact, heat_tier)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+          [
+            p.name.trim(),
+            p.email ? p.email.trim() : null,
+            p.phone ? p.phone.trim() : null,
+            p.company ? p.company.trim() : null,
+            p.location ? p.location.trim() : null,
+            p.yacht_interest ? p.yacht_interest.trim() : null,
+            p.yacht_brand ? p.yacht_brand.trim() : null,
+            p.yacht_model ? p.yacht_model.trim() : null,
+            p.notes ? p.notes.trim() : null,
+            p.commercial_contact ? p.commercial_contact.trim() : null,
+            ['hot','warm','cold'].includes((p.tier||'').toLowerCase()) ? p.tier.toLowerCase() : 'cold'
+          ]
+        );
+        existingNames.add(nameLower);
+        if (emailLower) existingEmails.add(emailLower);
+        imported++;
+      } catch (insertErr) {
+        errors.push({ row: rowNum, name: p.name, reason: insertErr.message });
+      }
+    }
+
+    res.json({ success: true, imported, skipped, errors });
+  } catch (err) {
+    console.error('Error importing prospects:', err.message);
+    res.status(500).json({ success: false, message: 'Import failed: ' + err.message });
+  }
+});
+
 // ─── PROSPECTS: Update prospect ──────────────────────────────────────────────
 app.put('/api/prospects/:id', async (req, res) => {
   try {

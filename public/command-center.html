@@ -1323,6 +1323,40 @@ input, textarea, select { font-family: inherit; }
   box-shadow: 0 0 14px rgba(201,169,110,0.2);
   transform: translateY(-1px);
 }
+/* ── Add Prospect Choice Modal ── */
+.add-choice-btn {
+  flex: 1;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 20px 14px;
+  cursor: pointer;
+  text-align: center;
+  color: var(--text-primary);
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.15s;
+}
+.add-choice-btn:hover {
+  border-color: var(--gold);
+  box-shadow: 0 0 16px rgba(212,175,55,0.2);
+  transform: translateY(-2px);
+}
+.add-choice-icon { font-size: 2rem; margin-bottom: 8px; }
+.add-choice-label { font-weight: 700; font-size: 0.95rem; color: var(--gold); margin-bottom: 6px; }
+.add-choice-desc { font-size: 0.74rem; color: var(--text-muted); line-height: 1.4; }
+/* ── CSV Drop Zone ── */
+.csv-drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: 10px;
+  padding: 36px 20px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  margin-top: 4px;
+}
+.csv-drop-zone:hover, .csv-drop-zone.dragover {
+  border-color: var(--gold);
+  background: rgba(212,175,55,0.04);
+}
 </style>
 </head>
 <body>
@@ -1732,6 +1766,120 @@ input, textarea, select { font-family: inherit; }
 
     </div>
   </div>
+
+<!-- ===== MODAL: ADD PROSPECT CHOICE ===== -->
+<div class="modal-overlay" id="modalAddChoice">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-header">
+      <div class="modal-title">Add Prospect</div>
+      <button class="modal-close" onclick="closeModal('modalAddChoice')">&times;</button>
+    </div>
+    <div class="modal-body" style="display:flex;gap:16px;padding:24px;">
+      <button class="add-choice-btn" onclick="closeModal('modalAddChoice');openManualProspect();">
+        <div class="add-choice-icon">✏️</div>
+        <div class="add-choice-label">Add Manually</div>
+        <div class="add-choice-desc">Enter one prospect's details by hand</div>
+      </button>
+      <button class="add-choice-btn" onclick="closeModal('modalAddChoice');openCSVImport();">
+        <div class="add-choice-icon">📥</div>
+        <div class="add-choice-label">Import CSV</div>
+        <div class="add-choice-desc">Upload a spreadsheet to import many at once</div>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODAL: CSV IMPORT ===== -->
+<div class="modal-overlay" id="modalCSVImport">
+  <div class="modal wide" style="max-width:780px;">
+    <div class="modal-header">
+      <div class="modal-title">Import Prospects from CSV</div>
+      <button class="modal-close" onclick="closeModal('modalCSVImport');resetCSVImport();">&times;</button>
+    </div>
+    <div class="modal-body" id="csvImportBody">
+
+      <!-- FORMAT GUIDE -->
+      <div id="csvFormatGuide">
+        <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:8px;padding:16px;margin-bottom:16px;">
+          <div style="font-size:0.78rem;font-weight:700;letter-spacing:0.08em;color:var(--gold);text-transform:uppercase;margin-bottom:10px;">📋 Required CSV Format</div>
+          <div style="overflow-x:auto;">
+            <table style="width:100%;font-size:0.75rem;border-collapse:collapse;">
+              <thead>
+                <tr style="background:rgba(212,175,55,0.08);">
+                  <th style="padding:6px 10px;text-align:left;color:var(--gold);border-bottom:1px solid var(--border);">Column</th>
+                  <th style="padding:6px 10px;text-align:left;color:var(--text-muted);border-bottom:1px solid var(--border);">Required?</th>
+                  <th style="padding:6px 10px;text-align:left;color:var(--text-muted);border-bottom:1px solid var(--border);">Example</th>
+                  <th style="padding:6px 10px;text-align:left;color:var(--text-muted);border-bottom:1px solid var(--border);">Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td style="padding:5px 10px;color:var(--text-primary);font-weight:600;">NAME</td><td style="padding:5px 10px;color:#e5c07b;">✦ Required</td><td style="padding:5px 10px;color:var(--text-muted);">Jean-Paul Dupont</td><td style="padding:5px 10px;color:var(--text-muted);">Full name</td></tr>
+                <tr style="background:rgba(255,255,255,0.02);"><td style="padding:5px 10px;color:var(--text-primary);">COMPANY</td><td style="padding:5px 10px;color:var(--text-muted);">Optional</td><td style="padding:5px 10px;color:var(--text-muted);">Dupont Ventures</td><td style="padding:5px 10px;color:var(--text-muted);">Company or fund name</td></tr>
+                <tr><td style="padding:5px 10px;color:var(--text-primary);">EMAIL</td><td style="padding:5px 10px;color:var(--text-muted);">Optional</td><td style="padding:5px 10px;color:var(--text-muted);">jp@dupont.com</td><td style="padding:5px 10px;color:var(--text-muted);">Used for deduplication</td></tr>
+                <tr style="background:rgba(255,255,255,0.02);"><td style="padding:5px 10px;color:var(--text-primary);">PHONE</td><td style="padding:5px 10px;color:var(--text-muted);">Optional</td><td style="padding:5px 10px;color:var(--text-muted);">+33 6 12 34 56 78</td><td style="padding:5px 10px;color:var(--text-muted);">Any format</td></tr>
+                <tr><td style="padding:5px 10px;color:var(--text-primary);">LOCATION</td><td style="padding:5px 10px;color:var(--text-muted);">Optional</td><td style="padding:5px 10px;color:var(--text-muted);">Monaco, France</td><td style="padding:5px 10px;color:var(--text-muted);">City or region</td></tr>
+                <tr style="background:rgba(255,255,255,0.02);"><td style="padding:5px 10px;color:var(--text-primary);">YACHT_INTEREST</td><td style="padding:5px 10px;color:var(--text-muted);">Optional</td><td style="padding:5px 10px;color:var(--text-muted);">60m+ motor yacht</td><td style="padding:5px 10px;color:var(--text-muted);">Yacht preference</td></tr>
+                <tr><td style="padding:5px 10px;color:var(--text-primary);">YACHT_BRAND</td><td style="padding:5px 10px;color:var(--text-muted);">Optional</td><td style="padding:5px 10px;color:var(--text-muted);">Feadship</td><td style="padding:5px 10px;color:var(--text-muted);">Preferred builder</td></tr>
+                <tr style="background:rgba(255,255,255,0.02);"><td style="padding:5px 10px;color:var(--text-primary);">TIER</td><td style="padding:5px 10px;color:var(--text-muted);">Optional</td><td style="padding:5px 10px;color:var(--text-muted);">warm</td><td style="padding:5px 10px;color:var(--text-muted);">hot / warm / cold (default: cold)</td></tr>
+                <tr><td style="padding:5px 10px;color:var(--text-primary);">NOTES</td><td style="padding:5px 10px;color:var(--text-muted);">Optional</td><td style="padding:5px 10px;color:var(--text-muted);">Met at Monaco Yacht Show</td><td style="padding:5px 10px;color:var(--text-muted);">Free text</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div style="margin-top:12px;display:flex;align-items:center;gap:10px;">
+            <button class="btn-outline btn-sm" onclick="downloadProspectCSVTemplate()" style="font-size:0.78rem;padding:6px 14px;">⬇ Download Template</button>
+            <span style="font-size:0.72rem;color:var(--text-muted);">Blank CSV with correct headers pre-filled</span>
+          </div>
+        </div>
+
+        <!-- DROP ZONE -->
+        <div id="csvDropZone" class="csv-drop-zone" onclick="$('#csvFileInput').click()">
+          <div style="font-size:2rem;margin-bottom:8px;">📂</div>
+          <div style="font-weight:600;color:var(--text-primary);margin-bottom:4px;">Drag & drop your CSV file here</div>
+          <div style="font-size:0.78rem;color:var(--text-muted);">or click to browse · .csv files only</div>
+          <input type="file" id="csvFileInput" accept=".csv" style="display:none;" onchange="handleCSVFile(this.files[0])">
+        </div>
+      </div>
+
+      <!-- PREVIEW (hidden until file loaded) -->
+      <div id="csvPreviewSection" style="display:none;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+          <div>
+            <span style="font-weight:700;color:var(--text-primary);" id="csvPreviewTitle">Preview</span>
+            <span style="font-size:0.78rem;color:var(--text-muted);margin-left:8px;" id="csvPreviewSubtitle"></span>
+          </div>
+          <button class="btn-outline btn-sm" onclick="resetCSVImport()" style="font-size:0.75rem;padding:5px 12px;">✕ Clear</button>
+        </div>
+        <div style="overflow-x:auto;max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:6px;">
+          <table style="width:100%;font-size:0.75rem;border-collapse:collapse;" id="csvPreviewTable">
+            <thead id="csvPreviewHead"></thead>
+            <tbody id="csvPreviewBody"></tbody>
+          </table>
+        </div>
+        <div id="csvValidationErrors" style="margin-top:12px;display:none;">
+          <div style="font-size:0.78rem;font-weight:700;color:#e06c75;margin-bottom:6px;">⚠ Rows with errors (will be skipped):</div>
+          <div id="csvErrorList" style="font-size:0.75rem;color:#e06c75;background:rgba(224,108,117,0.08);padding:10px;border-radius:6px;"></div>
+        </div>
+      </div>
+
+      <!-- RESULT (hidden until import done) -->
+      <div id="csvImportResult" style="display:none;text-align:center;padding:24px 0;">
+        <div style="font-size:2.5rem;margin-bottom:12px;" id="csvResultIcon">✅</div>
+        <div style="font-size:1.1rem;font-weight:700;color:var(--text-primary);margin-bottom:8px;" id="csvResultTitle">Import Complete</div>
+        <div style="font-size:0.85rem;color:var(--text-muted);" id="csvResultBody"></div>
+        <div id="csvResultErrors" style="margin-top:14px;text-align:left;display:none;">
+          <div style="font-size:0.78rem;font-weight:700;color:#e06c75;margin-bottom:6px;">Rows with errors:</div>
+          <div id="csvResultErrorList" style="font-size:0.75rem;color:#e06c75;background:rgba(224,108,117,0.08);padding:10px;border-radius:6px;"></div>
+        </div>
+      </div>
+
+    </div>
+    <div class="modal-footer" id="csvImportFooter">
+      <button class="btn-outline" onclick="closeModal('modalCSVImport');resetCSVImport();">Cancel</button>
+      <button class="btn-gold" id="btnImportCSV" style="display:none;" onclick="executeCSVImport()">Import Prospects</button>
+      <button class="btn-gold" id="btnImportDone" style="display:none;" onclick="closeModal('modalCSVImport');resetCSVImport();loadProspects();loadKPIs();">Done</button>
+    </div>
+  </div>
+</div>
 
 <!-- ===== MODAL: ADD/EDIT PROSPECT ===== -->
 <div class="modal-overlay" id="modalProspect">
@@ -2349,6 +2497,10 @@ async function openProspectDetail(id) {
 
 // ==================== ADD/EDIT PROSPECT ====================
 function openAddProspect() {
+  openModal('modalAddChoice');
+}
+
+function openManualProspect() {
   $('#prospectModalTitle').textContent = 'Add Prospect';
   $('#prospectFormId').value = '';
   $('#prospectForm').reset();
@@ -2405,6 +2557,200 @@ async function saveProspect() {
     loadKPIs();
   } catch (err) {
     showToast('Failed to save prospect: ' + err.message, 'error');
+  }
+}
+
+// ==================== CSV IMPORT ====================
+let csvParsedProspects = [];
+
+function openCSVImport() {
+  resetCSVImport();
+  openModal('modalCSVImport');
+  // Set up drag-and-drop on drop zone
+  const zone = $('#csvDropZone');
+  zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('dragover'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+  zone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    zone.classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (file) handleCSVFile(file);
+  });
+}
+
+function resetCSVImport() {
+  csvParsedProspects = [];
+  $('#csvFormatGuide').style.display = 'block';
+  $('#csvPreviewSection').style.display = 'none';
+  $('#csvImportResult').style.display = 'none';
+  $('#btnImportCSV').style.display = 'none';
+  $('#btnImportDone').style.display = 'none';
+  const fi = $('#csvFileInput');
+  if (fi) fi.value = '';
+}
+
+function downloadProspectCSVTemplate() {
+  const headers = 'NAME,COMPANY,EMAIL,PHONE,LOCATION,YACHT_INTEREST,YACHT_BRAND,TIER,NOTES';
+  const example = 'Jean-Paul Dupont,Dupont Ventures,jp@dupont.com,+33 6 12 34 56 78,"Monaco, France",60m+ motor yacht,Feadship,warm,Met at Monaco Yacht Show 2025';
+  const blob = new Blob([headers + '\n' + example], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'prospects-template.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function parseCSV(text) {
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) return { headers: [], rows: [] };
+
+  function parseLine(line) {
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (ch === '"') {
+        if (inQuotes && line[i+1] === '"') { current += '"'; i++; }
+        else inQuotes = !inQuotes;
+      } else if (ch === ',' && !inQuotes) {
+        result.push(current.trim());
+        current = '';
+      } else {
+        current += ch;
+      }
+    }
+    result.push(current.trim());
+    return result;
+  }
+
+  const headers = parseLine(lines[0]).map(h => h.toUpperCase().replace(/\s+/g, '_'));
+  const rows = [];
+  for (let i = 1; i < lines.length; i++) {
+    const vals = parseLine(lines[i]);
+    const obj = {};
+    headers.forEach((h, idx) => { obj[h] = vals[idx] || ''; });
+    rows.push(obj);
+  }
+  return { headers, rows };
+}
+
+function mapCSVRowToProspect(row) {
+  return {
+    name: row['NAME'] || row['FULL_NAME'] || '',
+    company: row['COMPANY'] || '',
+    email: row['EMAIL'] || '',
+    phone: row['PHONE'] || '',
+    location: row['LOCATION'] || '',
+    yacht_interest: row['YACHT_INTEREST'] || row['YACHT INTEREST'] || '',
+    yacht_brand: row['YACHT_BRAND'] || row['YACHT BRAND'] || '',
+    tier: row['TIER'] || 'cold',
+    notes: row['NOTES'] || '',
+  };
+}
+
+function handleCSVFile(file) {
+  if (!file || !file.name.endsWith('.csv')) {
+    showToast('Please upload a .csv file', 'error');
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    const { headers, rows } = parseCSV(e.target.result);
+    if (!rows.length) {
+      showToast('CSV appears empty', 'error');
+      return;
+    }
+
+    csvParsedProspects = rows.map(mapCSVRowToProspect);
+
+    // Validation
+    const validationErrors = [];
+    csvParsedProspects.forEach((p, i) => {
+      if (!p.name) validationErrors.push(`Row ${i+2}: Name is missing`);
+    });
+
+    const validCount = csvParsedProspects.filter(p => p.name).length;
+
+    // Hide format guide, show preview
+    $('#csvFormatGuide').style.display = 'none';
+    $('#csvPreviewSection').style.display = 'block';
+    $('#csvPreviewTitle').textContent = `Preview — ${file.name}`;
+    $('#csvPreviewSubtitle').textContent = `${rows.length} rows total · ${validCount} valid`;
+
+    // Build preview table
+    const previewCols = ['NAME','COMPANY','EMAIL','LOCATION','TIER'];
+    $('#csvPreviewHead').innerHTML = '<tr>' + previewCols.map(c =>
+      `<th style="padding:6px 10px;text-align:left;color:var(--gold);background:rgba(212,175,55,0.08);border-bottom:1px solid var(--border);font-size:0.72rem;">${c}</th>`
+    ).join('') + '</tr>';
+
+    const previewRows = csvParsedProspects.slice(0, 10);
+    $('#csvPreviewBody').innerHTML = previewRows.map((p, i) => {
+      const hasError = !p.name;
+      const bg = hasError ? 'rgba(224,108,117,0.08)' : (i%2 ? 'rgba(255,255,255,0.01)' : '');
+      return `<tr style="background:${bg};">
+        <td style="padding:5px 10px;color:${hasError?'#e06c75':'var(--text-primary)'};">${p.name || '<em style="color:#e06c75">missing</em>'}</td>
+        <td style="padding:5px 10px;color:var(--text-muted);">${p.company||''}</td>
+        <td style="padding:5px 10px;color:var(--text-muted);">${p.email||''}</td>
+        <td style="padding:5px 10px;color:var(--text-muted);">${p.location||''}</td>
+        <td style="padding:5px 10px;color:var(--text-muted);">${p.tier||'cold'}</td>
+      </tr>`;
+    }).join('');
+
+    if (rows.length > 10) {
+      $('#csvPreviewBody').innerHTML += `<tr><td colspan="5" style="padding:8px 10px;color:var(--text-muted);font-style:italic;font-size:0.72rem;">… and ${rows.length - 10} more rows</td></tr>`;
+    }
+
+    // Show validation errors
+    if (validationErrors.length > 0) {
+      $('#csvValidationErrors').style.display = 'block';
+      $('#csvErrorList').innerHTML = validationErrors.slice(0,10).join('<br>') + (validationErrors.length > 10 ? `<br>… and ${validationErrors.length-10} more` : '');
+    } else {
+      $('#csvValidationErrors').style.display = 'none';
+    }
+
+    $('#btnImportCSV').style.display = validCount > 0 ? 'inline-flex' : 'none';
+    $('#btnImportCSV').textContent = `Import ${validCount} Prospect${validCount !== 1 ? 's' : ''}`;
+  };
+  reader.readAsText(file);
+}
+
+async function executeCSVImport() {
+  const btn = $('#btnImportCSV');
+  btn.disabled = true;
+  btn.textContent = 'Importing…';
+  try {
+    const result = await api('/api/prospects/import', {
+      method: 'POST',
+      body: JSON.stringify({ prospects: csvParsedProspects })
+    });
+
+    // Hide preview, show result
+    $('#csvPreviewSection').style.display = 'none';
+    $('#csvImportResult').style.display = 'block';
+    $('#btnImportCSV').style.display = 'none';
+    $('#btnImportDone').style.display = 'inline-flex';
+
+    const parts = [];
+    if (result.imported > 0) parts.push(`<strong style="color:var(--gold);">${result.imported}</strong> imported`);
+    if (result.skipped > 0) parts.push(`<strong>${result.skipped}</strong> skipped (duplicates)`);
+    if (result.errors && result.errors.length > 0) parts.push(`<strong style="color:#e06c75;">${result.errors.length}</strong> errors`);
+
+    $('#csvResultTitle').textContent = result.imported > 0 ? 'Import Complete' : 'Import Finished';
+    $('#csvResultIcon').textContent = result.imported > 0 ? '✅' : '⚠️';
+    $('#csvResultBody').innerHTML = parts.join(' · ') || 'Nothing to import';
+
+    if (result.errors && result.errors.length > 0) {
+      $('#csvResultErrors').style.display = 'block';
+      $('#csvResultErrorList').innerHTML = result.errors.map(e =>
+        `Row ${e.row} (${e.name}): ${e.reason}`
+      ).join('<br>');
+    }
+  } catch (err) {
+    btn.disabled = false;
+    btn.textContent = 'Import Prospects';
+    showToast('Import failed: ' + err.message, 'error');
   }
 }
 
