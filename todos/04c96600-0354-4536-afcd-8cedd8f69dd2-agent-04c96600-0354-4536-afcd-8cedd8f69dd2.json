@@ -1,0 +1,22 @@
+[
+  {
+    "content": "Create Stripe subscription link (€100/mo)",
+    "status": "completed",
+    "activeForm": "Creating Stripe subscription link"
+  },
+  {
+    "content": "Write migration 015 — billing fields on tenants",
+    "status": "completed",
+    "activeForm": "Writing migration 015"
+  },
+  {
+    "content": "Add billing logic to server.js (trial enforcement, billing page, checkout, activation)",
+    "status": "completed",
+    "activeForm": "Adding billing logic to server.js"
+  },
+  {
+    "content": "Push to remote and verify deploy",
+    "status": "in_progress",
+    "activeForm": "Pushing to remote and verifying deploy"
+  }
+]
