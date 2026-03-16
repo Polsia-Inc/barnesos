@@ -128,6 +128,48 @@ function generateToken(bytes = 48) {
   return crypto.randomBytes(bytes).toString('hex');
 }
 
+// ─── BILLING CONFIG ───────────────────────────────────────────────────────────
+const STRIPE_SUBSCRIPTION_URL = 'https://buy.stripe.com/14A28r0fsgWI0NO4GSdkK1N';
+const BILLING_SECRET = process.env.BILLING_SECRET || SESSION_SECRET + '-billing';
+const TRIAL_DAYS = 14;
+
+// Sign a billing activation token (HMAC-SHA256)
+function signBillingToken(tenantId) {
+  const ts = Date.now();
+  const msg = `${tenantId}:${ts}`;
+  const sig = crypto.createHmac('sha256', BILLING_SECRET).update(msg).digest('hex');
+  return { token: `${tenantId}:${ts}:${sig}`, tenantId, ts };
+}
+
+function verifyBillingToken(token) {
+  try {
+    const [tid, ts, sig] = token.split(':');
+    if (!tid || !ts || !sig) return null;
+    // Token expires after 1 hour
+    if (Date.now() - parseInt(ts) > 3600000) return null;
+    const expected = crypto.createHmac('sha256', BILLING_SECRET).update(`${tid}:${ts}`).digest('hex');
+    if (!crypto.timingSafeEqual(Buffer.from(sig, 'hex'), Buffer.from(expected, 'hex'))) return null;
+    return parseInt(tid);
+  } catch (_) { return null; }
+}
+
+// Compute effective billing status for a tenant row
+function effectiveBillingStatus(tenant) {
+  if (!tenant) return 'unknown';
+  const status = tenant.billing_status || 'trial';
+  if (status === 'trial') {
+    const trialEnd = tenant.trial_ends_at ? new Date(tenant.trial_ends_at) : null;
+    if (trialEnd && new Date() > trialEnd) return 'past_due';
+  }
+  return status;
+}
+
+function trialDaysRemaining(tenant) {
+  if (!tenant || !tenant.trial_ends_at) return 0;
+  const diff = new Date(tenant.trial_ends_at) - new Date();
+  return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+}
+
 // requireBrokerAuth — verifies broker session (tenant-scoped)
 function requireBrokerAuth(req, res, next) {
   if (req.session && req.session.brokerUser) return next();
@@ -168,7 +210,9 @@ app.post('/api/broker/signup', express.json(), async (req, res) => {
       }
 
       const { rows: tenantRows } = await client.query(
-        `INSERT INTO tenants (name, slug) VALUES ($1, $2) RETURNING id, name, slug, primary_color`,
+        `INSERT INTO tenants (name, slug, billing_status, trial_ends_at)
+         VALUES ($1, $2, 'trial', NOW() + INTERVAL '${TRIAL_DAYS} days')
+         RETURNING id, name, slug, primary_color, billing_status, trial_ends_at`,
         [tenant_name, slugClean]
       );
       const tenant = tenantRows[0];
@@ -184,9 +228,9 @@ app.post('/api/broker/signup', express.json(), async (req, res) => {
       await client.query('COMMIT');
 
       req.session.brokerUser = { id: user.id, tenant_id: tenant.id, email: user.email, role: user.role, first_name: user.first_name, last_name: user.last_name };
-      req.session.brokerTenant = { id: tenant.id, name: tenant.name, slug: tenant.slug, primary_color: tenant.primary_color };
+      req.session.brokerTenant = { id: tenant.id, name: tenant.name, slug: tenant.slug, primary_color: tenant.primary_color, billing_status: tenant.billing_status, trial_ends_at: tenant.trial_ends_at };
 
-      return res.json({ success: true, user: req.session.brokerUser, tenant: req.session.brokerTenant });
+      return res.json({ success: true, user: req.session.brokerUser, tenant: req.session.brokerTenant, redirect: '/broker/dashboard' });
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
@@ -211,7 +255,8 @@ app.post('/api/broker/login', express.json(), async (req, res) => {
       query = `
         SELECT bu.id, bu.tenant_id, bu.email, bu.password_hash, bu.role,
                bu.first_name, bu.last_name, bu.status,
-               t.name as tenant_name, t.slug as tenant_slug, t.primary_color
+               t.name as tenant_name, t.slug as tenant_slug, t.primary_color,
+               t.billing_status, t.trial_ends_at, t.subscription_started_at
         FROM broker_users bu
         JOIN tenants t ON t.id = bu.tenant_id
         WHERE bu.email = $1 AND t.slug = $2 AND t.status = 'active'
@@ -222,7 +267,8 @@ app.post('/api/broker/login', express.json(), async (req, res) => {
       query = `
         SELECT bu.id, bu.tenant_id, bu.email, bu.password_hash, bu.role,
                bu.first_name, bu.last_name, bu.status,
-               t.name as tenant_name, t.slug as tenant_slug, t.primary_color
+               t.name as tenant_name, t.slug as tenant_slug, t.primary_color,
+               t.billing_status, t.trial_ends_at, t.subscription_started_at
         FROM broker_users bu
         JOIN tenants t ON t.id = bu.tenant_id
         WHERE bu.email = $1 AND t.status = 'active'
@@ -256,7 +302,7 @@ app.post('/api/broker/login', express.json(), async (req, res) => {
     await pool.query(`UPDATE broker_users SET last_login_at = NOW() WHERE id = $1`, [user.id]);
 
     req.session.brokerUser = { id: user.id, tenant_id: user.tenant_id, email: user.email, role: user.role, first_name: user.first_name, last_name: user.last_name };
-    req.session.brokerTenant = { id: user.tenant_id, name: user.tenant_name, slug: user.tenant_slug, primary_color: user.primary_color };
+    req.session.brokerTenant = { id: user.tenant_id, name: user.tenant_name, slug: user.tenant_slug, primary_color: user.primary_color, billing_status: user.billing_status || 'active', trial_ends_at: user.trial_ends_at, subscription_started_at: user.subscription_started_at };
 
     return res.json({ success: true, user: req.session.brokerUser, tenant: req.session.brokerTenant });
   } catch (err) {
@@ -381,12 +427,12 @@ app.post('/api/broker/accept-invite', express.json(), async (req, res) => {
 
       const user = userRows[0];
       const { rows: tenantRows } = await pool.query(
-        `SELECT id, name, slug, primary_color FROM tenants WHERE id = $1`, [invite.tenant_id]
+        `SELECT id, name, slug, primary_color, billing_status, trial_ends_at, subscription_started_at FROM tenants WHERE id = $1`, [invite.tenant_id]
       );
       const tenant = tenantRows[0];
 
       req.session.brokerUser = { id: user.id, tenant_id: user.tenant_id, email: user.email, role: user.role, first_name: user.first_name, last_name: user.last_name };
-      req.session.brokerTenant = { id: tenant.id, name: tenant.name, slug: tenant.slug, primary_color: tenant.primary_color };
+      req.session.brokerTenant = { id: tenant.id, name: tenant.name, slug: tenant.slug, primary_color: tenant.primary_color, billing_status: tenant.billing_status || 'active', trial_ends_at: tenant.trial_ends_at, subscription_started_at: tenant.subscription_started_at };
 
       return res.json({ success: true, user: req.session.brokerUser, tenant: req.session.brokerTenant });
     } catch (err) {
@@ -444,6 +490,68 @@ app.put('/api/broker/team/:id', express.json(), requireBrokerAuth, requireBroker
   } catch (err) {
     console.error('[Broker] Team update error:', err.message);
     return res.status(500).json({ success: false, message: 'Update failed' });
+  }
+});
+
+// ─── BILLING API ─────────────────────────────────────────────────────────────
+
+// GET /api/broker/billing/status — returns current billing status for tenant
+app.get('/api/broker/billing/status', requireBrokerAuth, async (req, res) => {
+  const tenantId = req.session.brokerTenant.id;
+  try {
+    const { rows } = await pool.query(
+      `SELECT billing_status, trial_ends_at, subscription_started_at FROM tenants WHERE id = $1`,
+      [tenantId]
+    );
+    if (rows.length === 0) return res.status(404).json({ success: false, message: 'Tenant not found' });
+    const t = rows[0];
+    const status = effectiveBillingStatus(t);
+
+    // Auto-update if trial expired
+    if (status === 'past_due' && t.billing_status === 'trial') {
+      await pool.query(`UPDATE tenants SET billing_status = 'past_due' WHERE id = $1`, [tenantId]);
+      req.session.brokerTenant.billing_status = 'past_due';
+    }
+
+    return res.json({
+      success: true,
+      billing: {
+        status,
+        trial_ends_at: t.trial_ends_at,
+        trial_days_remaining: trialDaysRemaining(t),
+        subscription_started_at: t.subscription_started_at,
+        stripe_url: STRIPE_SUBSCRIPTION_URL
+      }
+    });
+  } catch (err) {
+    console.error('[Billing] Status error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch billing status' });
+  }
+});
+
+// POST /api/broker/billing/activate — called after successful Stripe payment
+// Uses signed token to identify tenant (passed through success_url)
+app.post('/api/broker/billing/activate', requireBrokerAuth, async (req, res) => {
+  const tenantId = req.session.brokerTenant.id;
+  try {
+    const { rows } = await pool.query(
+      `UPDATE tenants
+       SET billing_status = 'active',
+           subscription_started_at = COALESCE(subscription_started_at, NOW())
+       WHERE id = $1
+       RETURNING billing_status, subscription_started_at`,
+      [tenantId]
+    );
+    if (rows.length === 0) return res.status(404).json({ success: false, message: 'Tenant not found' });
+
+    // Refresh session
+    req.session.brokerTenant.billing_status = 'active';
+    req.session.brokerTenant.subscription_started_at = rows[0].subscription_started_at;
+
+    return res.json({ success: true, billing_status: 'active' });
+  } catch (err) {
+    console.error('[Billing] Activate error:', err.message);
+    return res.status(500).json({ success: false, message: 'Activation failed' });
   }
 });
 
@@ -2925,7 +3033,7 @@ app.get('/broker/signup', (req, res) => {
   <div class="card">
     <div class="logo">
       <h1>Create Your Workspace</h1>
-      <p>Start your Barnes broker portal — €100/mo per broker</p>
+      <p>14-day free trial, then €100/month — no card required to start</p>
     </div>
     <div class="error" id="err"></div>
     <div class="form-group">
@@ -3035,6 +3143,33 @@ app.get('/broker/dashboard', (req, res) => {
   if (!req.session || !req.session.brokerUser) return res.redirect('/broker/login');
   const user = req.session.brokerUser;
   const tenant = req.session.brokerTenant;
+
+  // Compute billing state server-side for initial render
+  const billingStatus = effectiveBillingStatus(tenant);
+  const daysLeft = trialDaysRemaining(tenant);
+  const isReadOnly = billingStatus === 'past_due' || billingStatus === 'cancelled';
+
+  let billingBanner = '';
+  if (billingStatus === 'trial' && daysLeft <= 7) {
+    billingBanner = `
+    <div style="background:#78350f;border:1px solid #b45309;border-radius:8px;padding:14px 20px;margin-bottom:24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+      <span style="font-size:14px;color:#fde68a">⏰ <strong>${daysLeft} day${daysLeft !== 1 ? 's' : ''} left</strong> on your free trial — subscribe to keep full access</span>
+      <a href="/broker/billing" style="background:#f59e0b;color:#1c1917;font-size:13px;font-weight:700;padding:7px 18px;border-radius:6px;text-decoration:none">View Billing →</a>
+    </div>`;
+  } else if (isReadOnly) {
+    billingBanner = `
+    <div style="background:#450a0a;border:1px solid #b91c1c;border-radius:8px;padding:14px 20px;margin-bottom:24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+      <span style="font-size:14px;color:#fca5a5">🔒 <strong>Subscription required.</strong> Your workspace is in read-only mode. Data is preserved.</span>
+      <a href="/broker/billing" style="background:#ef4444;color:#fff;font-size:13px;font-weight:700;padding:7px 18px;border-radius:6px;text-decoration:none">Subscribe Now →</a>
+    </div>`;
+  } else if (billingStatus === 'trial') {
+    billingBanner = `
+    <div style="background:#0c2340;border:1px solid #1d4ed8;border-radius:8px;padding:12px 20px;margin-bottom:24px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+      <span style="font-size:13px;color:#93c5fd">🎁 Free trial active — <strong>${daysLeft} days remaining</strong></span>
+      <a href="/broker/billing" style="color:#60a5fa;font-size:13px;font-weight:600;text-decoration:none">Manage billing →</a>
+    </div>`;
+  }
+
   res.send(`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -3053,7 +3188,7 @@ app.get('/broker/dashboard', (req, res) => {
     .topbar-right a { color: #64748b; text-decoration: none; }
     .topbar-right a:hover { color: #94a3b8; }
     .main { max-width: 900px; margin: 40px auto; padding: 0 24px; }
-    .welcome { margin-bottom: 32px; }
+    .welcome { margin-bottom: 24px; }
     .welcome h2 { font-size: 24px; font-weight: 700; color: #f1f5f9; }
     .welcome p { color: #64748b; margin-top: 4px; font-size: 14px; }
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin-bottom: 32px; }
@@ -3083,6 +3218,8 @@ app.get('/broker/dashboard', (req, res) => {
     .invite-link { background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 10px 12px; font-size: 12px; color: #94a3b8; font-family: monospace; word-break: break-all; margin-top: 12px; display: none; }
     .copy-btn { cursor: pointer; color: #3b82f6; }
     .error-msg { color: #fca5a5; font-size: 12px; margin-top: 6px; display: none; }
+    .readonly-overlay { position: relative; }
+    .readonly-overlay::after { content: ''; position: absolute; inset: 0; background: rgba(15,23,42,0.6); border-radius: 10px; pointer-events: all; }
   </style>
 </head>
 <body>
@@ -3092,15 +3229,18 @@ app.get('/broker/dashboard', (req, res) => {
       <span class="badge">${tenant.slug}</span>
     </div>
     <div class="topbar-right">
+      <a href="/broker/billing" style="color:#60a5fa">Billing</a>
       <span>${user.first_name} ${user.last_name} · <strong style="color:#e2e8f0">${user.role}</strong></span>
       <a href="/api/broker/logout">Sign out</a>
     </div>
   </div>
 
   <div class="main">
+    ${billingBanner}
+
     <div class="welcome">
       <h2>Welcome back, ${user.first_name || user.email}</h2>
-      <p>Your broker workspace is active. Manage your team and settings below.</p>
+      <p>${isReadOnly ? 'Your workspace is in read-only mode. Subscribe to re-enable all features.' : 'Your broker workspace is active. Manage your team and settings below.'}</p>
     </div>
 
     <div class="grid" id="stats-grid">
@@ -3109,7 +3249,7 @@ app.get('/broker/dashboard', (req, res) => {
       <div class="stat" id="team-count-stat"><label>Team Members</label><div class="value" id="team-count">—</div></div>
     </div>
 
-    ${user.role === 'admin' ? `
+    ${user.role === 'admin' && !isReadOnly ? `
     <div class="section">
       <div class="section-header"><h3>Team Members</h3></div>
       <div class="invite-form">
@@ -3128,6 +3268,14 @@ app.get('/broker/dashboard', (req, res) => {
         <tbody id="team-tbody"><tr><td colspan="5" style="color:#64748b;text-align:center;padding:20px">Loading…</td></tr></tbody>
       </table>
     </div>
+    ` : user.role === 'admin' && isReadOnly ? `
+    <div class="section" style="opacity:0.5;pointer-events:none">
+      <div class="section-header"><h3>Team Members <span style="font-size:12px;color:#64748b;font-weight:400">(read-only)</span></h3></div>
+      <table class="table" id="team-table">
+        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Last Login</th></tr></thead>
+        <tbody id="team-tbody"><tr><td colspan="5" style="color:#64748b;text-align:center;padding:20px">Loading…</td></tr></tbody>
+      </table>
+    </div>
     ` : ''}
 
     <div class="section">
@@ -3137,6 +3285,12 @@ app.get('/broker/dashboard', (req, res) => {
           <tr><td style="color:#64748b">Email</td><td>${user.email}</td></tr>
           <tr><td style="color:#64748b">Workspace</td><td>${tenant.name} <span style="color:#64748b;font-size:12px">(${tenant.slug})</span></td></tr>
           <tr><td style="color:#64748b">Role</td><td style="text-transform:capitalize">${user.role}</td></tr>
+          <tr><td style="color:#64748b">Subscription</td><td><a href="/broker/billing" style="color:#60a5fa">${
+            billingStatus === 'active' ? '✅ Active — €100/month' :
+            billingStatus === 'trial' ? `⏳ Free trial (${daysLeft} days left)` :
+            billingStatus === 'past_due' ? '🔴 Payment required' :
+            billingStatus === 'cancelled' ? '🚫 Cancelled' : billingStatus
+          }</a></td></tr>
         </tbody>
       </table>
     </div>
@@ -3144,6 +3298,7 @@ app.get('/broker/dashboard', (req, res) => {
 
   <script>
     const IS_ADMIN = ${JSON.stringify(user.role === 'admin')};
+    const IS_READONLY = ${JSON.stringify(isReadOnly)};
 
     async function loadTeam() {
       if (!IS_ADMIN) return;
@@ -3168,6 +3323,7 @@ app.get('/broker/dashboard', (req, res) => {
     }
 
     async function sendInvite() {
+      if (IS_READONLY) return;
       const email = document.getElementById('invite-email').value.trim();
       const role = document.getElementById('invite-role').value;
       const err = document.getElementById('invite-err');
@@ -3203,6 +3359,142 @@ app.get('/broker/dashboard', (req, res) => {
   </script>
 </body>
 </html>`);
+});
+
+// GET /broker/billing — billing settings page
+app.get('/broker/billing', async (req, res) => {
+  if (!req.session || !req.session.brokerUser) return res.redirect('/broker/login');
+  const user = req.session.brokerUser;
+  const tenant = req.session.brokerTenant;
+
+  // Refresh billing status from DB
+  let billingData = { billing_status: tenant.billing_status || 'trial', trial_ends_at: tenant.trial_ends_at, subscription_started_at: tenant.subscription_started_at };
+  try {
+    const { rows } = await pool.query(
+      `SELECT billing_status, trial_ends_at, subscription_started_at FROM tenants WHERE id = $1`,
+      [tenant.id]
+    );
+    if (rows.length > 0) {
+      billingData = rows[0];
+      // Auto-expire trial
+      const status = effectiveBillingStatus(billingData);
+      if (status === 'past_due' && billingData.billing_status === 'trial') {
+        await pool.query(`UPDATE tenants SET billing_status = 'past_due' WHERE id = $1`, [tenant.id]);
+        billingData.billing_status = 'past_due';
+      }
+      req.session.brokerTenant.billing_status = billingData.billing_status;
+      req.session.brokerTenant.trial_ends_at = billingData.trial_ends_at;
+    }
+  } catch (e) { console.error('[Billing page] DB error:', e.message); }
+
+  const status = effectiveBillingStatus(billingData);
+  const daysLeft = trialDaysRemaining(billingData);
+
+  const statusLabel = status === 'active' ? '<span style="color:#86efac">● Active</span>'
+    : status === 'trial' ? `<span style="color:#93c5fd">● Free Trial</span>`
+    : status === 'past_due' ? '<span style="color:#fca5a5">● Payment Required</span>'
+    : '<span style="color:#78716c">● Cancelled</span>';
+
+  res.send(brokerPage('Billing & Subscription', `
+  <style>body { display:block !important; }</style>
+  <div style="max-width:600px;margin:0 auto;padding:40px 24px">
+    <div style="margin-bottom:32px">
+      <a href="/broker/dashboard" style="color:#64748b;font-size:13px;text-decoration:none">← Back to Dashboard</a>
+    </div>
+
+    <h2 style="font-size:22px;font-weight:700;color:#f1f5f9;margin-bottom:8px">Billing & Subscription</h2>
+    <p style="color:#64748b;font-size:14px;margin-bottom:32px">Manage your BarnesOS subscription</p>
+
+    <!-- Current Plan Card -->
+    <div style="background:#1e293b;border:1px solid #334155;border-radius:12px;padding:28px;margin-bottom:20px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px">
+        <div>
+          <div style="font-size:12px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;font-weight:600;margin-bottom:6px">Current Plan</div>
+          <div style="font-size:20px;font-weight:700;color:#f1f5f9">BarnesOS Broker</div>
+          <div style="font-size:14px;color:#64748b;margin-top:4px">€100 / month · Full workspace access</div>
+        </div>
+        <div style="text-align:right">
+          <div style="font-size:12px;color:#64748b;margin-bottom:4px">Status</div>
+          <div style="font-size:15px;font-weight:600">${statusLabel}</div>
+        </div>
+      </div>
+
+      ${status === 'trial' ? `
+      <div style="border-top:1px solid #334155;margin-top:20px;padding-top:20px">
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px">
+          <div>
+            <div style="font-size:13px;color:#94a3b8">Trial ends: <strong style="color:#f1f5f9">${billingData.trial_ends_at ? new Date(billingData.trial_ends_at).toLocaleDateString('en-GB', {day:'numeric',month:'long',year:'numeric'}) : '—'}</strong></div>
+            <div style="font-size:13px;color:#94a3b8;margin-top:4px"><strong style="color:#f1f5f9">${daysLeft} days</strong> remaining</div>
+          </div>
+          <a href="${STRIPE_SUBSCRIPTION_URL}" target="_blank" style="background:#3b82f6;color:#fff;font-size:14px;font-weight:700;padding:10px 24px;border-radius:8px;text-decoration:none;display:inline-block">Subscribe — €100/mo →</a>
+        </div>
+      </div>` : ''}
+
+      ${status === 'past_due' ? `
+      <div style="background:#450a0a;border:1px solid #b91c1c;border-radius:8px;padding:16px;margin-top:20px">
+        <p style="color:#fca5a5;font-size:14px;margin-bottom:12px">Your free trial has ended. Subscribe now to restore full access. Your data is safe and preserved.</p>
+        <a href="${STRIPE_SUBSCRIPTION_URL}" target="_blank" style="background:#ef4444;color:#fff;font-size:14px;font-weight:700;padding:10px 24px;border-radius:8px;text-decoration:none;display:inline-block">Subscribe Now — €100/mo →</a>
+      </div>` : ''}
+
+      ${status === 'active' ? `
+      <div style="border-top:1px solid #334155;margin-top:20px;padding-top:20px">
+        <div style="font-size:13px;color:#94a3b8">Subscription started: <strong style="color:#f1f5f9">${billingData.subscription_started_at ? new Date(billingData.subscription_started_at).toLocaleDateString('en-GB', {day:'numeric',month:'long',year:'numeric'}) : '—'}</strong></div>
+        <div style="font-size:13px;color:#86efac;margin-top:8px">✓ Full access to all features</div>
+      </div>` : ''}
+    </div>
+
+    <!-- What's included -->
+    <div style="background:#1e293b;border:1px solid #334155;border-radius:12px;padding:24px;margin-bottom:20px">
+      <div style="font-size:13px;font-weight:600;color:#f1f5f9;margin-bottom:14px">What's included</div>
+      <ul style="list-style:none;display:flex;flex-direction:column;gap:8px">
+        ${['Yacht inventory management','Deal flow tracking','Signal radar (AI prospect intelligence)','Team collaboration (unlimited users)','Barnes OS cockpit & command center'].map(f => `<li style="font-size:13px;color:#94a3b8">✓ ${f}</li>`).join('')}
+      </ul>
+    </div>
+
+    <div style="font-size:12px;color:#475569;text-align:center;margin-top:16px">
+      Questions? Email <a href="mailto:support@barnesos.com" style="color:#60a5fa">support@barnesos.com</a>
+    </div>
+  </div>
+
+  <script>
+    // If user just paid and landed here via redirect, activate automatically
+    (async () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('activated') === '1') {
+        try {
+          await fetch('/api/broker/billing/activate', { method: 'POST' });
+          window.location.href = '/broker/billing?activated=done';
+        } catch (e) {}
+      }
+    })();
+  </script>`));
+});
+
+// GET /broker/billing/activated — Stripe success redirect page
+app.get('/broker/billing/activated', async (req, res) => {
+  if (!req.session || !req.session.brokerUser) {
+    // Not logged in — redirect to login with a message
+    return res.redirect('/broker/login?msg=Payment+successful!+Please+sign+in+to+activate+your+account.');
+  }
+
+  // Activate the subscription
+  try {
+    await pool.query(
+      `UPDATE tenants SET billing_status = 'active', subscription_started_at = COALESCE(subscription_started_at, NOW()) WHERE id = $1`,
+      [req.session.brokerTenant.id]
+    );
+    req.session.brokerTenant.billing_status = 'active';
+  } catch (e) {
+    console.error('[Billing] Activation error:', e.message);
+  }
+
+  res.send(brokerPage('Subscription Active!', `
+  <div class="card" style="text-align:center">
+    <div style="font-size:56px;margin-bottom:16px">🎉</div>
+    <h1 style="font-size:22px;color:#f1f5f9;margin-bottom:8px">Subscription Active!</h1>
+    <p style="color:#64748b;font-size:14px;margin-bottom:28px">You're all set. Full access to BarnesOS is now enabled for <strong style="color:#f1f5f9">${req.session.brokerTenant.name}</strong>.</p>
+    <a href="/broker/dashboard" style="background:#3b82f6;color:#fff;font-size:14px;font-weight:700;padding:12px 32px;border-radius:8px;text-decoration:none;display:inline-block">Go to Dashboard →</a>
+  </div>`));
 });
 
 // Redirect /broker → /broker/dashboard or /broker/login
