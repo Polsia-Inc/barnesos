@@ -1,0 +1,22 @@
+[
+  {
+    "content": "Create migration 014_multi_tenant_saas.js (tenants, broker_users, invites, RLS)",
+    "status": "completed",
+    "activeForm": "Creating migration 014_multi_tenant_saas.js"
+  },
+  {
+    "content": "Add broker auth routes to server.js (signup, login, invite, accept, me)",
+    "status": "completed",
+    "activeForm": "Adding broker auth routes to server.js"
+  },
+  {
+    "content": "Update login page + add broker portal UI",
+    "status": "completed",
+    "activeForm": "Updating login page + broker portal UI"
+  },
+  {
+    "content": "Push and verify deployment",
+    "status": "in_progress",
+    "activeForm": "Pushing and verifying deployment"
+  }
+]
