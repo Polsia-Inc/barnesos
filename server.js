@@ -4,6 +4,7 @@ const { Pool } = require('pg');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
+const crypto = require('crypto');
 const OpenAI = require('openai');
 
 const app = express();
@@ -59,6 +60,8 @@ function requireAuth(req, res, next) {
 app.use((req, res, next) => {
   if (req.path === '/login' || req.path === '/login.html') return next();
   if (req.path.startsWith('/api/') || req.path === '/health') return next();
+  // Allow broker portal pages through (they handle their own auth)
+  if (req.path.startsWith('/broker')) return next();
   // Block root (express.static would serve public/index.html) and .html files
   if (req.path === '/' || req.path.endsWith('.html')) {
     if (!req.session || !req.session.authenticated) {
@@ -97,10 +100,358 @@ app.get('/api/auth/logout', (req, res) => {
   });
 });
 
+// ─── BROKER AUTH UTILITIES ───────────────────────────────────────────────────
+
+async function hashPassword(password) {
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = await new Promise((resolve, reject) => {
+    crypto.scrypt(password, salt, 64, (err, buf) => {
+      if (err) reject(err);
+      else resolve(buf.toString('hex'));
+    });
+  });
+  return `${salt}:${hash}`;
+}
+
+async function verifyPassword(password, stored) {
+  const [salt, hash] = stored.split(':');
+  const candidate = await new Promise((resolve, reject) => {
+    crypto.scrypt(password, salt, 64, (err, buf) => {
+      if (err) reject(err);
+      else resolve(buf.toString('hex'));
+    });
+  });
+  return crypto.timingSafeEqual(Buffer.from(hash, 'hex'), Buffer.from(candidate, 'hex'));
+}
+
+function generateToken(bytes = 48) {
+  return crypto.randomBytes(bytes).toString('hex');
+}
+
+// requireBrokerAuth — verifies broker session (tenant-scoped)
+function requireBrokerAuth(req, res, next) {
+  if (req.session && req.session.brokerUser) return next();
+  return res.status(401).json({ success: false, message: 'Broker authentication required' });
+}
+
+// requireBrokerAdmin — broker must have admin role
+function requireBrokerAdmin(req, res, next) {
+  if (req.session && req.session.brokerUser && req.session.brokerUser.role === 'admin') return next();
+  return res.status(403).json({ success: false, message: 'Admin access required' });
+}
+
+// ─── BROKER AUTH ROUTES ───────────────────────────────────────────────────────
+// All at /api/broker/* — exempt from the internal SITE_PASSWORD guard below
+
+// POST /api/broker/signup — create new tenant + admin user
+app.post('/api/broker/signup', express.json(), async (req, res) => {
+  const { tenant_name, slug, email, password, first_name, last_name } = req.body;
+  if (!tenant_name || !slug || !email || !password) {
+    return res.status(400).json({ success: false, message: 'tenant_name, slug, email, and password are required' });
+  }
+  if (password.length < 8) {
+    return res.status(400).json({ success: false, message: 'Password must be at least 8 characters' });
+  }
+  const slugClean = slug.toLowerCase().replace(/[^a-z0-9-]/g, '-');
+  try {
+    const passwordHash = await hashPassword(password);
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const { rows: existing } = await client.query(
+        `SELECT id FROM tenants WHERE slug = $1`, [slugClean]
+      );
+      if (existing.length > 0) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({ success: false, message: 'That subdomain is already taken' });
+      }
+
+      const { rows: tenantRows } = await client.query(
+        `INSERT INTO tenants (name, slug) VALUES ($1, $2) RETURNING id, name, slug, primary_color`,
+        [tenant_name, slugClean]
+      );
+      const tenant = tenantRows[0];
+
+      const { rows: userRows } = await client.query(
+        `INSERT INTO broker_users (tenant_id, email, password_hash, role, first_name, last_name, status)
+         VALUES ($1, $2, $3, 'admin', $4, $5, 'active')
+         RETURNING id, tenant_id, email, role, first_name, last_name`,
+        [tenant.id, email.toLowerCase(), passwordHash, first_name || '', last_name || '']
+      );
+      const user = userRows[0];
+
+      await client.query('COMMIT');
+
+      req.session.brokerUser = { id: user.id, tenant_id: tenant.id, email: user.email, role: user.role, first_name: user.first_name, last_name: user.last_name };
+      req.session.brokerTenant = { id: tenant.id, name: tenant.name, slug: tenant.slug, primary_color: tenant.primary_color };
+
+      return res.json({ success: true, user: req.session.brokerUser, tenant: req.session.brokerTenant });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    console.error('[Broker] Signup error:', err.message);
+    return res.status(500).json({ success: false, message: 'Signup failed' });
+  }
+});
+
+// POST /api/broker/login — email/password login (tenant-scoped by email)
+app.post('/api/broker/login', express.json(), async (req, res) => {
+  const { email, password, tenant_slug } = req.body;
+  if (!email || !password) {
+    return res.status(400).json({ success: false, message: 'Email and password are required' });
+  }
+  try {
+    let query, params;
+    if (tenant_slug) {
+      query = `
+        SELECT bu.id, bu.tenant_id, bu.email, bu.password_hash, bu.role,
+               bu.first_name, bu.last_name, bu.status,
+               t.name as tenant_name, t.slug as tenant_slug, t.primary_color
+        FROM broker_users bu
+        JOIN tenants t ON t.id = bu.tenant_id
+        WHERE bu.email = $1 AND t.slug = $2 AND t.status = 'active'
+        LIMIT 1
+      `;
+      params = [email.toLowerCase(), tenant_slug];
+    } else {
+      query = `
+        SELECT bu.id, bu.tenant_id, bu.email, bu.password_hash, bu.role,
+               bu.first_name, bu.last_name, bu.status,
+               t.name as tenant_name, t.slug as tenant_slug, t.primary_color
+        FROM broker_users bu
+        JOIN tenants t ON t.id = bu.tenant_id
+        WHERE bu.email = $1 AND t.status = 'active'
+        ORDER BY bu.created_at ASC
+        LIMIT 1
+      `;
+      params = [email.toLowerCase()];
+    }
+
+    const { rows } = await pool.query(query, params);
+    if (rows.length === 0) {
+      return res.status(401).json({ success: false, message: 'Invalid email or password' });
+    }
+    const user = rows[0];
+
+    if (user.status === 'disabled') {
+      return res.status(403).json({ success: false, message: 'Account disabled. Contact your admin.' });
+    }
+    if (user.status === 'invited') {
+      return res.status(403).json({ success: false, message: 'Please accept your invitation first.' });
+    }
+    if (!user.password_hash) {
+      return res.status(401).json({ success: false, message: 'Password not set. Use your invitation link.' });
+    }
+
+    const valid = await verifyPassword(password, user.password_hash);
+    if (!valid) {
+      return res.status(401).json({ success: false, message: 'Invalid email or password' });
+    }
+
+    await pool.query(`UPDATE broker_users SET last_login_at = NOW() WHERE id = $1`, [user.id]);
+
+    req.session.brokerUser = { id: user.id, tenant_id: user.tenant_id, email: user.email, role: user.role, first_name: user.first_name, last_name: user.last_name };
+    req.session.brokerTenant = { id: user.tenant_id, name: user.tenant_name, slug: user.tenant_slug, primary_color: user.primary_color };
+
+    return res.json({ success: true, user: req.session.brokerUser, tenant: req.session.brokerTenant });
+  } catch (err) {
+    console.error('[Broker] Login error:', err.message);
+    return res.status(500).json({ success: false, message: 'Login failed' });
+  }
+});
+
+// GET /api/broker/me — current broker session info
+app.get('/api/broker/me', requireBrokerAuth, (req, res) => {
+  return res.json({ success: true, user: req.session.brokerUser, tenant: req.session.brokerTenant });
+});
+
+// GET /api/broker/logout
+app.get('/api/broker/logout', (req, res) => {
+  delete req.session.brokerUser;
+  delete req.session.brokerTenant;
+  return res.redirect('/broker/login');
+});
+
+// POST /api/broker/invite — admin invites team member
+app.post('/api/broker/invite', express.json(), requireBrokerAuth, requireBrokerAdmin, async (req, res) => {
+  const { email, role } = req.body;
+  if (!email) return res.status(400).json({ success: false, message: 'Email is required' });
+  const inviteRole = role === 'admin' ? 'admin' : 'broker';
+  const tenantId = req.session.brokerTenant.id;
+  try {
+    // Check not already a user in this tenant
+    const { rows: existing } = await pool.query(
+      `SELECT id, status FROM broker_users WHERE tenant_id = $1 AND email = $2`,
+      [tenantId, email.toLowerCase()]
+    );
+    if (existing.length > 0 && existing[0].status === 'active') {
+      return res.status(409).json({ success: false, message: 'User already exists in this team' });
+    }
+
+    const token = generateToken(48);
+
+    await pool.query(
+      `INSERT INTO broker_invites (tenant_id, email, role, token, invited_by)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT DO NOTHING`,
+      [tenantId, email.toLowerCase(), inviteRole, token, req.session.brokerUser.id]
+    );
+
+    // Also create placeholder user with 'invited' status
+    await pool.query(
+      `INSERT INTO broker_users (tenant_id, email, role, status)
+       VALUES ($1, $2, $3, 'invited')
+       ON CONFLICT (tenant_id, email) DO UPDATE SET role = $3, status = 'invited'`,
+      [tenantId, email.toLowerCase(), inviteRole]
+    );
+
+    const inviteUrl = `${req.protocol}://${req.get('host')}/broker/accept-invite?token=${token}`;
+    console.log(`[Broker] Invite created for ${email}: ${inviteUrl}`);
+
+    return res.json({ success: true, invite_url: inviteUrl, token, role: inviteRole });
+  } catch (err) {
+    console.error('[Broker] Invite error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to create invite' });
+  }
+});
+
+// GET /api/broker/invite-info — get invite details (public)
+app.get('/api/broker/invite-info', async (req, res) => {
+  const { token } = req.query;
+  if (!token) return res.status(400).json({ success: false, message: 'Token required' });
+  try {
+    const { rows } = await pool.query(
+      `SELECT bi.email, bi.role, bi.expires_at, bi.accepted_at,
+              t.name as tenant_name, t.slug as tenant_slug
+       FROM broker_invites bi
+       JOIN tenants t ON t.id = bi.tenant_id
+       WHERE bi.token = $1`,
+      [token]
+    );
+    if (rows.length === 0) return res.status(404).json({ success: false, message: 'Invalid invite token' });
+    const invite = rows[0];
+    if (invite.accepted_at) return res.status(410).json({ success: false, message: 'Invite already accepted' });
+    if (new Date(invite.expires_at) < new Date()) return res.status(410).json({ success: false, message: 'Invite has expired' });
+    return res.json({ success: true, invite: { email: invite.email, role: invite.role, tenant_name: invite.tenant_name, tenant_slug: invite.tenant_slug } });
+  } catch (err) {
+    console.error('[Broker] Invite-info error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch invite info' });
+  }
+});
+
+// POST /api/broker/accept-invite — set password and activate account
+app.post('/api/broker/accept-invite', express.json(), async (req, res) => {
+  const { token, password, first_name, last_name } = req.body;
+  if (!token || !password) return res.status(400).json({ success: false, message: 'Token and password are required' });
+  if (password.length < 8) return res.status(400).json({ success: false, message: 'Password must be at least 8 characters' });
+  try {
+    const { rows } = await pool.query(
+      `SELECT bi.id, bi.tenant_id, bi.email, bi.role, bi.expires_at, bi.accepted_at
+       FROM broker_invites bi
+       WHERE bi.token = $1`,
+      [token]
+    );
+    if (rows.length === 0) return res.status(404).json({ success: false, message: 'Invalid invite token' });
+    const invite = rows[0];
+    if (invite.accepted_at) return res.status(410).json({ success: false, message: 'Invite already accepted' });
+    if (new Date(invite.expires_at) < new Date()) return res.status(410).json({ success: false, message: 'Invite has expired' });
+
+    const passwordHash = await hashPassword(password);
+
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const { rows: userRows } = await client.query(
+        `UPDATE broker_users
+         SET password_hash = $1, status = 'active', first_name = $2, last_name = $3
+         WHERE tenant_id = $4 AND email = $5
+         RETURNING id, tenant_id, email, role, first_name, last_name`,
+        [passwordHash, first_name || '', last_name || '', invite.tenant_id, invite.email]
+      );
+      await client.query(
+        `UPDATE broker_invites SET accepted_at = NOW() WHERE id = $1`,
+        [invite.id]
+      );
+      await client.query('COMMIT');
+
+      const user = userRows[0];
+      const { rows: tenantRows } = await pool.query(
+        `SELECT id, name, slug, primary_color FROM tenants WHERE id = $1`, [invite.tenant_id]
+      );
+      const tenant = tenantRows[0];
+
+      req.session.brokerUser = { id: user.id, tenant_id: user.tenant_id, email: user.email, role: user.role, first_name: user.first_name, last_name: user.last_name };
+      req.session.brokerTenant = { id: tenant.id, name: tenant.name, slug: tenant.slug, primary_color: tenant.primary_color };
+
+      return res.json({ success: true, user: req.session.brokerUser, tenant: req.session.brokerTenant });
+    } catch (err) {
+      await client.query('ROLLBACK');
+      throw err;
+    } finally {
+      client.release();
+    }
+  } catch (err) {
+    console.error('[Broker] Accept invite error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to accept invite' });
+  }
+});
+
+// GET /api/broker/team — list team members (admin only)
+app.get('/api/broker/team', requireBrokerAuth, requireBrokerAdmin, async (req, res) => {
+  const tenantId = req.session.brokerTenant.id;
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, email, role, status, first_name, last_name, last_login_at, created_at
+       FROM broker_users
+       WHERE tenant_id = $1
+       ORDER BY created_at ASC`,
+      [tenantId]
+    );
+    return res.json({ success: true, team: rows });
+  } catch (err) {
+    console.error('[Broker] Team error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch team' });
+  }
+});
+
+// PUT /api/broker/team/:id — update member role/status (admin only)
+app.put('/api/broker/team/:id', express.json(), requireBrokerAuth, requireBrokerAdmin, async (req, res) => {
+  const tenantId = req.session.brokerTenant.id;
+  const { id } = req.params;
+  const { role, status } = req.body;
+  // Can't demote yourself
+  if (parseInt(id) === req.session.brokerUser.id) {
+    return res.status(400).json({ success: false, message: 'Cannot modify your own account' });
+  }
+  try {
+    const updates = [];
+    const params = [tenantId, id];
+    if (role) { params.push(role); updates.push(`role = $${params.length}`); }
+    if (status) { params.push(status); updates.push(`status = $${params.length}`); }
+    if (!updates.length) return res.status(400).json({ success: false, message: 'No fields to update' });
+
+    const { rows } = await pool.query(
+      `UPDATE broker_users SET ${updates.join(', ')} WHERE tenant_id = $1 AND id = $2 RETURNING id, email, role, status`,
+      params
+    );
+    if (rows.length === 0) return res.status(404).json({ success: false, message: 'User not found' });
+    return res.json({ success: true, user: rows[0] });
+  } catch (err) {
+    console.error('[Broker] Team update error:', err.message);
+    return res.status(500).json({ success: false, message: 'Update failed' });
+  }
+});
+
 // ─── API AUTH GUARD ───────────────────────────────────────────────────────────
-// Protect all /api routes except auth endpoints
+// Protect all /api routes except auth + broker endpoints
 app.use('/api', (req, res, next) => {
   if (req.path.startsWith('/auth/')) return next();
+  if (req.path.startsWith('/broker/')) return next();
   if (!req.session || !req.session.authenticated) {
     return res.status(401).json({ success: false, message: 'Authentication required' });
   }
@@ -2472,6 +2823,395 @@ app.get('/command-center', requireAuth, (req, res) => {
     res.status(404).json({ message: 'Command Center not found' });
   }
 });
+
+// ─── BROKER PORTAL PAGES ─────────────────────────────────────────────────────
+
+const BROKER_STYLES = `
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+  .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 40px; width: 100%; max-width: 440px; }
+  .logo { text-align: center; margin-bottom: 32px; }
+  .logo h1 { font-size: 22px; font-weight: 700; color: #f1f5f9; letter-spacing: -0.5px; }
+  .logo p { font-size: 13px; color: #64748b; margin-top: 4px; }
+  .form-group { margin-bottom: 18px; }
+  label { display: block; font-size: 13px; font-weight: 500; color: #94a3b8; margin-bottom: 6px; }
+  input { width: 100%; background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 10px 14px; font-size: 14px; color: #f1f5f9; outline: none; transition: border-color 0.2s; }
+  input:focus { border-color: #3b82f6; }
+  input::placeholder { color: #475569; }
+  .btn { width: 100%; padding: 11px; border: none; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
+  .btn-primary { background: #3b82f6; color: #fff; }
+  .btn-primary:hover { opacity: 0.9; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .error { background: #450a0a; border: 1px solid #7f1d1d; color: #fca5a5; border-radius: 8px; padding: 10px 14px; font-size: 13px; margin-bottom: 16px; display: none; }
+  .success { background: #052e16; border: 1px solid #14532d; color: #86efac; border-radius: 8px; padding: 10px 14px; font-size: 13px; margin-bottom: 16px; display: none; }
+  .link-row { text-align: center; margin-top: 20px; font-size: 13px; color: #64748b; }
+  .link-row a { color: #3b82f6; text-decoration: none; }
+  .row { display: flex; gap: 12px; }
+  .row .form-group { flex: 1; }
+  .badge { display: inline-block; background: #1d4ed8; color: #bfdbfe; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; margin-left: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+`;
+
+function brokerPage(title, body) {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${title} — Barnes Broker Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>${BROKER_STYLES}</style>
+</head>
+<body>${body}</body>
+</html>`;
+}
+
+// GET /broker/login
+app.get('/broker/login', (req, res) => {
+  if (req.session && req.session.brokerUser) return res.redirect('/broker/dashboard');
+  res.send(brokerPage('Sign In', `
+  <div class="card">
+    <div class="logo">
+      <h1>Barnes Broker Portal</h1>
+      <p>Sign in to your workspace</p>
+    </div>
+    <div class="error" id="err"></div>
+    <div class="form-group">
+      <label>Email</label>
+      <input type="email" id="email" placeholder="broker@yourfirm.com" autofocus>
+    </div>
+    <div class="form-group">
+      <label>Password</label>
+      <input type="password" id="password" placeholder="••••••••">
+    </div>
+    <div class="form-group" id="slug-group" style="display:none">
+      <label>Workspace Slug <span style="color:#64748b;font-weight:400">(if multiple workspaces)</span></label>
+      <input type="text" id="slug" placeholder="my-firm">
+    </div>
+    <button class="btn btn-primary" id="login-btn" onclick="doLogin()">Sign In</button>
+    <div class="link-row">
+      New firm? <a href="/broker/signup">Create workspace</a>
+      &nbsp;·&nbsp;
+      <a href="#" onclick="document.getElementById('slug-group').style.display='block';this.style.display='none'">Multiple workspaces?</a>
+    </div>
+  </div>
+  <script>
+    document.querySelectorAll('input').forEach(el => el.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); }));
+    async function doLogin() {
+      const btn = document.getElementById('login-btn');
+      const err = document.getElementById('err');
+      err.style.display = 'none';
+      btn.disabled = true; btn.textContent = 'Signing in…';
+      try {
+        const r = await fetch('/api/broker/login', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({
+            email: document.getElementById('email').value.trim(),
+            password: document.getElementById('password').value,
+            tenant_slug: document.getElementById('slug').value.trim() || undefined
+          })
+        });
+        const d = await r.json();
+        if (d.success) { window.location.href = '/broker/dashboard'; }
+        else { err.textContent = d.message; err.style.display = 'block'; btn.disabled = false; btn.textContent = 'Sign In'; }
+      } catch(e) { err.textContent = 'Network error. Try again.'; err.style.display = 'block'; btn.disabled = false; btn.textContent = 'Sign In'; }
+    }
+  </script>`));
+});
+
+// GET /broker/signup
+app.get('/broker/signup', (req, res) => {
+  if (req.session && req.session.brokerUser) return res.redirect('/broker/dashboard');
+  res.send(brokerPage('Create Workspace', `
+  <div class="card">
+    <div class="logo">
+      <h1>Create Your Workspace</h1>
+      <p>Start your Barnes broker portal — €100/mo per broker</p>
+    </div>
+    <div class="error" id="err"></div>
+    <div class="form-group">
+      <label>Firm / Company Name</label>
+      <input type="text" id="tenant_name" placeholder="Riviera Yacht Brokers">
+    </div>
+    <div class="form-group">
+      <label>Workspace Slug <span style="color:#64748b;font-weight:400">(subdomain identifier)</span></label>
+      <input type="text" id="slug" placeholder="riviera-yachts" oninput="this.value=this.value.toLowerCase().replace(/[^a-z0-9-]/g,'-')">
+    </div>
+    <div class="row">
+      <div class="form-group"><label>First Name</label><input type="text" id="first_name" placeholder="Marie"></div>
+      <div class="form-group"><label>Last Name</label><input type="text" id="last_name" placeholder="Dupont"></div>
+    </div>
+    <div class="form-group"><label>Email</label><input type="email" id="email" placeholder="marie@riviera-yachts.com"></div>
+    <div class="form-group"><label>Password</label><input type="password" id="password" placeholder="Min 8 characters"></div>
+    <button class="btn btn-primary" id="signup-btn" onclick="doSignup()">Create Workspace</button>
+    <div class="link-row">Already have an account? <a href="/broker/login">Sign in</a></div>
+  </div>
+  <script>
+    document.querySelectorAll('input').forEach(el => el.addEventListener('keydown', e => { if (e.key === 'Enter') doSignup(); }));
+    async function doSignup() {
+      const btn = document.getElementById('signup-btn');
+      const err = document.getElementById('err');
+      err.style.display = 'none';
+      btn.disabled = true; btn.textContent = 'Creating…';
+      try {
+        const r = await fetch('/api/broker/signup', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({
+            tenant_name: document.getElementById('tenant_name').value.trim(),
+            slug: document.getElementById('slug').value.trim(),
+            email: document.getElementById('email').value.trim(),
+            password: document.getElementById('password').value,
+            first_name: document.getElementById('first_name').value.trim(),
+            last_name: document.getElementById('last_name').value.trim()
+          })
+        });
+        const d = await r.json();
+        if (d.success) { window.location.href = '/broker/dashboard'; }
+        else { err.textContent = d.message; err.style.display = 'block'; btn.disabled = false; btn.textContent = 'Create Workspace'; }
+      } catch(e) { err.textContent = 'Network error. Try again.'; err.style.display = 'block'; btn.disabled = false; btn.textContent = 'Create Workspace'; }
+    }
+  </script>`));
+});
+
+// GET /broker/accept-invite
+app.get('/broker/accept-invite', async (req, res) => {
+  const { token } = req.query;
+  if (!token) return res.redirect('/broker/login');
+  res.send(brokerPage('Accept Invitation', `
+  <div class="card">
+    <div class="logo">
+      <h1>Accept Your Invitation</h1>
+      <p id="invite-subtitle">Loading invitation…</p>
+    </div>
+    <div class="error" id="err"></div>
+    <div id="form-area" style="display:none">
+      <div class="row">
+        <div class="form-group"><label>First Name</label><input type="text" id="first_name" placeholder="Jean"></div>
+        <div class="form-group"><label>Last Name</label><input type="text" id="last_name" placeholder="Martin"></div>
+      </div>
+      <div class="form-group"><label>Password</label><input type="password" id="password" placeholder="Min 8 characters"></div>
+      <button class="btn btn-primary" id="accept-btn" onclick="doAccept()">Set Password & Join</button>
+    </div>
+  </div>
+  <script>
+    const TOKEN = ${JSON.stringify(token)};
+    (async () => {
+      const r = await fetch('/api/broker/invite-info?token=' + TOKEN);
+      const d = await r.json();
+      if (!d.success) {
+        document.getElementById('invite-subtitle').textContent = d.message;
+        document.getElementById('err').textContent = d.message;
+        document.getElementById('err').style.display = 'block';
+        return;
+      }
+      document.getElementById('invite-subtitle').textContent =
+        'You\\'re invited to join ' + d.invite.tenant_name + ' as a ' + d.invite.role;
+      document.getElementById('form-area').style.display = 'block';
+    })();
+    async function doAccept() {
+      const btn = document.getElementById('accept-btn');
+      const err = document.getElementById('err');
+      err.style.display = 'none';
+      btn.disabled = true; btn.textContent = 'Joining…';
+      try {
+        const r = await fetch('/api/broker/accept-invite', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({
+            token: TOKEN,
+            password: document.getElementById('password').value,
+            first_name: document.getElementById('first_name').value.trim(),
+            last_name: document.getElementById('last_name').value.trim()
+          })
+        });
+        const d = await r.json();
+        if (d.success) { window.location.href = '/broker/dashboard'; }
+        else { err.textContent = d.message; err.style.display = 'block'; btn.disabled = false; btn.textContent = 'Set Password & Join'; }
+      } catch(e) { err.textContent = 'Network error. Try again.'; err.style.display = 'block'; btn.disabled = false; btn.textContent = 'Set Password & Join'; }
+    }
+  </script>`));
+});
+
+// GET /broker/dashboard — tenant dashboard
+app.get('/broker/dashboard', (req, res) => {
+  if (!req.session || !req.session.brokerUser) return res.redirect('/broker/login');
+  const user = req.session.brokerUser;
+  const tenant = req.session.brokerTenant;
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${tenant.name} — Broker Portal</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', -apple-system, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
+    .topbar { background: #1e293b; border-bottom: 1px solid #334155; padding: 0 32px; height: 56px; display: flex; align-items: center; justify-content: space-between; }
+    .topbar-left { display: flex; align-items: center; gap: 16px; }
+    .topbar h1 { font-size: 16px; font-weight: 700; color: #f1f5f9; }
+    .badge { background: #1d4ed8; color: #bfdbfe; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .topbar-right { display: flex; align-items: center; gap: 16px; font-size: 13px; color: #94a3b8; }
+    .topbar-right a { color: #64748b; text-decoration: none; }
+    .topbar-right a:hover { color: #94a3b8; }
+    .main { max-width: 900px; margin: 40px auto; padding: 0 24px; }
+    .welcome { margin-bottom: 32px; }
+    .welcome h2 { font-size: 24px; font-weight: 700; color: #f1f5f9; }
+    .welcome p { color: #64748b; margin-top: 4px; font-size: 14px; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; margin-bottom: 32px; }
+    .stat { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 20px; }
+    .stat label { font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; }
+    .stat .value { font-size: 28px; font-weight: 700; color: #f1f5f9; margin-top: 6px; }
+    .section { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 24px; margin-bottom: 24px; }
+    .section-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .section h3 { font-size: 15px; font-weight: 600; color: #f1f5f9; }
+    .btn { padding: 8px 16px; border: none; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer; transition: opacity 0.2s; }
+    .btn-primary { background: #3b82f6; color: #fff; }
+    .btn-primary:hover { opacity: 0.9; }
+    .btn-sm { padding: 5px 12px; font-size: 12px; }
+    .table { width: 100%; border-collapse: collapse; }
+    .table th { font-size: 12px; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; padding: 8px 12px; text-align: left; border-bottom: 1px solid #334155; }
+    .table td { padding: 12px; font-size: 13px; border-bottom: 1px solid #1e293b; color: #cbd5e1; }
+    .table tr:last-child td { border-bottom: none; }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
+    .pill-admin { background: #312e81; color: #a5b4fc; }
+    .pill-broker { background: #164e63; color: #67e8f9; }
+    .pill-active { background: #052e16; color: #86efac; }
+    .pill-invited { background: #431407; color: #fdba74; }
+    .pill-disabled { background: #1c1917; color: #78716c; }
+    .invite-form { display: flex; gap: 10px; align-items: flex-end; flex-wrap: wrap; }
+    .invite-form input { background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 8px 12px; font-size: 13px; color: #f1f5f9; outline: none; flex: 1; min-width: 180px; }
+    .invite-form select { background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 8px 12px; font-size: 13px; color: #f1f5f9; outline: none; }
+    .invite-link { background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 10px 12px; font-size: 12px; color: #94a3b8; font-family: monospace; word-break: break-all; margin-top: 12px; display: none; }
+    .copy-btn { cursor: pointer; color: #3b82f6; }
+    .error-msg { color: #fca5a5; font-size: 12px; margin-top: 6px; display: none; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-left">
+      <h1>${tenant.name}</h1>
+      <span class="badge">${tenant.slug}</span>
+    </div>
+    <div class="topbar-right">
+      <span>${user.first_name} ${user.last_name} · <strong style="color:#e2e8f0">${user.role}</strong></span>
+      <a href="/api/broker/logout">Sign out</a>
+    </div>
+  </div>
+
+  <div class="main">
+    <div class="welcome">
+      <h2>Welcome back, ${user.first_name || user.email}</h2>
+      <p>Your broker workspace is active. Manage your team and settings below.</p>
+    </div>
+
+    <div class="grid" id="stats-grid">
+      <div class="stat"><label>Workspace</label><div class="value" style="font-size:16px;margin-top:8px">${tenant.name}</div></div>
+      <div class="stat"><label>Your Role</label><div class="value" style="font-size:16px;margin-top:8px;text-transform:capitalize">${user.role}</div></div>
+      <div class="stat" id="team-count-stat"><label>Team Members</label><div class="value" id="team-count">—</div></div>
+    </div>
+
+    ${user.role === 'admin' ? `
+    <div class="section">
+      <div class="section-header"><h3>Team Members</h3></div>
+      <div class="invite-form">
+        <input type="email" id="invite-email" placeholder="colleague@yourfirm.com">
+        <select id="invite-role"><option value="broker">Broker</option><option value="admin">Admin</option></select>
+        <button class="btn btn-primary btn-sm" onclick="sendInvite()">Send Invite</button>
+      </div>
+      <div class="error-msg" id="invite-err"></div>
+      <div class="invite-link" id="invite-link-box">
+        Invite link: <span id="invite-link-text"></span>
+        <span class="copy-btn" onclick="copyInvite()">[copy]</span>
+      </div>
+      <br>
+      <table class="table" id="team-table">
+        <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Last Login</th></tr></thead>
+        <tbody id="team-tbody"><tr><td colspan="5" style="color:#64748b;text-align:center;padding:20px">Loading…</td></tr></tbody>
+      </table>
+    </div>
+    ` : ''}
+
+    <div class="section">
+      <div class="section-header"><h3>Account</h3></div>
+      <table class="table">
+        <tbody>
+          <tr><td style="color:#64748b">Email</td><td>${user.email}</td></tr>
+          <tr><td style="color:#64748b">Workspace</td><td>${tenant.name} <span style="color:#64748b;font-size:12px">(${tenant.slug})</span></td></tr>
+          <tr><td style="color:#64748b">Role</td><td style="text-transform:capitalize">${user.role}</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const IS_ADMIN = ${JSON.stringify(user.role === 'admin')};
+
+    async function loadTeam() {
+      if (!IS_ADMIN) return;
+      try {
+        const r = await fetch('/api/broker/team');
+        const d = await r.json();
+        if (!d.success) return;
+        document.getElementById('team-count').textContent = d.team.length;
+        const tbody = document.getElementById('team-tbody');
+        tbody.innerHTML = d.team.map(u => {
+          const name = [u.first_name, u.last_name].filter(Boolean).join(' ') || '—';
+          const login = u.last_login_at ? new Date(u.last_login_at).toLocaleDateString() : 'Never';
+          return '<tr>' +
+            '<td>' + name + '</td>' +
+            '<td>' + u.email + '</td>' +
+            '<td><span class="pill pill-' + u.role + '">' + u.role + '</span></td>' +
+            '<td><span class="pill pill-' + u.status + '">' + u.status + '</span></td>' +
+            '<td>' + login + '</td>' +
+            '</tr>';
+        }).join('');
+      } catch(e) { console.error(e); }
+    }
+
+    async function sendInvite() {
+      const email = document.getElementById('invite-email').value.trim();
+      const role = document.getElementById('invite-role').value;
+      const err = document.getElementById('invite-err');
+      err.style.display = 'none';
+      if (!email) { err.textContent = 'Email is required'; err.style.display = 'block'; return; }
+      try {
+        const r = await fetch('/api/broker/invite', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ email, role })
+        });
+        const d = await r.json();
+        if (d.success) {
+          document.getElementById('invite-link-text').textContent = d.invite_url;
+          document.getElementById('invite-link-box').style.display = 'block';
+          document.getElementById('invite-email').value = '';
+          loadTeam();
+        } else {
+          err.textContent = d.message; err.style.display = 'block';
+        }
+      } catch(e) { err.textContent = 'Network error'; err.style.display = 'block'; }
+    }
+
+    function copyInvite() {
+      const text = document.getElementById('invite-link-text').textContent;
+      navigator.clipboard.writeText(text).then(() => {
+        const btn = document.querySelector('.copy-btn');
+        btn.textContent = '[copied!]';
+        setTimeout(() => btn.textContent = '[copy]', 2000);
+      });
+    }
+
+    loadTeam();
+  </script>
+</body>
+</html>`);
+});
+
+// Redirect /broker → /broker/dashboard or /broker/login
+app.get('/broker', (req, res) => {
+  if (req.session && req.session.brokerUser) return res.redirect('/broker/dashboard');
+  return res.redirect('/broker/login');
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
 
 app.listen(port, () => {
   console.log(`BarnesOS Command Center running on port ${port}`);
