@@ -3503,6 +3503,806 @@ app.get('/broker', (req, res) => {
   return res.redirect('/broker/login');
 });
 
+// ─── BROKER MARKETING LANDING PAGE ───────────────────────────────────────────
+// Public marketing page at /brokers — no auth required
+app.get('/brokers', (req, res) => {
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Signal Radar for Yacht Brokers — Know When Your Clients Are Ready to Buy</title>
+  <meta name="description" content="The only yacht brokerage platform with automated UHNWI buying signal detection. Upload your prospect list, get daily alerts. €100/month per brokerage.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Syne:wght@600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --navy:   #0a1628;
+      --deep:   #0d1f3c;
+      --slate:  #1a2d4a;
+      --slate2: #243d5c;
+      --gold:   #c9a96e;
+      --gold-l: #e0c99e;
+      --gold-d: #9a7a48;
+      --cream:  #f5f0e8;
+      --white:  #ffffff;
+      --mist:   #8a9bb5;
+      --mist-d: #5a7090;
+      --green:  #34d399;
+      --border: rgba(201,169,110,0.15);
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: 'DM Sans', sans-serif;
+      background: var(--navy);
+      color: var(--cream);
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    /* ── GRID BG ── */
+    body::before {
+      content: '';
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background:
+        repeating-linear-gradient(-45deg, transparent, transparent 80px, rgba(201,169,110,0.025) 80px, rgba(201,169,110,0.025) 81px);
+      pointer-events: none; z-index: 0;
+    }
+
+    /* ── LAYOUT ── */
+    .container { position: relative; z-index: 1; max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+    section { position: relative; z-index: 1; }
+
+    /* ── NAV ── */
+    nav {
+      position: sticky; top: 0; z-index: 500;
+      background: rgba(10,22,40,0.9);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-inner {
+      display: flex; align-items: center; justify-content: space-between;
+      max-width: 1100px; margin: 0 auto; padding: 0 24px; height: 64px;
+    }
+    .nav-logo {
+      font-family: 'Syne', sans-serif; font-weight: 800; font-size: 18px;
+      letter-spacing: 1.5px; color: var(--cream); text-decoration: none;
+      display: flex; align-items: center; gap: 10px;
+    }
+    .nav-logo span { color: var(--gold); }
+    .nav-logo img { height: 32px; width: auto; }
+    .nav-links { display: flex; align-items: center; gap: 8px; }
+    .nav-link {
+      color: var(--mist); text-decoration: none; font-size: 14px; font-weight: 500;
+      padding: 7px 16px; border-radius: 6px; transition: all 0.2s;
+    }
+    .nav-link:hover { color: var(--cream); background: rgba(255,255,255,0.06); }
+    .nav-cta {
+      background: var(--gold); color: var(--navy); font-weight: 700; font-size: 14px;
+      padding: 8px 20px; border-radius: 8px; text-decoration: none;
+      transition: all 0.2s; white-space: nowrap;
+    }
+    .nav-cta:hover { background: var(--gold-l); transform: translateY(-1px); }
+    @media(max-width:600px) { .nav-links .nav-link { display:none; } }
+
+    /* ── HERO ── */
+    .hero {
+      padding: 100px 0 80px;
+      text-align: center;
+    }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: rgba(201,169,110,0.1); border: 1px solid var(--border);
+      border-radius: 100px; padding: 6px 16px;
+      font-size: 12px; font-weight: 600; letter-spacing: 0.08em;
+      color: var(--gold); text-transform: uppercase; margin-bottom: 28px;
+    }
+    .hero-badge::before { content: '◆'; font-size: 8px; }
+    .hero h1 {
+      font-family: 'Syne', sans-serif; font-weight: 800;
+      font-size: clamp(38px, 6vw, 68px);
+      line-height: 1.08; letter-spacing: -1px;
+      color: var(--white); margin-bottom: 24px;
+    }
+    .hero h1 em {
+      font-style: normal;
+      background: linear-gradient(135deg, var(--gold) 0%, var(--gold-l) 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero-sub {
+      font-size: 19px; line-height: 1.6; color: var(--mist);
+      max-width: 580px; margin: 0 auto 40px; font-weight: 400;
+    }
+    .hero-ctas { display: flex; align-items: center; justify-content: center; gap: 14px; flex-wrap: wrap; }
+    .btn-primary {
+      background: var(--gold); color: var(--navy); font-weight: 700; font-size: 16px;
+      padding: 14px 32px; border-radius: 10px; text-decoration: none;
+      display: inline-flex; align-items: center; gap: 8px;
+      transition: all 0.2s; box-shadow: 0 4px 20px rgba(201,169,110,0.3);
+    }
+    .btn-primary:hover { background: var(--gold-l); transform: translateY(-2px); box-shadow: 0 8px 30px rgba(201,169,110,0.4); }
+    .btn-secondary {
+      background: transparent; color: var(--cream); font-weight: 600; font-size: 15px;
+      padding: 13px 28px; border-radius: 10px; text-decoration: none;
+      border: 1px solid rgba(255,255,255,0.15); transition: all 0.2s;
+    }
+    .btn-secondary:hover { border-color: var(--gold); color: var(--gold); }
+    .hero-note { margin-top: 18px; color: var(--mist-d); font-size: 13px; }
+
+    /* ── STATS BAR ── */
+    .stats-bar {
+      border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+      background: rgba(13,31,60,0.6);
+      padding: 28px 0; margin: 60px 0 0;
+    }
+    .stats-inner {
+      display: flex; align-items: center; justify-content: center;
+      gap: 0; max-width: 1100px; margin: 0 auto; padding: 0 24px;
+      flex-wrap: wrap;
+    }
+    .stat-item {
+      flex: 1; min-width: 160px; text-align: center;
+      padding: 8px 24px; border-right: 1px solid var(--border);
+    }
+    .stat-item:last-child { border-right: none; }
+    .stat-num {
+      font-family: 'Syne', sans-serif; font-weight: 800; font-size: 28px;
+      color: var(--gold); display: block; line-height: 1.1;
+    }
+    .stat-label { font-size: 12px; color: var(--mist); letter-spacing: 0.05em; margin-top: 4px; }
+
+    /* ── SECTION HEADER ── */
+    .section-label {
+      font-size: 11px; font-weight: 700; letter-spacing: 0.12em;
+      text-transform: uppercase; color: var(--gold); margin-bottom: 12px;
+    }
+    .section-title {
+      font-family: 'Syne', sans-serif; font-weight: 800;
+      font-size: clamp(28px, 4vw, 42px);
+      color: var(--white); line-height: 1.15; letter-spacing: -0.5px;
+    }
+    .section-sub {
+      font-size: 17px; color: var(--mist); line-height: 1.65;
+      max-width: 600px; margin-top: 14px;
+    }
+
+    /* ── HOW IT WORKS ── */
+    .how-section { padding: 100px 0; }
+    .how-header { text-align: center; margin-bottom: 64px; }
+    .how-grid {
+      display: grid; grid-template-columns: repeat(3,1fr); gap: 2px;
+      background: var(--border); border-radius: 16px; overflow: hidden;
+    }
+    @media(max-width:720px) { .how-grid { grid-template-columns: 1fr; } }
+    .how-step {
+      background: var(--deep);
+      padding: 40px 32px; position: relative;
+    }
+    .step-num {
+      font-family: 'Syne', sans-serif; font-weight: 800;
+      font-size: 48px; color: rgba(201,169,110,0.1); line-height: 1;
+      margin-bottom: 12px; display: block;
+    }
+    .step-icon {
+      width: 48px; height: 48px; border-radius: 12px;
+      background: rgba(201,169,110,0.12);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; margin-bottom: 20px;
+    }
+    .step-title {
+      font-family: 'Syne', sans-serif; font-weight: 700;
+      font-size: 18px; color: var(--white); margin-bottom: 10px;
+    }
+    .step-desc { font-size: 14px; color: var(--mist); line-height: 1.65; }
+    .step-arrow {
+      position: absolute; right: -16px; top: 50%;
+      transform: translateY(-50%);
+      width: 32px; height: 32px; border-radius: 50%;
+      background: var(--slate); border: 2px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--gold); font-size: 14px; z-index: 2;
+    }
+    @media(max-width:720px) { .step-arrow { display:none; } }
+
+    /* ── DIFFERENTIATOR ── */
+    .diff-section {
+      padding: 80px 0;
+      background: linear-gradient(135deg, rgba(201,169,110,0.06) 0%, transparent 60%);
+      border-radius: 24px; margin: 0 24px 0;
+    }
+    .diff-inner { max-width: 1100px; margin: 0 auto; padding: 0 24px; }
+    .diff-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; align-items: center; }
+    @media(max-width:760px) { .diff-grid { grid-template-columns: 1fr; gap: 40px; } }
+    .diff-tag {
+      display: inline-block;
+      background: linear-gradient(135deg, rgba(201,169,110,0.2), rgba(201,169,110,0.05));
+      border: 1px solid var(--gold-d); border-radius: 8px;
+      padding: 6px 14px; font-size: 12px; font-weight: 700;
+      color: var(--gold); letter-spacing: 0.06em; text-transform: uppercase;
+      margin-bottom: 20px;
+    }
+    .diff-list { margin-top: 28px; display: flex; flex-direction: column; gap: 16px; }
+    .diff-item { display: flex; gap: 14px; align-items: flex-start; }
+    .diff-check {
+      width: 22px; height: 22px; border-radius: 50%;
+      background: rgba(52,211,153,0.15); border: 1px solid rgba(52,211,153,0.3);
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; margin-top: 2px;
+      font-size: 11px; color: var(--green);
+    }
+    .diff-text { font-size: 15px; color: var(--cream); line-height: 1.5; }
+    .diff-text strong { color: var(--white); font-weight: 600; }
+
+    /* Signal card visual */
+    .signal-card {
+      background: var(--slate); border: 1px solid var(--border);
+      border-radius: 16px; padding: 28px; font-size: 14px;
+    }
+    .signal-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 20px; padding-bottom: 14px; border-bottom: 1px solid var(--border);
+    }
+    .signal-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 15px; color: var(--white); }
+    .signal-badge {
+      background: rgba(52,211,153,0.15); color: var(--green);
+      border: 1px solid rgba(52,211,153,0.25);
+      border-radius: 100px; padding: 3px 12px; font-size: 11px; font-weight: 700;
+      letter-spacing: 0.06em;
+    }
+    .signal-row {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .signal-row:last-child { border-bottom: none; padding-bottom: 0; }
+    .signal-avatar {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--slate2), var(--deep));
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 13px; color: var(--gold); flex-shrink: 0;
+    }
+    .signal-name { font-weight: 600; color: var(--cream); font-size: 14px; flex: 1; }
+    .signal-sub { font-size: 12px; color: var(--mist); }
+    .signal-score { text-align: right; }
+    .score-dots { display: flex; gap: 4px; justify-content: flex-end; margin-bottom: 4px; }
+    .dot { width: 8px; height: 8px; border-radius: 50%; }
+    .dot.hot { background: var(--gold); }
+    .dot.warm { background: rgba(201,169,110,0.4); }
+    .dot.cold { background: rgba(201,169,110,0.1); }
+    .score-label { font-size: 11px; font-weight: 700; }
+    .score-label.hot { color: var(--gold); }
+    .score-label.warm { color: var(--mist); }
+    .signal-reason { font-size: 12px; color: var(--mist); margin-top: 6px; line-height: 1.4; }
+
+    /* ── FEATURES ── */
+    .features-section { padding: 100px 0; }
+    .features-header { margin-bottom: 56px; }
+    .features-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 24px; }
+    @media(max-width:900px) { .features-grid { grid-template-columns: repeat(2,1fr); } }
+    @media(max-width:580px) { .features-grid { grid-template-columns: 1fr; } }
+    .feature-card {
+      background: var(--deep); border: 1px solid var(--border);
+      border-radius: 14px; padding: 28px;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+    .feature-card:hover { border-color: var(--gold-d); transform: translateY(-3px); }
+    .feature-icon {
+      width: 44px; height: 44px; border-radius: 10px;
+      background: rgba(201,169,110,0.1); display: flex;
+      align-items: center; justify-content: center;
+      font-size: 20px; margin-bottom: 16px;
+    }
+    .feature-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 16px; color: var(--white); margin-bottom: 8px; }
+    .feature-desc { font-size: 14px; color: var(--mist); line-height: 1.65; }
+    .feature-highlight {
+      display: inline-block; margin-top: 12px;
+      font-size: 12px; font-weight: 700; color: var(--gold);
+      letter-spacing: 0.04em;
+    }
+
+    /* ── PRICING ── */
+    .pricing-section { padding: 100px 0; text-align: center; }
+    .pricing-card {
+      max-width: 480px; margin: 48px auto 0;
+      background: var(--deep); border: 2px solid var(--gold);
+      border-radius: 20px; padding: 48px 40px; position: relative;
+      box-shadow: 0 0 60px rgba(201,169,110,0.12);
+    }
+    .pricing-popular {
+      position: absolute; top: -14px; left: 50%; transform: translateX(-50%);
+      background: var(--gold); color: var(--navy); font-weight: 800;
+      font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase;
+      padding: 5px 20px; border-radius: 100px;
+    }
+    .price-amount {
+      font-family: 'Syne', sans-serif; font-weight: 800; font-size: 64px;
+      color: var(--white); line-height: 1; margin-bottom: 4px;
+    }
+    .price-currency { font-size: 32px; vertical-align: super; color: var(--gold); }
+    .price-period { font-size: 15px; color: var(--mist); margin-bottom: 32px; }
+    .price-features { list-style: none; text-align: left; margin-bottom: 36px; }
+    .price-features li {
+      display: flex; gap: 12px; align-items: flex-start;
+      padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.05);
+      font-size: 15px; color: var(--cream);
+    }
+    .price-features li:last-child { border-bottom: none; }
+    .price-check { color: var(--green); font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+    .pricing-note {
+      margin-top: 20px; font-size: 13px; color: var(--mist-d);
+    }
+
+    /* ── TRUST ── */
+    .trust-section { padding: 80px 0; }
+    .trust-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 20px; margin-top: 48px; }
+    @media(max-width:860px) { .trust-grid { grid-template-columns: repeat(2,1fr); } }
+    @media(max-width:480px) { .trust-grid { grid-template-columns: 1fr; } }
+    .trust-card {
+      background: var(--deep); border: 1px solid var(--border);
+      border-radius: 14px; padding: 24px;
+      display: flex; flex-direction: column; align-items: flex-start; gap: 12px;
+    }
+    .trust-icon { font-size: 28px; }
+    .trust-title { font-weight: 700; font-size: 15px; color: var(--white); }
+    .trust-desc { font-size: 13px; color: var(--mist); line-height: 1.55; }
+
+    /* ── FAQ ── */
+    .faq-section { padding: 100px 0; }
+    .faq-header { text-align: center; margin-bottom: 56px; }
+    .faq-list { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 4px; }
+    .faq-item {
+      background: var(--deep); border: 1px solid var(--border);
+      border-radius: 12px; overflow: hidden;
+    }
+    .faq-q {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 20px 24px; cursor: pointer; font-weight: 600; font-size: 15px;
+      color: var(--cream); gap: 16px;
+      user-select: none;
+    }
+    .faq-q:hover { background: rgba(255,255,255,0.03); }
+    .faq-arrow {
+      color: var(--gold); font-size: 18px; flex-shrink: 0;
+      transition: transform 0.25s;
+    }
+    .faq-item.open .faq-arrow { transform: rotate(45deg); }
+    .faq-a {
+      max-height: 0; overflow: hidden;
+      transition: max-height 0.3s ease, padding 0.3s ease;
+      font-size: 14px; color: var(--mist); line-height: 1.7;
+      padding: 0 24px;
+    }
+    .faq-item.open .faq-a { max-height: 300px; padding: 0 24px 20px; }
+
+    /* ── FINAL CTA ── */
+    .cta-section {
+      padding: 100px 0; text-align: center;
+    }
+    .cta-box {
+      background: linear-gradient(135deg, var(--deep) 0%, var(--slate) 100%);
+      border: 1px solid var(--border);
+      border-radius: 24px; padding: 72px 40px;
+      position: relative; overflow: hidden;
+    }
+    .cta-box::before {
+      content: ''; position: absolute;
+      top: -60px; right: -60px;
+      width: 300px; height: 300px;
+      background: radial-gradient(circle, rgba(201,169,110,0.1) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .cta-box h2 {
+      font-family: 'Syne', sans-serif; font-weight: 800;
+      font-size: clamp(28px, 4vw, 44px); color: var(--white);
+      margin-bottom: 16px; line-height: 1.15;
+    }
+    .cta-box p { font-size: 17px; color: var(--mist); margin-bottom: 36px; }
+    .cta-guarantee { margin-top: 18px; font-size: 13px; color: var(--mist-d); }
+
+    /* ── FOOTER ── */
+    footer {
+      border-top: 1px solid var(--border); padding: 40px 0;
+      color: var(--mist-d); font-size: 13px;
+    }
+    .footer-inner {
+      max-width: 1100px; margin: 0 auto; padding: 0 24px;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 16px;
+    }
+    .footer-logo {
+      font-family: 'Syne', sans-serif; font-weight: 800;
+      letter-spacing: 1.5px; font-size: 15px; color: var(--mist);
+    }
+    .footer-links { display: flex; gap: 20px; }
+    .footer-links a { color: var(--mist-d); text-decoration: none; transition: color 0.2s; }
+    .footer-links a:hover { color: var(--gold); }
+  </style>
+</head>
+<body>
+
+<!-- ── NAV ── -->
+<nav>
+  <div class="nav-inner">
+    <a href="/brokers" class="nav-logo">
+      <img src="/barnes-logo.png" alt="Barnes Yachting" onerror="this.style.display='none'">
+      BARNESOS
+    </a>
+    <div class="nav-links">
+      <a href="#how-it-works" class="nav-link">How It Works</a>
+      <a href="#features" class="nav-link">Features</a>
+      <a href="#pricing" class="nav-link">Pricing</a>
+      <a href="#faq" class="nav-link">FAQ</a>
+      <a href="/broker/login" class="nav-link">Sign In</a>
+      <a href="/broker/signup" class="nav-cta">Start Free Trial</a>
+    </div>
+  </div>
+</nav>
+
+<!-- ── HERO ── -->
+<section class="hero">
+  <div class="container">
+    <div class="hero-badge">Signal Radar — Now Available</div>
+    <h1>Know When Your Clients<br>Are <em>Ready to Buy</em></h1>
+    <p class="hero-sub">
+      Upload your prospect list. We scan daily for UHNWI buying signals — yacht inquiries, wealth movement, lifestyle triggers. You get the alert. You make the call.
+    </p>
+    <div class="hero-ctas">
+      <a href="/broker/signup" class="btn-primary">
+        Start Your Free Trial <span>→</span>
+      </a>
+      <a href="#how-it-works" class="btn-secondary">See How It Works</a>
+    </div>
+    <p class="hero-note">14-day free trial · €100/month after · Cancel anytime</p>
+  </div>
+</section>
+
+<!-- ── STATS BAR ── -->
+<div class="stats-bar">
+  <div class="stats-inner">
+    <div class="stat-item">
+      <span class="stat-num">40+</span>
+      <div class="stat-label">Years of Barnes Yachting Heritage</div>
+    </div>
+    <div class="stat-item">
+      <span class="stat-num">Daily</span>
+      <div class="stat-label">Automated Signal Scans</div>
+    </div>
+    <div class="stat-item">
+      <span class="stat-num">3-Tier</span>
+      <div class="stat-label">Signal Scoring System</div>
+    </div>
+    <div class="stat-item">
+      <span class="stat-num">100%</span>
+      <div class="stat-label">Data Encrypted &amp; Isolated</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── HOW IT WORKS ── -->
+<section class="how-section" id="how-it-works">
+  <div class="container">
+    <div class="how-header">
+      <p class="section-label">The Process</p>
+      <h2 class="section-title">Three Steps to Every Sale</h2>
+      <p class="section-sub">No manual research. No missed opportunities. Signal Radar works while you sleep.</p>
+    </div>
+    <div class="how-grid">
+      <div class="how-step">
+        <span class="step-num">01</span>
+        <div class="step-icon">📋</div>
+        <div class="step-title">Upload Your Prospect List</div>
+        <p class="step-desc">Import your existing prospect CSV — names, companies, emails. Your data stays in your encrypted workspace. Nobody else sees it.</p>
+        <div class="step-arrow">→</div>
+      </div>
+      <div class="how-step">
+        <span class="step-num">02</span>
+        <div class="step-icon">🔍</div>
+        <div class="step-title">We Scan for Buying Signals</div>
+        <p class="step-desc">Every 24 hours, Signal Radar monitors press, financial news, yacht listings, and wealth indicators tied to your prospects. Time-decay scoring keeps signals fresh.</p>
+        <div class="step-arrow">→</div>
+      </div>
+      <div class="how-step">
+        <span class="step-num">03</span>
+        <div class="step-icon">🎯</div>
+        <div class="step-title">Get Alerts When Intent Is High</div>
+        <p class="step-desc">When a prospect hits a high-intent threshold — you get notified with context, score, and a recommended action. Call at exactly the right moment.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── DIFFERENTIATOR ── -->
+<section style="padding: 20px 0 80px;">
+  <div class="diff-section">
+    <div class="diff-inner">
+      <div class="diff-grid">
+        <div>
+          <div class="diff-tag">Industry First</div>
+          <h2 class="section-title">The Only Yacht Brokerage Tool with Automated UHNWI Buying Signal Detection</h2>
+          <p style="font-size:16px;color:var(--mist);line-height:1.65;margin-top:16px;">
+            Traditional CRMs tell you what happened. Signal Radar tells you what's about to happen. Built on 40 years of Barnes Yachting deal intelligence.
+          </p>
+          <div class="diff-list">
+            <div class="diff-item">
+              <div class="diff-check">✓</div>
+              <div class="diff-text"><strong>Time-decay scoring</strong> — signals age out so you chase current intent, not stale data</div>
+            </div>
+            <div class="diff-item">
+              <div class="diff-check">✓</div>
+              <div class="diff-text"><strong>3-tier classification</strong> — Hot (act now), Warm (nurture), Cold (monitor)</div>
+            </div>
+            <div class="diff-item">
+              <div class="diff-check">✓</div>
+              <div class="diff-text"><strong>White-label dashboard</strong> — present it to clients as your own intelligence platform</div>
+            </div>
+            <div class="diff-item">
+              <div class="diff-check">✓</div>
+              <div class="diff-text"><strong>Full data isolation</strong> — your prospect list is encrypted and never shared across tenants</div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <!-- Signal card mock -->
+          <div class="signal-card">
+            <div class="signal-header">
+              <span class="signal-title">Signal Radar — Today's Alerts</span>
+              <span class="signal-badge">LIVE</span>
+            </div>
+            <div class="signal-row">
+              <div class="signal-avatar">VR</div>
+              <div style="flex:1">
+                <div class="signal-name">Viktor R.</div>
+                <div class="signal-reason">🔥 Monaco property acquisition + Yacht Week inquiry detected</div>
+              </div>
+              <div class="signal-score">
+                <div class="score-dots">
+                  <div class="dot hot"></div><div class="dot hot"></div><div class="dot hot"></div>
+                </div>
+                <div class="score-label hot">HOT</div>
+              </div>
+            </div>
+            <div class="signal-row">
+              <div class="signal-avatar">AC</div>
+              <div style="flex:1">
+                <div class="signal-name">Alexandra C.</div>
+                <div class="signal-reason">🟡 Wealth fund exit reported in FT, past buyer</div>
+              </div>
+              <div class="signal-score">
+                <div class="score-dots">
+                  <div class="dot hot"></div><div class="dot warm"></div><div class="dot cold"></div>
+                </div>
+                <div class="score-label warm">WARM</div>
+              </div>
+            </div>
+            <div class="signal-row">
+              <div class="signal-avatar">MB</div>
+              <div style="flex:1">
+                <div class="signal-name">Marcus B.</div>
+                <div class="signal-reason">📰 IPO announcement — net worth est. +€340M</div>
+              </div>
+              <div class="signal-score">
+                <div class="score-dots">
+                  <div class="dot hot"></div><div class="dot hot"></div><div class="dot warm"></div>
+                </div>
+                <div class="score-label hot">HOT</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── FEATURES ── -->
+<section class="features-section" id="features">
+  <div class="container">
+    <div class="features-header">
+      <p class="section-label">Platform Features</p>
+      <h2 class="section-title">Everything a Modern Broker Needs</h2>
+      <p class="section-sub">Signal Radar is the centrepiece. The rest of the platform handles your day-to-day.</p>
+    </div>
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon">📡</div>
+        <div class="feature-title">Signal Radar</div>
+        <p class="feature-desc">Daily automated scans. Press, financial news, public wealth indicators and lifestyle triggers matched to your prospect list.</p>
+        <span class="feature-highlight">Daily scans · 3-tier scoring · Time decay</span>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🏷️</div>
+        <div class="feature-title">White-Label Dashboard</div>
+        <p class="feature-desc">Present your intelligence platform under your own brokerage brand. Custom colour and name. Client-facing or internal.</p>
+        <span class="feature-highlight">Your brand · Your domain</span>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🔒</div>
+        <div class="feature-title">Encrypted Data Isolation</div>
+        <p class="feature-desc">Each brokerage is a fully isolated tenant. Your prospect data is AES-256 encrypted at rest. Never shared. Never scraped.</p>
+        <span class="feature-highlight">Zero data sharing · Full encryption</span>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">👥</div>
+        <div class="feature-title">Team Workspace</div>
+        <p class="feature-desc">Invite your team. Role-based access (broker / admin). Each member sees the same live signals and shared notes.</p>
+        <span class="feature-highlight">Unlimited team members</span>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">🛥️</div>
+        <div class="feature-title">Yacht Inventory Integration</div>
+        <p class="feature-desc">Match hot prospects to your current listings automatically. Signal Radar suggests which yacht to pitch based on profile.</p>
+        <span class="feature-highlight">Smart matching</span>
+      </div>
+      <div class="feature-card">
+        <div class="feature-icon">📊</div>
+        <div class="feature-title">Analytics & Reporting</div>
+        <p class="feature-desc">Track pipeline velocity, signal-to-close rates, and outreach effectiveness. Built-in reports, no spreadsheets needed.</p>
+        <span class="feature-highlight">Pipeline visibility</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── PRICING ── -->
+<section class="pricing-section" id="pricing">
+  <div class="container">
+    <p class="section-label" style="text-align:center">Pricing</p>
+    <h2 class="section-title">Simple, Transparent Pricing</h2>
+    <p class="section-sub" style="margin:14px auto 0;text-align:center">One plan. Full access. Cancel any time.</p>
+
+    <div class="pricing-card">
+      <div class="pricing-popular">Most Popular</div>
+      <div style="margin-bottom:8px">
+        <span class="price-amount"><span class="price-currency">€</span>100</span>
+      </div>
+      <div class="price-period">per brokerage / month</div>
+
+      <ul class="price-features">
+        <li><span class="price-check">✓</span> Signal Radar — daily automated scans</li>
+        <li><span class="price-check">✓</span> Unlimited prospect uploads</li>
+        <li><span class="price-check">✓</span> 3-tier signal scoring with time decay</li>
+        <li><span class="price-check">✓</span> Unlimited team members</li>
+        <li><span class="price-check">✓</span> White-label dashboard</li>
+        <li><span class="price-check">✓</span> Full data encryption &amp; isolation</li>
+        <li><span class="price-check">✓</span> Yacht inventory integration</li>
+        <li><span class="price-check">✓</span> Priority support</li>
+      </ul>
+
+      <a href="/broker/signup" class="btn-primary" style="width:100%;justify-content:center;font-size:16px;padding:16px">
+        Start Your 14-Day Free Trial
+      </a>
+      <div class="pricing-note">No setup fees · No credit card required to start · Cancel anytime</div>
+    </div>
+  </div>
+</section>
+
+<!-- ── TRUST ── -->
+<section class="trust-section">
+  <div class="container">
+    <div style="text-align:center">
+      <p class="section-label">Why Trust Us</p>
+      <h2 class="section-title">Built on 40 Years of Deal Intelligence</h2>
+    </div>
+    <div class="trust-grid">
+      <div class="trust-card">
+        <div class="trust-icon">⚓</div>
+        <div class="trust-title">Barnes Yachting Heritage</div>
+        <p class="trust-desc">Founded on 40 years of UHNWI yacht brokerage. We built this for the brokers who trained us.</p>
+      </div>
+      <div class="trust-card">
+        <div class="trust-icon">🔐</div>
+        <div class="trust-title">Data Privacy Guarantee</div>
+        <p class="trust-desc">Your prospect list is yours. AES-256 encryption, zero cross-tenant data access, GDPR compliant architecture.</p>
+      </div>
+      <div class="trust-card">
+        <div class="trust-icon">🏛️</div>
+        <div class="trust-title">Institutional Grade</div>
+        <p class="trust-desc">Designed for brokerage firms, not startups. Multi-user, role-based access, and an audit trail on every action.</p>
+      </div>
+      <div class="trust-card">
+        <div class="trust-icon">🌍</div>
+        <div class="trust-title">Global Coverage</div>
+        <p class="trust-desc">Scans English, French, Italian and Arabic press. Signal Radar covers the markets where UHNWI buyers operate.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── FAQ ── -->
+<section class="faq-section" id="faq">
+  <div class="container">
+    <div class="faq-header">
+      <p class="section-label">FAQ</p>
+      <h2 class="section-title">Common Questions</h2>
+    </div>
+    <div class="faq-list">
+      <div class="faq-item">
+        <div class="faq-q">What sources does Signal Radar scan? <span class="faq-arrow">+</span></div>
+        <div class="faq-a">Signal Radar monitors financial press, luxury lifestyle publications, public wealth disclosures, yacht event registrations, and brokerage listing activity. We do not scrape private communications or violate any platform terms of service. All data sources are publicly accessible.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q">How does the 3-tier scoring work? <span class="faq-arrow">+</span></div>
+        <div class="faq-a">Each signal is scored based on recency, source credibility, and wealth indicator strength. Scores decay over time — a signal from 3 days ago weighs less than today's. Hot (act immediately), Warm (nurture this week), Cold (monitor quarterly). You control the thresholds.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q">Is my prospect list shared with other brokers? <span class="faq-arrow">+</span></div>
+        <div class="faq-a">Never. Each brokerage is a fully isolated tenant. Your data is encrypted at rest with AES-256 and is inaccessible to any other tenant or Barnes staff without your consent. We are not a data broker — your list is a competitive asset and we treat it as such.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q">What happens after the 14-day trial? <span class="faq-arrow">+</span></div>
+        <div class="faq-a">After the trial, you choose to subscribe at €100/month. Your data and prospect list are preserved whether you subscribe or not. We will email you a reminder 3 days before the trial ends. No credit card required to start the trial.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q">Can I invite my whole team? <span class="faq-arrow">+</span></div>
+        <div class="faq-a">Yes. Unlimited team members are included in the €100/month plan. Each member gets their own login with role-based access (Broker or Admin). Admins can manage billing, invite new members, and configure settings. Brokers see all signals and prospect data.</div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-q">Does this work for independent brokers or only large firms? <span class="faq-arrow">+</span></div>
+        <div class="faq-a">Both. Signal Radar is priced per brokerage, not per seat. A solo broker pays the same as a 20-person firm. The white-label feature is particularly valuable for firms presenting intelligence to clients, but solo brokers benefit equally from the daily alerts.</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── FINAL CTA ── -->
+<section class="cta-section">
+  <div class="container">
+    <div class="cta-box">
+      <p class="section-label">Get Started Today</p>
+      <h2>Stop Guessing. Start Knowing.</h2>
+      <p>Your next deal is in your existing prospect list. Signal Radar finds it.</p>
+      <a href="/broker/signup" class="btn-primary" style="font-size:17px;padding:16px 40px">
+        Start Your Free Trial — €100/mo after
+      </a>
+      <p class="cta-guarantee">14 days free · No credit card · Cancel anytime</p>
+    </div>
+  </div>
+</section>
+
+<!-- ── FOOTER ── -->
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo">BARNESOS</div>
+    <div style="font-size:12px;color:var(--mist-d)">
+      Powered by Barnes Yachting · 40 years of UHNWI deal intelligence
+    </div>
+    <div class="footer-links">
+      <a href="/broker/login">Broker Sign In</a>
+      <a href="/broker/signup">Sign Up</a>
+      <a href="#faq">FAQ</a>
+    </div>
+  </div>
+</footer>
+
+<script>
+  // FAQ accordion
+  document.querySelectorAll('.faq-q').forEach(q => {
+    q.addEventListener('click', () => {
+      const item = q.parentElement;
+      const wasOpen = item.classList.contains('open');
+      document.querySelectorAll('.faq-item').forEach(i => i.classList.remove('open'));
+      if (!wasOpen) item.classList.add('open');
+    });
+  });
+
+  // Smooth nav offset for anchor links
+  document.querySelectorAll('a[href^="#"]').forEach(a => {
+    a.addEventListener('click', e => {
+      const target = document.querySelector(a.getAttribute('href'));
+      if (target) {
+        e.preventDefault();
+        const offset = 72;
+        const top = target.getBoundingClientRect().top + window.pageYOffset - offset;
+        window.scrollTo({ top, behavior: 'smooth' });
+      }
+    });
+  });
+</script>
+</body>
+</html>`);
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 app.listen(port, () => {
