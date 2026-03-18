@@ -213,7 +213,7 @@ app.post('/api/broker/signup', express.json(), async (req, res) => {
       const { rows: tenantRows } = await client.query(
         `INSERT INTO tenants (name, slug, billing_status, trial_ends_at)
          VALUES ($1, $2, 'trial', NOW() + INTERVAL '${TRIAL_DAYS} days')
-         RETURNING id, name, slug, primary_color, billing_status, trial_ends_at`,
+         RETURNING id, name, slug, primary_color, logo_url, company_display_name, billing_status, trial_ends_at`,
         [tenant_name, slugClean]
       );
       const tenant = tenantRows[0];
@@ -229,7 +229,7 @@ app.post('/api/broker/signup', express.json(), async (req, res) => {
       await client.query('COMMIT');
 
       req.session.brokerUser = { id: user.id, tenant_id: tenant.id, email: user.email, role: user.role, first_name: user.first_name, last_name: user.last_name };
-      req.session.brokerTenant = { id: tenant.id, name: tenant.name, slug: tenant.slug, primary_color: tenant.primary_color, billing_status: tenant.billing_status, trial_ends_at: tenant.trial_ends_at };
+      req.session.brokerTenant = { id: tenant.id, name: tenant.name, slug: tenant.slug, primary_color: tenant.primary_color, logo_url: tenant.logo_url, company_display_name: tenant.company_display_name, billing_status: tenant.billing_status, trial_ends_at: tenant.trial_ends_at };
 
       return res.json({ success: true, user: req.session.brokerUser, tenant: req.session.brokerTenant, redirect: '/broker/dashboard' });
     } catch (err) {
@@ -257,6 +257,7 @@ app.post('/api/broker/login', express.json(), async (req, res) => {
         SELECT bu.id, bu.tenant_id, bu.email, bu.password_hash, bu.role,
                bu.first_name, bu.last_name, bu.status,
                t.name as tenant_name, t.slug as tenant_slug, t.primary_color,
+               t.logo_url, t.company_display_name,
                t.billing_status, t.trial_ends_at, t.subscription_started_at
         FROM broker_users bu
         JOIN tenants t ON t.id = bu.tenant_id
@@ -269,6 +270,7 @@ app.post('/api/broker/login', express.json(), async (req, res) => {
         SELECT bu.id, bu.tenant_id, bu.email, bu.password_hash, bu.role,
                bu.first_name, bu.last_name, bu.status,
                t.name as tenant_name, t.slug as tenant_slug, t.primary_color,
+               t.logo_url, t.company_display_name,
                t.billing_status, t.trial_ends_at, t.subscription_started_at
         FROM broker_users bu
         JOIN tenants t ON t.id = bu.tenant_id
@@ -303,7 +305,7 @@ app.post('/api/broker/login', express.json(), async (req, res) => {
     await pool.query(`UPDATE broker_users SET last_login_at = NOW() WHERE id = $1`, [user.id]);
 
     req.session.brokerUser = { id: user.id, tenant_id: user.tenant_id, email: user.email, role: user.role, first_name: user.first_name, last_name: user.last_name };
-    req.session.brokerTenant = { id: user.tenant_id, name: user.tenant_name, slug: user.tenant_slug, primary_color: user.primary_color, billing_status: user.billing_status || 'active', trial_ends_at: user.trial_ends_at, subscription_started_at: user.subscription_started_at };
+    req.session.brokerTenant = { id: user.tenant_id, name: user.tenant_name, slug: user.tenant_slug, primary_color: user.primary_color, logo_url: user.logo_url, company_display_name: user.company_display_name, billing_status: user.billing_status || 'active', trial_ends_at: user.trial_ends_at, subscription_started_at: user.subscription_started_at };
 
     return res.json({ success: true, user: req.session.brokerUser, tenant: req.session.brokerTenant });
   } catch (err) {
@@ -428,12 +430,12 @@ app.post('/api/broker/accept-invite', express.json(), async (req, res) => {
 
       const user = userRows[0];
       const { rows: tenantRows } = await pool.query(
-        `SELECT id, name, slug, primary_color, billing_status, trial_ends_at, subscription_started_at FROM tenants WHERE id = $1`, [invite.tenant_id]
+        `SELECT id, name, slug, primary_color, logo_url, company_display_name, billing_status, trial_ends_at, subscription_started_at FROM tenants WHERE id = $1`, [invite.tenant_id]
       );
       const tenant = tenantRows[0];
 
       req.session.brokerUser = { id: user.id, tenant_id: user.tenant_id, email: user.email, role: user.role, first_name: user.first_name, last_name: user.last_name };
-      req.session.brokerTenant = { id: tenant.id, name: tenant.name, slug: tenant.slug, primary_color: tenant.primary_color, billing_status: tenant.billing_status || 'active', trial_ends_at: tenant.trial_ends_at, subscription_started_at: tenant.subscription_started_at };
+      req.session.brokerTenant = { id: tenant.id, name: tenant.name, slug: tenant.slug, primary_color: tenant.primary_color, logo_url: tenant.logo_url, company_display_name: tenant.company_display_name, billing_status: tenant.billing_status || 'active', trial_ends_at: tenant.trial_ends_at, subscription_started_at: tenant.subscription_started_at };
 
       return res.json({ success: true, user: req.session.brokerUser, tenant: req.session.brokerTenant });
     } catch (err) {
@@ -553,6 +555,160 @@ app.post('/api/broker/billing/activate', requireBrokerAuth, async (req, res) => 
   } catch (err) {
     console.error('[Billing] Activate error:', err.message);
     return res.status(500).json({ success: false, message: 'Activation failed' });
+  }
+});
+
+// ─── BRANDING API ────────────────────────────────────────────────────────────
+
+// GET /api/broker/branding — get current tenant branding settings
+app.get('/api/broker/branding', requireBrokerAuth, async (req, res) => {
+  const tenantId = req.session.brokerTenant.id;
+  try {
+    const { rows } = await pool.query(
+      `SELECT primary_color, logo_url, company_display_name FROM tenants WHERE id = $1`,
+      [tenantId]
+    );
+    if (!rows.length) return res.status(404).json({ success: false, message: 'Tenant not found' });
+    const t = rows[0];
+    return res.json({
+      success: true,
+      branding: {
+        primary_color: t.primary_color || '#c9a84c',
+        logo_url: t.logo_url || null,
+        company_display_name: t.company_display_name || null
+      }
+    });
+  } catch (err) {
+    console.error('[Branding] GET error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to fetch branding' });
+  }
+});
+
+// PUT /api/broker/branding — update primary_color + company_display_name (admin only)
+app.put('/api/broker/branding', requireBrokerAuth, express.json(), async (req, res) => {
+  if (req.session.brokerUser.role !== 'admin') {
+    return res.status(403).json({ success: false, message: 'Admin only' });
+  }
+  const tenantId = req.session.brokerTenant.id;
+  try {
+    const { primary_color, company_display_name } = req.body;
+    const updates = [];
+    const params = [];
+
+    if (primary_color !== undefined) {
+      if (!/^#[0-9a-fA-F]{6}$/.test(primary_color)) {
+        return res.status(400).json({ success: false, message: 'Color must be a valid 6-digit hex (e.g. #c9a84c)' });
+      }
+      params.push(primary_color);
+      updates.push(`primary_color = $${params.length}`);
+    }
+    if (company_display_name !== undefined) {
+      params.push((company_display_name || '').trim().slice(0, 255));
+      updates.push(`company_display_name = $${params.length}`);
+    }
+
+    if (!updates.length) return res.status(400).json({ success: false, message: 'Nothing to update' });
+
+    params.push(tenantId);
+    const { rows } = await pool.query(
+      `UPDATE tenants SET ${updates.join(', ')} WHERE id = $${params.length}
+       RETURNING primary_color, logo_url, company_display_name`,
+      params
+    );
+    const t = rows[0];
+    // Refresh session
+    req.session.brokerTenant.primary_color = t.primary_color;
+    req.session.brokerTenant.company_display_name = t.company_display_name;
+
+    return res.json({
+      success: true,
+      branding: { primary_color: t.primary_color, logo_url: t.logo_url, company_display_name: t.company_display_name }
+    });
+  } catch (err) {
+    console.error('[Branding] PUT error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to update branding' });
+  }
+});
+
+// POST /api/broker/branding/logo — upload logo (base64 JSON body)
+app.post('/api/broker/branding/logo', requireBrokerAuth, express.json({ limit: '3mb' }), async (req, res) => {
+  if (req.session.brokerUser.role !== 'admin') {
+    return res.status(403).json({ success: false, message: 'Admin only' });
+  }
+  const tenantId = req.session.brokerTenant.id;
+  const tenantSlug = req.session.brokerTenant.slug;
+  try {
+    const { logo_data, mime_type } = req.body;
+    if (!logo_data || !mime_type) {
+      return res.status(400).json({ success: false, message: 'logo_data and mime_type are required' });
+    }
+    const allowed = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'image/svg+xml'];
+    if (!allowed.includes(mime_type)) {
+      return res.status(400).json({ success: false, message: 'Unsupported image type. Use PNG, JPG, WebP, GIF or SVG.' });
+    }
+
+    // Strip data URL prefix if present
+    const base64Data = logo_data.replace(/^data:[^;]+;base64,/, '');
+    const buffer = Buffer.from(base64Data, 'base64');
+
+    // Size check: max 500KB raw
+    if (buffer.length > 512000) {
+      return res.status(400).json({ success: false, message: 'Logo too large. Max 500KB.' });
+    }
+
+    let logoUrl;
+    const R2_BASE = process.env.POLSIA_R2_BASE_URL;
+
+    if (R2_BASE) {
+      // Upload to Polsia R2 proxy
+      try {
+        const ext = mime_type === 'image/svg+xml' ? 'svg' : mime_type.split('/')[1];
+        const filename = `logos/${tenantSlug}-${tenantId}.${ext}`;
+        const uploadRes = await fetch(`${R2_BASE}/${filename}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': mime_type },
+          body: buffer
+        });
+        if (uploadRes.ok) {
+          logoUrl = `${R2_BASE}/${filename}?v=${Date.now()}`;
+        } else {
+          throw new Error(`R2 returned ${uploadRes.status}`);
+        }
+      } catch (uploadErr) {
+        console.error('[Branding] R2 upload error, falling back to data URL:', uploadErr.message);
+        logoUrl = `data:${mime_type};base64,${base64Data}`;
+      }
+    } else {
+      // Store as data URL (works fine for MVP without R2)
+      logoUrl = `data:${mime_type};base64,${base64Data}`;
+    }
+
+    const { rows } = await pool.query(
+      `UPDATE tenants SET logo_url = $1 WHERE id = $2 RETURNING logo_url`,
+      [logoUrl, tenantId]
+    );
+    req.session.brokerTenant.logo_url = rows[0].logo_url;
+
+    return res.json({ success: true, logo_url: rows[0].logo_url });
+  } catch (err) {
+    console.error('[Branding] Logo upload error:', err.message);
+    return res.status(500).json({ success: false, message: 'Logo upload failed' });
+  }
+});
+
+// DELETE /api/broker/branding/logo — remove logo
+app.delete('/api/broker/branding/logo', requireBrokerAuth, async (req, res) => {
+  if (req.session.brokerUser.role !== 'admin') {
+    return res.status(403).json({ success: false, message: 'Admin only' });
+  }
+  const tenantId = req.session.brokerTenant.id;
+  try {
+    await pool.query(`UPDATE tenants SET logo_url = NULL WHERE id = $1`, [tenantId]);
+    req.session.brokerTenant.logo_url = null;
+    return res.json({ success: true });
+  } catch (err) {
+    console.error('[Branding] Logo delete error:', err.message);
+    return res.status(500).json({ success: false, message: 'Failed to remove logo' });
   }
 });
 
@@ -3407,6 +3563,38 @@ app.get('/command-center', requireAuth, (req, res) => {
 
 // ─── BROKER PORTAL PAGES ─────────────────────────────────────────────────────
 
+// ── Branding helpers ──────────────────────────────────────────────────────────
+function getBrandColor(tenant) {
+  return (tenant && tenant.primary_color) || '#c9a84c';
+}
+
+function getDisplayName(tenant) {
+  return (tenant && (tenant.company_display_name || tenant.name)) || 'Portal';
+}
+
+// Inject brand color CSS override block
+function brandColorStyles(tenant) {
+  const color = getBrandColor(tenant);
+  return `<style>
+    :root { --brand: ${color}; --brand-dim: ${color}99; }
+    .btn-primary, button.btn-primary { background: ${color} !important; color: #0f172a !important; }
+    a.brand-link { color: ${color} !important; }
+    .brand-text { color: ${color} !important; }
+    .topbar-brand { color: ${color} !important; }
+    input:focus { border-color: ${color} !important; }
+  </style>`;
+}
+
+// Render logo HTML for topbar (image if set, text otherwise)
+function topbarLogoHtml(tenant, size = 26) {
+  const logoUrl = tenant && tenant.logo_url;
+  const name = getDisplayName(tenant);
+  if (logoUrl) {
+    return `<img src="${logoUrl}" alt="${name}" style="height:${size}px;max-width:110px;object-fit:contain;vertical-align:middle;" onerror="this.style.display='none';document.getElementById('topbar-name-fallback').style.display='inline'"><span id="topbar-name-fallback" style="display:none;font-weight:700;color:${getBrandColor(tenant)}">${name}</span>`;
+  }
+  return `<span class="topbar-brand" style="color:${getBrandColor(tenant)}">${name}</span>`;
+}
+
 const BROKER_STYLES = `
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
@@ -3432,17 +3620,32 @@ const BROKER_STYLES = `
   .badge { display: inline-block; background: #1d4ed8; color: #bfdbfe; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; margin-left: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
 `;
 
-function brokerPage(title, body) {
+// brokerPage: renders an auth page (login/signup) with optional tenant branding
+// branding = { primary_color, logo_url, company_display_name, name }
+function brokerPage(title, body, branding) {
+  const bColor = (branding && branding.primary_color) || '#c9a84c';
+  const bName = (branding && (branding.company_display_name || branding.name)) || 'Barnes Broker Portal';
+  const bLogo = branding && branding.logo_url;
+  const brandOverride = branding ? `
+  <style>
+    .btn-primary { background: ${bColor} !important; color: #0f172a !important; }
+    input:focus { border-color: ${bColor} !important; }
+    .logo h1 { color: ${bColor}; }
+    .link-row a { color: ${bColor} !important; }
+  </style>` : '';
+  const logoHtml = bLogo ? `<div style="text-align:center;margin-bottom:20px"><img src="${bLogo}" alt="${bName}" style="max-height:52px;max-width:180px;object-fit:contain;"></div>` : '';
+
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>${title} — Barnes Broker Portal</title>
+  <title>${title} — ${bName}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>${BROKER_STYLES}</style>
+  ${brandOverride}
 </head>
-<body>${body}</body>
+<body>${logoHtml ? body.replace('<div class="logo">', '<div class="logo">' + logoHtml) : body}</body>
 </html>`;
 }
 
@@ -3497,6 +3700,64 @@ app.get('/broker/login', (req, res) => {
       } catch(e) { err.textContent = 'Network error. Try again.'; err.style.display = 'block'; btn.disabled = false; btn.textContent = 'Sign In'; }
     }
   </script>`));
+});
+
+// GET /broker/login/:slug — branded login page for a specific tenant workspace
+app.get('/broker/login/:slug', async (req, res) => {
+  if (req.session && req.session.brokerUser) return res.redirect('/broker/dashboard');
+  const { slug } = req.params;
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, name, slug, primary_color, logo_url, company_display_name FROM tenants WHERE slug = $1 AND status = 'active'`,
+      [slug]
+    );
+    if (!rows.length) return res.redirect('/broker/login');
+    const t = rows[0];
+    const displayName = t.company_display_name || t.name;
+    res.send(brokerPage('Sign In', `
+  <div class="card">
+    <div class="logo">
+      <h1>${displayName}</h1>
+      <p>Sign in to your workspace</p>
+    </div>
+    <div class="error" id="err"></div>
+    <div class="form-group">
+      <label>Email</label>
+      <input type="email" id="email" placeholder="broker@yourfirm.com" autofocus>
+    </div>
+    <div class="form-group">
+      <label>Password</label>
+      <input type="password" id="password" placeholder="••••••••">
+    </div>
+    <button class="btn btn-primary" id="login-btn" onclick="doLogin()">Sign In</button>
+    <div class="link-row"><a href="/broker/login">Sign in to a different workspace</a></div>
+  </div>
+  <script>
+    document.querySelectorAll('input').forEach(el => el.addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); }));
+    async function doLogin() {
+      const btn = document.getElementById('login-btn');
+      const err = document.getElementById('err');
+      err.style.display = 'none';
+      btn.disabled = true; btn.textContent = 'Signing in…';
+      try {
+        const r = await fetch('/api/broker/login', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({
+            email: document.getElementById('email').value.trim(),
+            password: document.getElementById('password').value,
+            tenant_slug: ${JSON.stringify(slug)}
+          })
+        });
+        const d = await r.json();
+        if (d.success) { window.location.href = '/broker/dashboard'; }
+        else { err.textContent = d.message; err.style.display = 'block'; btn.disabled = false; btn.textContent = 'Sign In'; }
+      } catch(e) { err.textContent = 'Network error. Try again.'; err.style.display = 'block'; btn.disabled = false; btn.textContent = 'Sign In'; }
+    }
+  </script>`, t));
+  } catch (err) {
+    console.error('[BrandedLogin] Error:', err.message);
+    return res.redirect('/broker/login');
+  }
 });
 
 // GET /broker/signup
@@ -3643,21 +3904,25 @@ app.get('/broker/dashboard', (req, res) => {
     </div>`;
   }
 
+  const dashBrandColor = getBrandColor(tenant);
+  const dashDisplayName = getDisplayName(tenant);
+
   res.send(`<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>${tenant.name} — Broker Portal</title>
+  <title>${dashDisplayName} — Broker Portal</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  ${brandColorStyles(tenant)}
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Inter', -apple-system, sans-serif; background: #0f172a; color: #e2e8f0; min-height: 100vh; }
-    .topbar { background: #1e293b; border-bottom: 1px solid #334155; padding: 0 32px; height: 56px; display: flex; align-items: center; justify-content: space-between; }
-    .topbar-left { display: flex; align-items: center; gap: 16px; }
+    .topbar { background: #1e293b; border-bottom: 1px solid #334155; padding: 0 24px; height: 56px; display: flex; align-items: center; justify-content: space-between; }
+    .topbar-left { display: flex; align-items: center; gap: 12px; }
     .topbar h1 { font-size: 16px; font-weight: 700; color: #f1f5f9; }
     .badge { background: #1d4ed8; color: #bfdbfe; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
-    .topbar-right { display: flex; align-items: center; gap: 16px; font-size: 13px; color: #94a3b8; }
+    .topbar-right { display: flex; align-items: center; gap: 14px; font-size: 13px; color: #94a3b8; }
     .topbar-right a { color: #64748b; text-decoration: none; }
     .topbar-right a:hover { color: #94a3b8; }
     .main { max-width: 900px; margin: 40px auto; padding: 0 24px; }
@@ -3698,11 +3963,13 @@ app.get('/broker/dashboard', (req, res) => {
 <body>
   <div class="topbar">
     <div class="topbar-left">
-      <h1>${tenant.name}</h1>
+      ${topbarLogoHtml(tenant, 28)}
+      ${!tenant.logo_url ? `<h1 style="color:${dashBrandColor}">${dashDisplayName}</h1>` : ''}
       <span class="badge">${tenant.slug}</span>
     </div>
     <div class="topbar-right">
-      <a href="/broker/signal-radar" style="color:#c9a84c;font-weight:600">📡 Signal Radar</a>
+      <a href="/broker/signal-radar" style="color:${dashBrandColor};font-weight:600">📡 Signal Radar</a>
+      ${user.role === 'admin' ? `<a href="/broker/settings/branding" style="color:#94a3b8">⚙ Brand</a>` : ''}
       <a href="/broker/billing" style="color:#60a5fa">Billing</a>
       <span>${user.first_name} ${user.last_name} · <strong style="color:#e2e8f0">${user.role}</strong></span>
       <a href="/api/broker/logout">Sign out</a>
@@ -3851,13 +4118,17 @@ app.get('/broker/signal-radar', (req, res) => {
     billingBanner = `<div class="billing-banner danger">🔒 <strong>Subscription required.</strong> Read-only mode. <a href="/broker/billing">Subscribe Now →</a></div>`;
   }
 
+  const radarBrandColor = getBrandColor(tenant);
+  const radarDisplayName = getDisplayName(tenant);
+
   res.send(`<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Signal Radar — ${tenant.name}</title>
+  <title>Signal Radar — ${radarDisplayName}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  ${brandColorStyles(tenant)}
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
@@ -4121,10 +4392,11 @@ app.get('/broker/signal-radar', (req, res) => {
 
   <!-- TOPBAR -->
   <div class="topbar">
-    <div class="topbar-brand">⛵ BarnesOS</div>
+    ${topbarLogoHtml(tenant, 26)}
     <div class="topbar-nav">
       <a href="/broker/signal-radar" class="active">Signal Radar</a>
       <a href="/broker/dashboard">Dashboard</a>
+      ${user.role === 'admin' ? '<a href="/broker/settings/branding">⚙ Brand</a>' : ''}
       <a href="/broker/billing">Billing</a>
     </div>
     <div class="topbar-right">
@@ -4857,6 +5129,313 @@ app.get('/broker/signal-radar', (req, res) => {
 </html>`);
 });
 
+// GET /broker/settings/branding — white-label branding settings (admin only)
+app.get('/broker/settings/branding', async (req, res) => {
+  if (!req.session || !req.session.brokerUser) return res.redirect('/broker/login');
+  const user = req.session.brokerUser;
+  const tenant = req.session.brokerTenant;
+
+  if (user.role !== 'admin') {
+    return res.redirect('/broker/dashboard');
+  }
+
+  const brandColor = getBrandColor(tenant);
+  const displayName = getDisplayName(tenant);
+
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Brand Settings — ${displayName}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  ${brandColorStyles(tenant)}
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0a0f1e; --surface: #111827; --surface2: #1a2236;
+      --border: #1e2d45; --border2: #263552;
+      --text: #e8edf5; --text2: #8fa3bf; --text3: #4d6480;
+    }
+    body { font-family: 'Inter', -apple-system, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    .topbar { position: fixed; top: 0; left: 0; right: 0; z-index: 100; background: rgba(10,15,30,0.95); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); height: 54px; display: flex; align-items: center; padding: 0 28px; gap: 0; }
+    .topbar-nav { display: flex; align-items: center; gap: 4px; flex: 1; margin-left: 16px; }
+    .topbar-nav a { color: var(--text2); text-decoration: none; font-size: 13px; font-weight: 500; padding: 6px 14px; border-radius: 6px; transition: all 0.15s; }
+    .topbar-nav a:hover { color: var(--text); background: var(--surface2); }
+    .topbar-nav a.active { color: var(--text); background: var(--surface2); }
+    .topbar-right { display: flex; align-items: center; gap: 16px; font-size: 12px; color: var(--text3); }
+    .topbar-right a { color: var(--text3); text-decoration: none; }
+    .topbar-right a:hover { color: var(--text2); }
+
+    .page { padding-top: 54px; }
+    .container { max-width: 720px; margin: 0 auto; padding: 36px 28px 80px; }
+
+    h1 { font-size: 22px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+    .subtitle { font-size: 14px; color: var(--text2); margin-bottom: 32px; }
+
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 28px; margin-bottom: 20px; }
+    .card h2 { font-size: 15px; font-weight: 600; color: var(--text); margin-bottom: 18px; display: flex; align-items: center; gap: 8px; }
+    .card h2 .badge { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 4px; background: var(--surface2); color: var(--text2); }
+
+    .form-group { margin-bottom: 20px; }
+    label { display: block; font-size: 13px; font-weight: 500; color: var(--text2); margin-bottom: 7px; }
+    input[type="text"] { width: 100%; background: var(--bg); border: 1px solid var(--border2); border-radius: 8px; padding: 10px 14px; font-size: 14px; color: var(--text); outline: none; transition: border-color 0.2s; }
+    input[type="text"]:focus { border-color: var(--brand, #c9a84c); }
+    .hint { font-size: 12px; color: var(--text3); margin-top: 5px; }
+
+    .color-row { display: flex; align-items: center; gap: 12px; }
+    .color-preview { width: 40px; height: 40px; border-radius: 8px; border: 1px solid var(--border2); flex-shrink: 0; transition: background 0.2s; }
+    .color-input-wrap { position: relative; flex: 1; }
+    .color-hex { width: 100%; background: var(--bg); border: 1px solid var(--border2); border-radius: 8px; padding: 10px 14px 10px 42px; font-size: 14px; color: var(--text); font-family: monospace; outline: none; transition: border-color 0.2s; }
+    .color-hex:focus { border-color: var(--brand, #c9a84c); }
+    .color-swatch { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); width: 22px; height: 22px; border-radius: 4px; border: 1px solid var(--border2); cursor: pointer; overflow: hidden; }
+    .color-swatch input[type="color"] { position: absolute; top: -4px; left: -4px; width: 32px; height: 32px; border: none; padding: 0; cursor: pointer; opacity: 0; }
+    .swatch-circle { position: absolute; inset: 0; border-radius: 4px; pointer-events: none; }
+
+    .logo-section { display: flex; align-items: flex-start; gap: 20px; flex-wrap: wrap; }
+    .logo-preview-box { width: 120px; height: 80px; background: var(--bg); border: 1px solid var(--border2); border-radius: 10px; display: flex; align-items: center; justify-content: center; overflow: hidden; flex-shrink: 0; }
+    .logo-preview-box img { max-width: 100%; max-height: 100%; object-fit: contain; }
+    .logo-placeholder { color: var(--text3); font-size: 12px; text-align: center; padding: 8px; }
+    .logo-controls { flex: 1; min-width: 180px; }
+    .logo-controls p { font-size: 13px; color: var(--text2); margin-bottom: 12px; }
+    .upload-btn { display: inline-flex; align-items: center; gap: 6px; background: var(--surface2); border: 1px solid var(--border2); color: var(--text); padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s; }
+    .upload-btn:hover { border-color: var(--brand, #c9a84c); color: var(--brand, #c9a84c); }
+    .remove-btn { display: inline-flex; align-items: center; gap: 6px; background: transparent; border: 1px solid #7f1d1d; color: #fca5a5; padding: 8px 16px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s; margin-left: 8px; }
+    .remove-btn:hover { background: #450a0a; }
+
+    .btn-row { display: flex; gap: 10px; align-items: center; margin-top: 8px; }
+    .btn-save { background: var(--brand, #c9a84c); color: #0f172a; border: none; padding: 10px 24px; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; transition: opacity 0.2s; }
+    .btn-save:hover { opacity: 0.88; }
+    .btn-save:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    .feedback { font-size: 13px; padding: 8px 14px; border-radius: 7px; display: none; }
+    .feedback.ok { background: #052e16; border: 1px solid #14532d; color: #86efac; }
+    .feedback.err { background: #450a0a; border: 1px solid #7f1d1d; color: #fca5a5; }
+
+    .preview-bar { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 20px; display: flex; align-items: center; gap: 16px; margin-top: 12px; }
+    .preview-label { font-size: 12px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin-right: 8px; }
+
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+    .saving { animation: pulse 1s infinite; }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="topbar">
+      ${topbarLogoHtml(tenant, 24)}
+      <nav class="topbar-nav">
+        <a href="/broker/signal-radar">Signal Radar</a>
+        <a href="/broker/dashboard">Dashboard</a>
+        <a href="/broker/settings/branding" class="active">Brand Settings</a>
+        <a href="/broker/billing">Billing</a>
+      </nav>
+      <div class="topbar-right">
+        <span>${user.first_name || user.email}</span>
+        <a href="/api/broker/logout">Sign out</a>
+      </div>
+    </div>
+
+    <div class="container">
+      <h1>Brand Settings</h1>
+      <p class="subtitle">Customize how your workspace looks to your team and clients.</p>
+
+      <!-- Logo -->
+      <div class="card">
+        <h2>🖼️ Logo</h2>
+        <div class="logo-section">
+          <div class="logo-preview-box" id="logo-preview-box">
+            ${tenant.logo_url
+              ? `<img src="${tenant.logo_url}" id="logo-preview-img" alt="Logo">`
+              : `<div class="logo-placeholder" id="logo-placeholder">No logo<br>uploaded</div>`
+            }
+            ${tenant.logo_url ? '' : '<img id="logo-preview-img" style="display:none" alt="Logo">'}
+          </div>
+          <div class="logo-controls">
+            <p>Upload your company logo. PNG, JPG or SVG recommended. Max 500KB.</p>
+            <input type="file" id="logo-file-input" accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml" style="display:none">
+            <label class="upload-btn" for="logo-file-input">📁 Choose file</label>
+            ${tenant.logo_url ? `<button class="remove-btn" id="remove-logo-btn" onclick="removeLogo()">✕ Remove</button>` : `<button class="remove-btn" id="remove-logo-btn" onclick="removeLogo()" style="display:none">✕ Remove</button>`}
+            <div id="logo-feedback" class="feedback" style="margin-top:10px"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Brand Color -->
+      <div class="card">
+        <h2>🎨 Brand Color</h2>
+        <div class="form-group">
+          <label>Primary Color</label>
+          <div class="color-row">
+            <div class="color-preview" id="color-preview" style="background:${brandColor}"></div>
+            <div class="color-input-wrap">
+              <div class="color-swatch" id="color-swatch" style="background:${brandColor}">
+                <input type="color" id="color-picker" value="${brandColor}" oninput="onColorPick(this.value)">
+                <div class="swatch-circle" id="swatch-circle" style="background:${brandColor}"></div>
+              </div>
+              <input type="text" class="color-hex" id="color-hex" value="${brandColor}" placeholder="#c9a84c" maxlength="7" oninput="onHexInput(this.value)">
+            </div>
+          </div>
+          <div class="hint">Used for header accents, buttons, and links across your workspace.</div>
+        </div>
+
+        <!-- Live preview bar -->
+        <div class="preview-bar">
+          <span class="preview-label">Preview</span>
+          <span id="preview-name" style="font-weight:700;color:${brandColor};font-size:14px">${displayName}</span>
+          <button id="preview-btn" style="background:${brandColor};color:#0f172a;border:none;padding:6px 14px;border-radius:6px;font-size:12px;font-weight:700;cursor:default;">Save Changes</button>
+        </div>
+
+        <div class="btn-row" style="margin-top:20px">
+          <button class="btn-save" id="save-color-btn" onclick="saveColor()">Save Color</button>
+          <div id="color-feedback" class="feedback"></div>
+        </div>
+      </div>
+
+      <!-- Display Name -->
+      <div class="card">
+        <h2>🏢 Display Name</h2>
+        <div class="form-group">
+          <label>Company Display Name</label>
+          <input type="text" id="display-name" value="${(tenant.company_display_name || '').replace(/"/g, '&quot;')}" placeholder="${tenant.name}" maxlength="255">
+          <div class="hint">Shown in the header and login page. Defaults to your workspace name: <strong>${tenant.name}</strong></div>
+        </div>
+        <div class="btn-row">
+          <button class="btn-save" id="save-name-btn" onclick="saveName()">Save Name</button>
+          <div id="name-feedback" class="feedback"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // ── Color picker ──────────────────────────────────────────────────────────
+    function onColorPick(val) {
+      document.getElementById('color-hex').value = val;
+      applyColorPreview(val);
+    }
+    function onHexInput(val) {
+      if (/^#[0-9a-fA-F]{6}$/.test(val)) {
+        document.getElementById('color-picker').value = val;
+        applyColorPreview(val);
+      }
+    }
+    function applyColorPreview(color) {
+      document.getElementById('color-preview').style.background = color;
+      document.getElementById('swatch-circle').style.background = color;
+      document.getElementById('color-swatch').style.background = color;
+      document.getElementById('preview-name').style.color = color;
+      document.getElementById('preview-btn').style.background = color;
+    }
+
+    async function saveColor() {
+      const color = document.getElementById('color-hex').value.trim();
+      if (!/^#[0-9a-fA-F]{6}$/.test(color)) {
+        showFeedback('color-feedback', 'err', 'Enter a valid hex color like #c9a84c');
+        return;
+      }
+      const btn = document.getElementById('save-color-btn');
+      btn.disabled = true; btn.classList.add('saving');
+      try {
+        const r = await fetch('/api/broker/branding', {
+          method: 'PUT', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ primary_color: color })
+        });
+        const d = await r.json();
+        if (d.success) {
+          showFeedback('color-feedback', 'ok', '✓ Brand color saved');
+          // Update CSS var live
+          document.documentElement.style.setProperty('--brand', color);
+        } else {
+          showFeedback('color-feedback', 'err', d.message);
+        }
+      } catch(e) { showFeedback('color-feedback', 'err', 'Network error'); }
+      btn.disabled = false; btn.classList.remove('saving');
+    }
+
+    // ── Display name ─────────────────────────────────────────────────────────
+    async function saveName() {
+      const name = document.getElementById('display-name').value.trim();
+      const btn = document.getElementById('save-name-btn');
+      btn.disabled = true; btn.classList.add('saving');
+      try {
+        const r = await fetch('/api/broker/branding', {
+          method: 'PUT', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({ company_display_name: name })
+        });
+        const d = await r.json();
+        if (d.success) {
+          showFeedback('name-feedback', 'ok', '✓ Display name saved');
+        } else {
+          showFeedback('name-feedback', 'err', d.message);
+        }
+      } catch(e) { showFeedback('name-feedback', 'err', 'Network error'); }
+      btn.disabled = false; btn.classList.remove('saving');
+    }
+
+    // ── Logo upload ───────────────────────────────────────────────────────────
+    document.getElementById('logo-file-input').addEventListener('change', async function(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+      if (file.size > 512000) {
+        showFeedback('logo-feedback', 'err', 'File too large. Max 500KB.');
+        return;
+      }
+      showFeedback('logo-feedback', 'ok', 'Uploading…');
+      const reader = new FileReader();
+      reader.onload = async function(ev) {
+        const base64 = ev.target.result;
+        try {
+          const r = await fetch('/api/broker/branding/logo', {
+            method: 'POST', headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({ logo_data: base64, mime_type: file.type })
+          });
+          const d = await r.json();
+          if (d.success) {
+            document.getElementById('logo-preview-img').src = d.logo_url;
+            document.getElementById('logo-preview-img').style.display = '';
+            const ph = document.getElementById('logo-placeholder');
+            if (ph) ph.style.display = 'none';
+            document.getElementById('remove-logo-btn').style.display = '';
+            showFeedback('logo-feedback', 'ok', '✓ Logo uploaded successfully');
+          } else {
+            showFeedback('logo-feedback', 'err', d.message);
+          }
+        } catch(ex) { showFeedback('logo-feedback', 'err', 'Upload failed. Try again.'); }
+      };
+      reader.readAsDataURL(file);
+    });
+
+    async function removeLogo() {
+      if (!confirm('Remove logo?')) return;
+      try {
+        const r = await fetch('/api/broker/branding/logo', { method: 'DELETE' });
+        const d = await r.json();
+        if (d.success) {
+          document.getElementById('logo-preview-img').src = '';
+          document.getElementById('logo-preview-img').style.display = 'none';
+          const ph = document.getElementById('logo-placeholder');
+          if (ph) ph.style.display = '';
+          document.getElementById('remove-logo-btn').style.display = 'none';
+          showFeedback('logo-feedback', 'ok', 'Logo removed');
+        }
+      } catch(e) { showFeedback('logo-feedback', 'err', 'Failed to remove logo'); }
+    }
+
+    // ── Utilities ─────────────────────────────────────────────────────────────
+    function showFeedback(id, type, msg) {
+      const el = document.getElementById(id);
+      el.className = 'feedback ' + type;
+      el.textContent = msg;
+      el.style.display = 'block';
+      if (type === 'ok') setTimeout(() => { el.style.display = 'none'; }, 3500);
+    }
+  </script>
+</body>
+</html>`);
+});
+
 // GET /broker/billing — billing settings page
 app.get('/broker/billing', async (req, res) => {
   if (!req.session || !req.session.brokerUser) return res.redirect('/broker/login');
@@ -4894,8 +5473,9 @@ app.get('/broker/billing', async (req, res) => {
   res.send(brokerPage('Billing & Subscription', `
   <style>body { display:block !important; }</style>
   <div style="max-width:600px;margin:0 auto;padding:40px 24px">
-    <div style="margin-bottom:32px">
+    <div style="margin-bottom:32px;display:flex;gap:20px;align-items:center">
       <a href="/broker/dashboard" style="color:#64748b;font-size:13px;text-decoration:none">← Back to Dashboard</a>
+      ${user.role === 'admin' ? '<a href="/broker/settings/branding" style="color:#64748b;font-size:13px;text-decoration:none">⚙ Brand Settings</a>' : ''}
     </div>
 
     <h2 style="font-size:22px;font-weight:700;color:#f1f5f9;margin-bottom:8px">Billing & Subscription</h2>
