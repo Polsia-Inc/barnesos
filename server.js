@@ -576,6 +576,356 @@ app.get('/health', (req, res) => {
   res.json({ status: 'healthy' });
 });
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// BROKER RADAR API — Tenant-scoped Signal Radar endpoints
+// All routes require requireBrokerAuth and scope data to req.session.brokerTenant.id
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── BROKER RADAR: Stats ─────────────────────────────────────────────────────
+app.get('/api/broker/radar/stats', requireBrokerAuth, async (req, res) => {
+  const tid = req.session.brokerTenant.id;
+  try {
+    const { rows: tierRows } = await pool.query(
+      `SELECT heat_tier, COUNT(*) as count FROM prospects WHERE tenant_id = $1 GROUP BY heat_tier`,
+      [tid]
+    );
+    const tiers = { hot: 0, warm: 0, cold: 0 };
+    for (const r of tierRows) tiers[r.heat_tier] = parseInt(r.count);
+
+    const { rows: totalRow } = await pool.query(
+      `SELECT COUNT(*) as total FROM prospects WHERE tenant_id = $1`, [tid]
+    );
+
+    const { rows: hotSignalsRow } = await pool.query(
+      `SELECT COUNT(*) as count FROM prospect_signals ps
+       JOIN prospects p ON ps.prospect_id = p.id
+       WHERE p.tenant_id = $1 AND ps.detected_at >= NOW() - INTERVAL '7 days' AND p.heat_tier = 'hot'`,
+      [tid]
+    );
+
+    const { rows: allSignalsRow } = await pool.query(
+      `SELECT COUNT(*) as count FROM prospect_signals ps
+       JOIN prospects p ON ps.prospect_id = p.id
+       WHERE p.tenant_id = $1 AND ps.detected_at >= NOW() - INTERVAL '7 days'`,
+      [tid]
+    );
+
+    const { rows: scanRow } = await pool.query(
+      `SELECT sh.started_at, sh.completed_at, sh.status, sh.error_message
+       FROM scan_history sh
+       WHERE sh.tenant_id = $1
+       ORDER BY sh.started_at DESC LIMIT 1`,
+      [tid]
+    );
+
+    res.json({
+      success: true,
+      total_prospects: parseInt(totalRow[0].total),
+      hot_prospects: tiers.hot,
+      warm_prospects: tiers.warm,
+      cold_prospects: tiers.cold,
+      hot_signals_7d: parseInt(hotSignalsRow[0].count),
+      all_signals_7d: parseInt(allSignalsRow[0].count),
+      last_scan: scanRow[0] || null
+    });
+  } catch (err) {
+    console.error('[Radar] Stats error:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to fetch radar stats' });
+  }
+});
+
+// ─── BROKER RADAR: List prospects ────────────────────────────────────────────
+app.get('/api/broker/radar/prospects', requireBrokerAuth, async (req, res) => {
+  const tid = req.session.brokerTenant.id;
+  try {
+    const { tier, search, sort } = req.query;
+    let query = `SELECT p.*,
+      (SELECT COUNT(*) FROM prospect_signals ps WHERE ps.prospect_id = p.id) as signal_count,
+      (SELECT MAX(ps.detected_at) FROM prospect_signals ps WHERE ps.prospect_id = p.id) as latest_signal_date,
+      (SELECT ps.title FROM prospect_signals ps WHERE ps.prospect_id = p.id ORDER BY ps.score DESC, ps.detected_at DESC LIMIT 1) as latest_signal_title,
+      (SELECT COALESCE(json_agg(sq ORDER BY sq.score DESC, sq.detected_at DESC), '[]'::json) FROM (
+        SELECT ps.id, ps.signal_type, ps.title, ps.summary, ps.source_url, ps.source_name, ps.score, ps.detected_at,
+               tr.category as trigger_category
+        FROM prospect_signals ps
+        LEFT JOIN trigger_rules tr ON ps.trigger_rule_id = tr.id
+        WHERE ps.prospect_id = p.id
+        ORDER BY ps.score DESC, ps.detected_at DESC
+        LIMIT 3
+      ) sq) as top_signals
+      FROM prospects p WHERE p.tenant_id = $1`;
+    const params = [tid];
+
+    if (tier && ['hot', 'warm', 'cold'].includes(tier)) {
+      params.push(tier);
+      query += ` AND p.heat_tier = $${params.length}`;
+    }
+    if (search) {
+      params.push(`%${search}%`);
+      query += ` AND (p.name ILIKE $${params.length} OR p.company ILIKE $${params.length} OR p.location ILIKE $${params.length})`;
+    }
+
+    if (sort === 'name') query += ' ORDER BY p.name ASC';
+    else if (sort === 'recent') query += ' ORDER BY p.updated_at DESC';
+    else query += ' ORDER BY p.heat_score DESC, p.name ASC';
+
+    const { rows } = await pool.query(query, params);
+    res.json({ success: true, prospects: rows, count: rows.length });
+  } catch (err) {
+    console.error('[Radar] Prospects error:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to fetch prospects' });
+  }
+});
+
+// ─── BROKER RADAR: Get single prospect ───────────────────────────────────────
+app.get('/api/broker/radar/prospects/:id', requireBrokerAuth, async (req, res) => {
+  const tid = req.session.brokerTenant.id;
+  try {
+    const { rows: prospects } = await pool.query(
+      'SELECT * FROM prospects WHERE id = $1 AND tenant_id = $2', [req.params.id, tid]
+    );
+    if (prospects.length === 0) {
+      return res.status(404).json({ success: false, message: 'Prospect not found' });
+    }
+    const { rows: signals } = await pool.query(
+      `SELECT ps.*, tr.name as trigger_name, tr.category as trigger_category
+       FROM prospect_signals ps
+       LEFT JOIN trigger_rules tr ON ps.trigger_rule_id = tr.id
+       WHERE ps.prospect_id = $1
+       ORDER BY ps.detected_at DESC`,
+      [req.params.id]
+    );
+    const { rows: scans } = await pool.query(
+      `SELECT * FROM scan_history WHERE prospect_id = $1 AND tenant_id = $2 ORDER BY started_at DESC LIMIT 10`,
+      [req.params.id, tid]
+    );
+    res.json({ success: true, prospect: prospects[0], signals, scan_history: scans });
+  } catch (err) {
+    console.error('[Radar] Prospect detail error:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to fetch prospect' });
+  }
+});
+
+// ─── BROKER RADAR: Create prospect ───────────────────────────────────────────
+app.post('/api/broker/radar/prospects', requireBrokerAuth, async (req, res) => {
+  const tid = req.session.brokerTenant.id;
+  try {
+    const { name, email, phone, company, location, current_yacht_interest,
+            yacht_brand, yacht_model, social_handles, notes, commercial_contact } = req.body;
+    if (!name) return res.status(400).json({ success: false, message: 'name is required' });
+
+    const { rows } = await pool.query(
+      `INSERT INTO prospects (tenant_id, name, email, phone, company, location, current_yacht_interest,
+        yacht_brand, yacht_model, social_handles, notes, commercial_contact)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+      [tid, name, email||null, phone||null, company||null, location||null,
+       current_yacht_interest||null, yacht_brand||null, yacht_model||null,
+       social_handles ? JSON.stringify(social_handles) : '{}', notes||null, commercial_contact||null]
+    );
+    res.json({ success: true, prospect: rows[0] });
+  } catch (err) {
+    console.error('[Radar] Create prospect error:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to create prospect' });
+  }
+});
+
+// ─── BROKER RADAR: Update prospect ───────────────────────────────────────────
+app.put('/api/broker/radar/prospects/:id', requireBrokerAuth, async (req, res) => {
+  const tid = req.session.brokerTenant.id;
+  try {
+    const fields = req.body;
+    const id = req.params.id;
+    const allowed = ['name','email','phone','company','location','current_yacht_interest',
+      'yacht_brand','yacht_model','notes','commercial_contact','heat_tier','heat_score'];
+    const setClauses = [];
+    const params = [];
+    let idx = 1;
+
+    for (const f of allowed) {
+      if (fields[f] !== undefined) {
+        setClauses.push(`${f} = $${idx}`); params.push(fields[f]); idx++;
+      }
+    }
+    if (fields.social_handles !== undefined) {
+      setClauses.push(`social_handles = $${idx}`);
+      params.push(JSON.stringify(fields.social_handles)); idx++;
+    }
+    if (setClauses.length === 0) {
+      return res.status(400).json({ success: false, message: 'No fields to update' });
+    }
+    setClauses.push(`updated_at = NOW()`);
+    params.push(id); params.push(tid);
+
+    const { rows } = await pool.query(
+      `UPDATE prospects SET ${setClauses.join(', ')} WHERE id = $${idx} AND tenant_id = $${idx + 1} RETURNING *`,
+      params
+    );
+    if (rows.length === 0) return res.status(404).json({ success: false, message: 'Prospect not found' });
+    res.json({ success: true, prospect: rows[0] });
+  } catch (err) {
+    console.error('[Radar] Update prospect error:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to update prospect' });
+  }
+});
+
+// ─── BROKER RADAR: Delete prospect ───────────────────────────────────────────
+app.delete('/api/broker/radar/prospects/:id', requireBrokerAuth, async (req, res) => {
+  const tid = req.session.brokerTenant.id;
+  try {
+    const { rowCount } = await pool.query(
+      'DELETE FROM prospects WHERE id = $1 AND tenant_id = $2', [req.params.id, tid]
+    );
+    if (rowCount === 0) return res.status(404).json({ success: false, message: 'Prospect not found' });
+    res.json({ success: true, message: 'Prospect deleted' });
+  } catch (err) {
+    console.error('[Radar] Delete prospect error:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to delete prospect' });
+  }
+});
+
+// ─── BROKER RADAR: Bulk import ────────────────────────────────────────────────
+app.post('/api/broker/radar/prospects/import', requireBrokerAuth, async (req, res) => {
+  const tid = req.session.brokerTenant.id;
+  try {
+    const { prospects } = req.body;
+    if (!Array.isArray(prospects) || prospects.length === 0) {
+      return res.status(400).json({ success: false, message: 'prospects array is required' });
+    }
+
+    const { rows: existing } = await pool.query(
+      `SELECT LOWER(name) AS name, LOWER(COALESCE(email,'')) AS email FROM prospects WHERE tenant_id = $1`,
+      [tid]
+    );
+    const existingNames = new Set(existing.map(r => r.name));
+    const existingEmails = new Set(existing.filter(r => r.email).map(r => r.email));
+
+    let imported = 0, skipped = 0;
+    const errors = [];
+
+    for (let i = 0; i < prospects.length; i++) {
+      const p = prospects[i];
+      const rowNum = i + 1;
+      if (!p.name || !p.name.trim()) {
+        errors.push({ row: rowNum, name: p.name || '(empty)', reason: 'Name is required' });
+        continue;
+      }
+      const nameLower = p.name.trim().toLowerCase();
+      const emailLower = p.email ? p.email.trim().toLowerCase() : '';
+      if (existingNames.has(nameLower) || (emailLower && existingEmails.has(emailLower))) {
+        skipped++; continue;
+      }
+      try {
+        await pool.query(
+          `INSERT INTO prospects (tenant_id, name, email, phone, company, location, current_yacht_interest,
+            yacht_brand, yacht_model, notes, commercial_contact, heat_tier)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+          [tid, p.name.trim(), p.email||null, p.phone||null, p.company||null, p.location||null,
+           p.yacht_interest||null, p.yacht_brand||null, p.yacht_model||null, p.notes||null,
+           p.commercial_contact||null,
+           ['hot','warm','cold'].includes((p.tier||'').toLowerCase()) ? p.tier.toLowerCase() : 'cold']
+        );
+        existingNames.add(nameLower);
+        if (emailLower) existingEmails.add(emailLower);
+        imported++;
+      } catch (insertErr) {
+        errors.push({ row: rowNum, name: p.name, reason: insertErr.message });
+      }
+    }
+
+    res.json({ success: true, imported, skipped, errors });
+  } catch (err) {
+    console.error('[Radar] Import error:', err.message);
+    res.status(500).json({ success: false, message: 'Import failed: ' + err.message });
+  }
+});
+
+// ─── BROKER RADAR: Signal feed ────────────────────────────────────────────────
+app.get('/api/broker/radar/signals/feed', requireBrokerAuth, async (req, res) => {
+  const tid = req.session.brokerTenant.id;
+  try {
+    const { limit, days } = req.query;
+    const maxResults = Math.min(parseInt(limit) || 100, 500);
+    const dayRange = parseInt(days) || 30;
+
+    const { rows } = await pool.query(
+      `SELECT ps.*, p.name as prospect_name, p.company as prospect_company,
+              p.heat_tier, p.location as prospect_location,
+              tr.name as trigger_name, tr.category as trigger_category
+       FROM prospect_signals ps
+       JOIN prospects p ON ps.prospect_id = p.id
+       LEFT JOIN trigger_rules tr ON ps.trigger_rule_id = tr.id
+       WHERE p.tenant_id = $1 AND ps.detected_at >= NOW() - ($2 || ' days')::INTERVAL
+       ORDER BY ps.score DESC, ps.detected_at DESC
+       LIMIT $3`,
+      [tid, dayRange.toString(), maxResults]
+    );
+
+    res.json({ success: true, signals: rows, count: rows.length });
+  } catch (err) {
+    console.error('[Radar] Signal feed error:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to fetch signal feed' });
+  }
+});
+
+// ─── BROKER RADAR: Scanner status ────────────────────────────────────────────
+app.get('/api/broker/radar/scanner/status', requireBrokerAuth, async (req, res) => {
+  const tid = req.session.brokerTenant.id;
+  try {
+    const { rows: recentScans } = await pool.query(
+      `SELECT sh.*, p.name as prospect_name
+       FROM scan_history sh
+       JOIN prospects p ON sh.prospect_id = p.id
+       WHERE sh.tenant_id = $1
+       ORDER BY sh.started_at DESC LIMIT 5`,
+      [tid]
+    );
+
+    const { rows: countRow } = await pool.query(
+      `SELECT COUNT(*) as total FROM prospects WHERE tenant_id = $1`, [tid]
+    );
+
+    const { rows: scannedRow } = await pool.query(
+      `SELECT COUNT(*) as scanned FROM prospects WHERE tenant_id = $1 AND last_scanned_at IS NOT NULL`, [tid]
+    );
+
+    const { rows: errRow } = await pool.query(
+      `SELECT COUNT(*) as errors FROM scan_history sh
+       JOIN prospects p ON sh.prospect_id = p.id
+       WHERE sh.tenant_id = $1 AND sh.status = 'error' AND sh.started_at >= NOW() - INTERVAL '24 hours'`,
+      [tid]
+    );
+
+    res.json({
+      success: true,
+      recent_scans: recentScans,
+      total_prospects: parseInt(countRow[0].total),
+      scanned_prospects: parseInt(scannedRow[0].scanned),
+      errors_24h: parseInt(errRow[0].errors),
+      sources_active: ['Google News', 'Web Search']
+    });
+  } catch (err) {
+    console.error('[Radar] Scanner status error:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to fetch scanner status' });
+  }
+});
+
+// ─── BROKER RADAR: Trigger scan for a prospect (tenant-scoped) ───────────────
+app.post('/api/broker/radar/scanner/scan/:id', requireBrokerAuth, async (req, res) => {
+  const tid = req.session.brokerTenant.id;
+  try {
+    const { rows: prospects } = await pool.query(
+      'SELECT * FROM prospects WHERE id = $1 AND tenant_id = $2', [req.params.id, tid]
+    );
+    if (prospects.length === 0) {
+      return res.status(404).json({ success: false, message: 'Prospect not found' });
+    }
+    const result = await scanProspect(prospects[0]);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    console.error('[Radar] Scan error:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to scan prospect' });
+  }
+});
+
 // ─── API: Get all yachts (with optional filters) ─────────────────────────────
 app.get('/api/yachts', async (req, res) => {
   try {
@@ -3229,6 +3579,7 @@ app.get('/broker/dashboard', (req, res) => {
       <span class="badge">${tenant.slug}</span>
     </div>
     <div class="topbar-right">
+      <a href="/broker/signal-radar" style="color:#c9a84c;font-weight:600">📡 Signal Radar</a>
       <a href="/broker/billing" style="color:#60a5fa">Billing</a>
       <span>${user.first_name} ${user.last_name} · <strong style="color:#e2e8f0">${user.role}</strong></span>
       <a href="/api/broker/logout">Sign out</a>
@@ -3357,6 +3708,919 @@ app.get('/broker/dashboard', (req, res) => {
 
     loadTeam();
   </script>
+</body>
+</html>`);
+});
+
+// GET /broker/signal-radar — Signal Radar dashboard (tenant-scoped)
+app.get('/broker/signal-radar', (req, res) => {
+  if (!req.session || !req.session.brokerUser) return res.redirect('/broker/login');
+  const user = req.session.brokerUser;
+  const tenant = req.session.brokerTenant;
+  const billingStatus = effectiveBillingStatus(tenant);
+  const daysLeft = trialDaysRemaining(tenant);
+  const isReadOnly = billingStatus === 'past_due' || billingStatus === 'cancelled';
+
+  let billingBanner = '';
+  if (billingStatus === 'trial' && daysLeft <= 7) {
+    billingBanner = `<div class="billing-banner warning">⏰ <strong>${daysLeft} day${daysLeft !== 1 ? 's' : ''} left</strong> on your free trial — <a href="/broker/billing">Subscribe now →</a></div>`;
+  } else if (isReadOnly) {
+    billingBanner = `<div class="billing-banner danger">🔒 <strong>Subscription required.</strong> Read-only mode. <a href="/broker/billing">Subscribe Now →</a></div>`;
+  }
+
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Signal Radar — ${tenant.name}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0a0f1e;
+      --surface: #111827;
+      --surface2: #1a2236;
+      --border: #1e2d45;
+      --border2: #263552;
+      --text: #e8edf5;
+      --text2: #8fa3bf;
+      --text3: #4d6480;
+      --gold: #c9a84c;
+      --gold-dim: #8a6d2e;
+      --hot: #ef4444;
+      --hot-bg: #2d0a0a;
+      --hot-border: #7f1d1d;
+      --warm: #f59e0b;
+      --warm-bg: #2d1a00;
+      --warm-border: #78350f;
+      --cold: #38bdf8;
+      --cold-bg: #0c1e2e;
+      --cold-border: #0e4d7a;
+      --accent: #3b82f6;
+      --accent-dim: #1e3a5f;
+    }
+    body { font-family: 'Inter', -apple-system, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    /* ── TOPBAR ── */
+    .topbar { position: fixed; top: 0; left: 0; right: 0; z-index: 100; background: rgba(10,15,30,0.95); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); height: 54px; display: flex; align-items: center; padding: 0 28px; gap: 0; }
+    .topbar-brand { font-size: 15px; font-weight: 700; color: var(--gold); letter-spacing: 0.5px; white-space: nowrap; margin-right: 32px; }
+    .topbar-nav { display: flex; align-items: center; gap: 4px; flex: 1; }
+    .topbar-nav a { color: var(--text2); text-decoration: none; font-size: 13px; font-weight: 500; padding: 6px 14px; border-radius: 6px; transition: all 0.15s; white-space: nowrap; }
+    .topbar-nav a:hover { color: var(--text); background: var(--surface2); }
+    .topbar-nav a.active { color: var(--text); background: var(--surface2); }
+    .topbar-right { display: flex; align-items: center; gap: 16px; font-size: 12px; color: var(--text3); white-space: nowrap; }
+    .topbar-right a { color: var(--text3); text-decoration: none; transition: color 0.15s; }
+    .topbar-right a:hover { color: var(--text2); }
+
+    /* ── BILLING BANNERS ── */
+    .billing-banner { padding: 10px 28px; font-size: 13px; display: flex; align-items: center; gap: 8px; }
+    .billing-banner.warning { background: #1c1400; border-bottom: 1px solid var(--warm-border); color: #fde68a; }
+    .billing-banner.danger { background: #1a0000; border-bottom: 1px solid var(--hot-border); color: #fca5a5; }
+    .billing-banner a { color: inherit; font-weight: 600; }
+
+    /* ── MAIN LAYOUT ── */
+    .page { padding-top: 54px; }
+    .container { max-width: 1400px; margin: 0 auto; padding: 28px 28px 80px; }
+
+    /* ── STATS ROW ── */
+    .stats-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin-bottom: 16px; }
+    .stat-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px; }
+    .stat-card.hot { border-color: var(--hot-border); background: var(--hot-bg); }
+    .stat-card.warm { border-color: var(--warm-border); background: var(--warm-bg); }
+    .stat-card.cold { border-color: var(--cold-border); background: var(--cold-bg); }
+    .stat-card.featured { border-color: var(--gold-dim); background: linear-gradient(135deg, #1a1200 0%, #0f0d00 100%); }
+    .stat-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text3); margin-bottom: 6px; }
+    .stat-value { font-size: 32px; font-weight: 700; line-height: 1; color: var(--text); }
+    .stat-card.hot .stat-value { color: var(--hot); }
+    .stat-card.warm .stat-value { color: var(--warm); }
+    .stat-card.cold .stat-value { color: var(--cold); }
+    .stat-card.featured .stat-value { color: var(--gold); font-size: 36px; }
+    .stat-sub { font-size: 11px; color: var(--text3); margin-top: 4px; }
+
+    /* ── SCANNER BAR ── */
+    .scanner-bar { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; margin-bottom: 20px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+    .scanner-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text3); }
+    .scanner-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text2); }
+    .scanner-dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 6px #22c55e; flex-shrink: 0; }
+    .scanner-dot.idle { background: var(--text3); box-shadow: none; }
+    .scanner-dot.error { background: var(--hot); box-shadow: 0 0 6px var(--hot); }
+
+    /* ── TOOLBAR ── */
+    .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+    .tab-group { display: flex; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+    .tab-btn { padding: 8px 18px; font-size: 13px; font-weight: 500; border: none; cursor: pointer; background: transparent; color: var(--text2); transition: all 0.15s; white-space: nowrap; }
+    .tab-btn.active { background: var(--accent); color: #fff; }
+    .tab-btn:hover:not(.active) { background: var(--surface2); color: var(--text); }
+    .spacer { flex: 1; }
+    .search-input { background: var(--surface); border: 1px solid var(--border); border-radius: 7px; padding: 8px 14px; font-size: 13px; color: var(--text); outline: none; width: 220px; transition: border-color 0.15s; }
+    .search-input:focus { border-color: var(--accent); }
+    .search-input::placeholder { color: var(--text3); }
+    .btn { padding: 8px 16px; border: none; border-radius: 7px; font-size: 13px; font-weight: 600; cursor: pointer; transition: all 0.15s; white-space: nowrap; display: inline-flex; align-items: center; gap: 6px; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-gold { background: var(--gold); color: #0a0f1e; }
+    .btn-gold:hover { background: #b8920e; }
+    .btn-outline { background: transparent; border: 1px solid var(--border2); color: var(--text2); }
+    .btn-outline:hover { border-color: var(--accent); color: var(--text); }
+    .btn-sm { padding: 5px 12px; font-size: 12px; }
+    .btn-danger { background: var(--hot-bg); border: 1px solid var(--hot-border); color: var(--hot); }
+    .btn-danger:hover { background: #3d0000; }
+
+    /* ── SIGNAL FEED ── */
+    .feed-table { width: 100%; border-collapse: collapse; }
+    .feed-table th { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text3); padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--border); white-space: nowrap; }
+    .feed-table td { padding: 10px 12px; font-size: 13px; border-bottom: 1px solid var(--border); vertical-align: top; }
+    .feed-table tr { cursor: pointer; transition: background 0.1s; }
+    .feed-table tbody tr:hover td { background: var(--surface2); }
+    .feed-table tr:last-child td { border-bottom: none; }
+    .prospect-name { font-weight: 600; color: var(--text); }
+    .prospect-company { font-size: 11px; color: var(--text3); margin-top: 2px; }
+    .signal-type-cell { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 500; }
+    .tier-pill { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; }
+    .tier-pill.hot { background: var(--hot-bg); color: var(--hot); border: 1px solid var(--hot-border); }
+    .tier-pill.warm { background: var(--warm-bg); color: var(--warm); border: 1px solid var(--warm-border); }
+    .tier-pill.cold { background: var(--cold-bg); color: var(--cold); border: 1px solid var(--cold-border); }
+    .score-badge { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 6px; font-size: 13px; font-weight: 700; }
+    .score-high { background: var(--hot-bg); color: var(--hot); border: 1px solid var(--hot-border); }
+    .score-mid { background: var(--warm-bg); color: var(--warm); border: 1px solid var(--warm-border); }
+    .score-low { background: var(--surface2); color: var(--text2); border: 1px solid var(--border); }
+    .excerpt-cell { font-size: 12px; color: var(--text3); max-width: 280px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .source-link { font-size: 11px; color: var(--accent); text-decoration: none; }
+    .source-link:hover { text-decoration: underline; }
+    .date-cell { font-size: 11px; color: var(--text3); white-space: nowrap; }
+    .empty-state { text-align: center; padding: 60px 20px; color: var(--text3); }
+    .empty-state .icon { font-size: 40px; margin-bottom: 12px; }
+    .empty-state h3 { font-size: 16px; color: var(--text2); margin-bottom: 6px; }
+    .empty-state p { font-size: 13px; }
+
+    /* ── TIER VIEW ── */
+    .tier-columns { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+    @media (max-width: 900px) { .tier-columns { grid-template-columns: 1fr; } }
+    .tier-column { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+    .tier-column-header { padding: 14px 16px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); }
+    .tier-column-header.hot { background: var(--hot-bg); border-bottom-color: var(--hot-border); }
+    .tier-column-header.warm { background: var(--warm-bg); border-bottom-color: var(--warm-border); }
+    .tier-column-header.cold { background: var(--cold-bg); border-bottom-color: var(--cold-border); }
+    .tier-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+    .tier-title.hot { color: var(--hot); }
+    .tier-title.warm { color: var(--warm); }
+    .tier-title.cold { color: var(--cold); }
+    .tier-count { font-size: 22px; font-weight: 700; color: var(--text); }
+    .tier-body { padding: 8px; max-height: 600px; overflow-y: auto; }
+    .prospect-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; margin-bottom: 8px; cursor: pointer; transition: all 0.15s; }
+    .prospect-card:hover { border-color: var(--accent); background: #151e35; }
+    .prospect-card:last-child { margin-bottom: 0; }
+    .pc-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 6px; }
+    .pc-name { font-size: 13px; font-weight: 600; color: var(--text); }
+    .pc-company { font-size: 11px; color: var(--text3); margin-top: 1px; }
+    .pc-score { font-size: 18px; font-weight: 700; }
+    .pc-score.hot { color: var(--hot); }
+    .pc-score.warm { color: var(--warm); }
+    .pc-score.cold { color: var(--text3); }
+    .pc-signal { font-size: 11px; color: var(--text3); border-top: 1px solid var(--border); padding-top: 6px; margin-top: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+    /* ── SECTION WRAPPER ── */
+    .section-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+    .section-header { padding: 16px 20px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; }
+    .section-title { font-size: 14px; font-weight: 600; color: var(--text); }
+    .section-meta { font-size: 12px; color: var(--text3); }
+
+    /* ── MODALS ── */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.75); z-index: 500; display: flex; align-items: center; justify-content: center; padding: 20px; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+    .modal-overlay.open { opacity: 1; pointer-events: all; }
+    .modal { background: var(--surface); border: 1px solid var(--border2); border-radius: 14px; width: 100%; max-width: 560px; max-height: 90vh; overflow: hidden; display: flex; flex-direction: column; transform: translateY(20px); transition: transform 0.2s; }
+    .modal-overlay.open .modal { transform: translateY(0); }
+    .modal.modal-lg { max-width: 780px; }
+    .modal-header { padding: 20px 24px 16px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+    .modal-title { font-size: 16px; font-weight: 700; color: var(--text); }
+    .modal-close { background: none; border: none; color: var(--text3); font-size: 20px; cursor: pointer; padding: 2px 6px; border-radius: 4px; line-height: 1; transition: color 0.15s; }
+    .modal-close:hover { color: var(--text); }
+    .modal-body { padding: 20px 24px; overflow-y: auto; flex: 1; }
+    .modal-footer { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; gap: 10px; justify-content: flex-end; flex-shrink: 0; }
+
+    /* ── FORMS ── */
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .field { display: flex; flex-direction: column; gap: 5px; }
+    .field-full { grid-column: 1 / -1; }
+    .field label { font-size: 12px; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.4px; }
+    .field input, .field textarea, .field select {
+      background: var(--bg); border: 1px solid var(--border2); border-radius: 7px;
+      padding: 9px 12px; font-size: 13px; color: var(--text); outline: none;
+      transition: border-color 0.15s; font-family: inherit;
+    }
+    .field input:focus, .field textarea:focus { border-color: var(--accent); }
+    .field input::placeholder, .field textarea::placeholder { color: var(--text3); }
+    .field textarea { resize: vertical; min-height: 80px; }
+    .error-msg { color: var(--hot); font-size: 12px; margin-top: 4px; display: none; }
+
+    /* ── PROSPECT DETAIL ── */
+    .detail-header { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid var(--border); }
+    .detail-avatar { width: 52px; height: 52px; border-radius: 10px; background: var(--surface2); border: 1px solid var(--border2); display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; }
+    .detail-name { font-size: 20px; font-weight: 700; color: var(--text); }
+    .detail-company { font-size: 13px; color: var(--text2); margin-top: 2px; }
+    .detail-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+    .detail-tag { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text3); background: var(--surface2); border: 1px solid var(--border); border-radius: 4px; padding: 3px 8px; }
+    .detail-score { margin-left: auto; text-align: right; flex-shrink: 0; }
+    .detail-score .score-num { font-size: 36px; font-weight: 800; line-height: 1; }
+    .detail-score .score-label { font-size: 11px; color: var(--text3); }
+    .detail-section { margin-bottom: 20px; }
+    .detail-section h4 { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text3); margin-bottom: 10px; }
+    .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .detail-field { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px 12px; }
+    .detail-field .df-label { font-size: 10px; color: var(--text3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 2px; }
+    .detail-field .df-value { font-size: 13px; color: var(--text); }
+
+    /* ── SIGNAL TIMELINE ── */
+    .timeline { position: relative; padding-left: 20px; }
+    .timeline::before { content: ''; position: absolute; left: 6px; top: 0; bottom: 0; width: 2px; background: var(--border); }
+    .tl-item { position: relative; margin-bottom: 16px; }
+    .tl-item::before { content: ''; position: absolute; left: -17px; top: 5px; width: 9px; height: 9px; border-radius: 50%; background: var(--border2); border: 2px solid var(--border); }
+    .tl-item.high::before { background: var(--hot); border-color: var(--hot); box-shadow: 0 0 6px var(--hot); }
+    .tl-item.medium::before { background: var(--warm); border-color: var(--warm); }
+    .tl-item.low::before { background: var(--cold); border-color: var(--cold); }
+    .tl-date { font-size: 10px; color: var(--text3); margin-bottom: 3px; }
+    .tl-title { font-size: 13px; font-weight: 600; color: var(--text); margin-bottom: 3px; }
+    .tl-summary { font-size: 12px; color: var(--text2); margin-bottom: 4px; line-height: 1.5; }
+    .tl-source { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+    /* ── CSV UPLOAD ── */
+    .drop-zone { border: 2px dashed var(--border2); border-radius: 10px; padding: 32px; text-align: center; cursor: pointer; transition: all 0.15s; }
+    .drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent); background: var(--accent-dim); }
+    .drop-zone-icon { font-size: 36px; margin-bottom: 8px; }
+    .drop-zone-text { font-size: 14px; color: var(--text2); }
+    .drop-zone-sub { font-size: 12px; color: var(--text3); margin-top: 4px; }
+    .preview-table-wrap { max-height: 200px; overflow-y: auto; margin-top: 16px; border: 1px solid var(--border); border-radius: 8px; }
+    .preview-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .preview-table th { background: var(--surface2); padding: 6px 10px; text-align: left; font-weight: 600; color: var(--text2); border-bottom: 1px solid var(--border); white-space: nowrap; }
+    .preview-table td { padding: 5px 10px; border-bottom: 1px solid var(--border); color: var(--text2); white-space: nowrap; }
+    .preview-table tr:last-child td { border-bottom: none; }
+    .import-summary { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 12px 16px; margin-top: 12px; font-size: 13px; }
+    .import-summary .ok { color: #22c55e; }
+    .import-summary .skip { color: var(--warm); }
+    .import-summary .err { color: var(--hot); }
+
+    /* ── LOADING ── */
+    .loading { text-align: center; padding: 40px; color: var(--text3); font-size: 13px; }
+    .spinner { display: inline-block; width: 20px; height: 20px; border: 2px solid var(--border2); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 8px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── RESPONSIVE ── */
+    @media (max-width: 768px) {
+      .container { padding: 16px 16px 60px; }
+      .stats-row { grid-template-columns: repeat(2, 1fr); }
+      .topbar { padding: 0 16px; }
+      .feed-table th:nth-child(n+5), .feed-table td:nth-child(n+5) { display: none; }
+      .form-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 480px) { .stats-row { grid-template-columns: 1fr 1fr; } }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- TOPBAR -->
+  <div class="topbar">
+    <div class="topbar-brand">⛵ BarnesOS</div>
+    <div class="topbar-nav">
+      <a href="/broker/signal-radar" class="active">Signal Radar</a>
+      <a href="/broker/dashboard">Dashboard</a>
+      <a href="/broker/billing">Billing</a>
+    </div>
+    <div class="topbar-right">
+      <span>${user.first_name || user.email}</span>
+      <a href="/api/broker/logout">Sign out</a>
+    </div>
+  </div>
+
+  ${billingBanner}
+
+  <div class="container">
+
+    <!-- STATS -->
+    <div class="stats-row">
+      <div class="stat-card featured">
+        <div class="stat-label">🔥 Hot Signals (7 days)</div>
+        <div class="stat-value" id="stat-hot-signals">—</div>
+        <div class="stat-sub" id="stat-all-signals-sub">loading…</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Total Prospects</div>
+        <div class="stat-value" id="stat-total">—</div>
+      </div>
+      <div class="stat-card hot">
+        <div class="stat-label">🔴 HOT</div>
+        <div class="stat-value" id="stat-hot">—</div>
+      </div>
+      <div class="stat-card warm">
+        <div class="stat-label">🟠 WARM</div>
+        <div class="stat-value" id="stat-warm">—</div>
+      </div>
+      <div class="stat-card cold">
+        <div class="stat-label">🔵 COLD</div>
+        <div class="stat-value" id="stat-cold">—</div>
+      </div>
+    </div>
+
+    <!-- SCANNER STATUS -->
+    <div class="scanner-bar">
+      <div class="scanner-label">Scanner</div>
+      <div class="scanner-item">
+        <div class="scanner-dot idle" id="scanner-dot"></div>
+        <span id="scanner-status-text">Loading…</span>
+      </div>
+      <div class="scanner-item" id="scanner-sources-item" style="display:none">
+        📡 <span id="scanner-sources-text"></span>
+      </div>
+      <div class="scanner-item" id="scanner-last-item" style="display:none">
+        🕒 Last scan: <span id="scanner-last-text"></span>
+      </div>
+      <div class="scanner-item" id="scanner-err-item" style="display:none; color: var(--hot)">
+        ⚠️ <span id="scanner-err-text"></span>
+      </div>
+    </div>
+
+    <!-- TOOLBAR -->
+    <div class="toolbar">
+      <div class="tab-group">
+        <button class="tab-btn active" id="tab-feed" onclick="switchTab('feed')">📊 Signal Feed</button>
+        <button class="tab-btn" id="tab-tier" onclick="switchTab('tier')">📋 Tier View</button>
+      </div>
+      <input type="text" class="search-input" id="search-input" placeholder="Search prospects…" oninput="handleSearch(this.value)">
+      <div class="spacer"></div>
+      ${isReadOnly ? '' : `
+      <button class="btn btn-outline" onclick="openCsvModal()">📤 CSV Upload</button>
+      <button class="btn btn-gold" onclick="openAddModal()">＋ Add Prospect</button>
+      `}
+    </div>
+
+    <!-- SIGNAL FEED -->
+    <div id="view-feed">
+      <div class="section-wrap">
+        <div class="section-header">
+          <div class="section-title">Recent Signals</div>
+          <div class="section-meta" id="feed-meta">Loading…</div>
+        </div>
+        <div id="feed-loading" class="loading"><div class="spinner"></div><br>Loading signals…</div>
+        <div id="feed-content" style="display:none">
+          <table class="feed-table">
+            <thead><tr>
+              <th>#</th><th>Prospect</th><th>Signal</th><th>Source</th><th>Date</th><th>Score</th><th>Excerpt</th>
+            </tr></thead>
+            <tbody id="feed-tbody"></tbody>
+          </table>
+          <div id="feed-empty" class="empty-state" style="display:none">
+            <div class="icon">📡</div>
+            <h3>No signals detected yet</h3>
+            <p>Signals will appear here as the scanner processes your prospect list.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TIER VIEW -->
+    <div id="view-tier" style="display:none">
+      <div class="tier-columns">
+        <div class="tier-column">
+          <div class="tier-column-header hot">
+            <span class="tier-title hot">🔴 HOT</span>
+            <span class="tier-count" id="tier-hot-cnt">—</span>
+          </div>
+          <div class="tier-body" id="tier-hot-body"><div class="loading"><div class="spinner"></div></div></div>
+        </div>
+        <div class="tier-column">
+          <div class="tier-column-header warm">
+            <span class="tier-title warm">🟠 WARM</span>
+            <span class="tier-count" id="tier-warm-cnt">—</span>
+          </div>
+          <div class="tier-body" id="tier-warm-body"><div class="loading"><div class="spinner"></div></div></div>
+        </div>
+        <div class="tier-column">
+          <div class="tier-column-header cold">
+            <span class="tier-title cold">🔵 COLD</span>
+            <span class="tier-count" id="tier-cold-cnt">—</span>
+          </div>
+          <div class="tier-body" id="tier-cold-body"><div class="loading"><div class="spinner"></div></div></div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /container -->
+</div><!-- /page -->
+
+<!-- ADD PROSPECT MODAL -->
+<div class="modal-overlay" id="add-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">Add Prospect</div>
+      <button class="modal-close" onclick="closeAddModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="field field-full">
+          <label>Name <span style="color:var(--hot)">*</span></label>
+          <input type="text" id="add-name" placeholder="e.g. Jeff Bezos">
+        </div>
+        <div class="field"><label>Company</label><input type="text" id="add-company" placeholder="e.g. Amazon"></div>
+        <div class="field"><label>Email</label><input type="email" id="add-email" placeholder="email@example.com"></div>
+        <div class="field"><label>Phone</label><input type="text" id="add-phone" placeholder="+1 555 000 0000"></div>
+        <div class="field"><label>Location</label><input type="text" id="add-location" placeholder="Monaco, France"></div>
+        <div class="field"><label>Yacht Interest</label><input type="text" id="add-yacht" placeholder="e.g. 80m+ superyacht"></div>
+        <div class="field field-full">
+          <label>Social Handles <span style="font-size:10px;color:var(--text3);font-weight:400">(JSON format)</span></label>
+          <input type="text" id="add-social" placeholder='{"twitter":"@handle","instagram":"@handle"}'>
+        </div>
+        <div class="field field-full">
+          <label>Notes</label>
+          <textarea id="add-notes" placeholder="Additional context about this prospect…"></textarea>
+        </div>
+      </div>
+      <div class="error-msg" id="add-error"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeAddModal()">Cancel</button>
+      <button class="btn btn-gold" id="add-submit-btn" onclick="submitAddProspect()">Add Prospect</button>
+    </div>
+  </div>
+</div>
+
+<!-- CSV UPLOAD MODAL -->
+<div class="modal-overlay" id="csv-modal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">CSV Bulk Import</div>
+      <button class="modal-close" onclick="closeCsvModal()">×</button>
+    </div>
+    <div class="modal-body">
+      <p style="font-size:13px;color:var(--text2);margin-bottom:16px">
+        Required column: <code style="color:var(--gold);background:var(--surface2);padding:1px 6px;border-radius:3px">name</code>.
+        Optional: <code style="color:var(--text3)">company, email, phone, location, yacht_interest, notes, tier</code>
+      </p>
+      <div class="drop-zone" id="drop-zone" onclick="document.getElementById('csv-file-input').click()">
+        <input type="file" id="csv-file-input" accept=".csv,.txt" style="display:none" onchange="handleCsvFile(this.files[0])">
+        <div class="drop-zone-icon">📄</div>
+        <div class="drop-zone-text">Click to select CSV file</div>
+        <div class="drop-zone-sub">or drag and drop here</div>
+      </div>
+      <div id="csv-preview" style="display:none">
+        <div class="preview-table-wrap">
+          <table class="preview-table"><thead id="preview-thead"></thead><tbody id="preview-tbody"></tbody></table>
+        </div>
+        <p style="font-size:12px;color:var(--text3);margin-top:8px" id="csv-row-count"></p>
+      </div>
+      <div class="import-summary" id="import-summary" style="display:none"></div>
+      <div class="error-msg" id="csv-error"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="closeCsvModal()">Close</button>
+      <button class="btn btn-gold" id="csv-import-btn" style="display:none" onclick="importCsv()">Import Prospects</button>
+    </div>
+  </div>
+</div>
+
+<!-- PROSPECT DETAIL MODAL -->
+<div class="modal-overlay" id="detail-modal">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <div class="modal-title" id="detail-modal-title">Prospect Details</div>
+      <button class="modal-close" onclick="closeDetailModal()">×</button>
+    </div>
+    <div class="modal-body" id="detail-modal-body">
+      <div class="loading"><div class="spinner"></div></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline btn-sm" onclick="closeDetailModal()">Close</button>
+      <button class="btn btn-primary btn-sm" id="detail-scan-btn" onclick="scanCurrentProspect()" style="display:none">🔍 Scan Now</button>
+      ${user.role === 'admin' && !isReadOnly ? `<button class="btn btn-danger btn-sm" id="detail-delete-btn" onclick="deleteCurrentProspect()" style="display:none">Delete</button>` : ''}
+    </div>
+  </div>
+</div>
+
+<script>
+  const IS_READONLY = ${JSON.stringify(isReadOnly)};
+  const IS_ADMIN = ${JSON.stringify(user.role === 'admin')};
+  let allSignals = [], allProspects = [], currentPid = null, csvRows = [];
+
+  const SIGNAL_ICONS = {
+    'Company Exit / Sale':'💰','IPO Event':'📈','Major Funding Round':'💵','Liquidation Event':'💰',
+    'CEO/Chairman Promotion':'👑','Board Appointment':'🏛️','Senior Role Change':'🔄',
+    'Major Award/Recognition':'🏆','Yacht Brand Mention':'⛵','Boat Show Attendance':'🎪',
+    'Luxury Lifestyle Signal':'💎','Yacht Account Follow':'📡'
+  };
+
+  function sigIcon(tn, st) { return SIGNAL_ICONS[tn] || SIGNAL_ICONS[st] || '📰'; }
+  function scClass(s) { return s >= 8 ? 'score-high' : s >= 5 ? 'score-mid' : 'score-low'; }
+  function timeAgo(ds) {
+    if (!ds) return '—';
+    const d = new Date(ds), diff = Date.now() - d.getTime();
+    const m = Math.floor(diff/60000), h = Math.floor(m/60), dy = Math.floor(h/24);
+    if (dy > 30) return d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'});
+    if (dy > 0) return dy+'d ago'; if (h > 0) return h+'h ago'; if (m > 0) return m+'m ago'; return 'Just now';
+  }
+  function esc(s) {
+    if (!s) return '';
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── DATA ──────────────────────────────────────────────────────────────────────
+  async function loadStats() {
+    try {
+      const d = await fetch('/api/broker/radar/stats').then(r=>r.json());
+      if (!d.success) return;
+      document.getElementById('stat-hot-signals').textContent = d.hot_signals_7d;
+      document.getElementById('stat-all-signals-sub').textContent = d.all_signals_7d + ' total signals this week';
+      document.getElementById('stat-total').textContent = d.total_prospects;
+      document.getElementById('stat-hot').textContent = d.hot_prospects;
+      document.getElementById('stat-warm').textContent = d.warm_prospects;
+      document.getElementById('stat-cold').textContent = d.cold_prospects;
+    } catch(e) {}
+  }
+
+  async function loadScannerStatus() {
+    try {
+      const d = await fetch('/api/broker/radar/scanner/status').then(r=>r.json());
+      if (!d.success) return;
+      const dot = document.getElementById('scanner-dot');
+      if (d.recent_scans && d.recent_scans.length > 0) {
+        const last = d.recent_scans[0];
+        dot.className = 'scanner-dot' + (last.status === 'error' ? ' error' : '');
+        document.getElementById('scanner-status-text').textContent = d.scanned_prospects + ' / ' + d.total_prospects + ' prospects scanned';
+        document.getElementById('scanner-last-item').style.display = '';
+        document.getElementById('scanner-last-text').textContent = timeAgo(last.started_at);
+      } else {
+        dot.className = 'scanner-dot idle';
+        document.getElementById('scanner-status-text').textContent = 'Not yet scanned';
+      }
+      if (d.sources_active && d.sources_active.length) {
+        document.getElementById('scanner-sources-item').style.display = '';
+        document.getElementById('scanner-sources-text').textContent = d.sources_active.join(', ');
+      }
+      if (d.errors_24h > 0) {
+        document.getElementById('scanner-err-item').style.display = '';
+        document.getElementById('scanner-err-text').textContent = d.errors_24h + ' error(s) last 24h';
+      }
+    } catch(e) {}
+  }
+
+  async function loadSignalFeed(search) {
+    document.getElementById('feed-loading').style.display = 'block';
+    document.getElementById('feed-content').style.display = 'none';
+    try {
+      const d = await fetch('/api/broker/radar/signals/feed?days=60&limit=100').then(r=>r.json());
+      if (!d.success) { document.getElementById('feed-loading').innerHTML = '<p style="color:var(--hot)">Failed to load signals</p>'; return; }
+      allSignals = d.signals || [];
+      renderFeed(search || '');
+    } catch(e) { document.getElementById('feed-loading').innerHTML = '<p style="color:var(--hot)">Network error</p>'; }
+  }
+
+  function renderFeed(search) {
+    document.getElementById('feed-loading').style.display = 'none';
+    document.getElementById('feed-content').style.display = 'block';
+    const q = search.toLowerCase();
+    const filtered = !q ? allSignals : allSignals.filter(s =>
+      (s.prospect_name||'').toLowerCase().includes(q) ||
+      (s.prospect_company||'').toLowerCase().includes(q) ||
+      (s.title||'').toLowerCase().includes(q) ||
+      (s.trigger_name||'').toLowerCase().includes(q)
+    );
+    document.getElementById('feed-meta').textContent = filtered.length + ' signal' + (filtered.length!==1?'s':'') + ' (last 60 days)';
+    const empty = document.getElementById('feed-empty');
+    const tbody = document.getElementById('feed-tbody');
+    if (!filtered.length) { tbody.innerHTML=''; empty.style.display='block'; return; }
+    empty.style.display = 'none';
+    tbody.innerHTML = filtered.map((s,i) => {
+      const tier = (s.heat_tier||'cold').toLowerCase();
+      return '<tr onclick="openDetail(' + s.prospect_id + ')">' +
+        '<td style="color:var(--text3);font-size:12px">' + (i+1) + '</td>' +
+        '<td><div class="prospect-name">' + esc(s.prospect_name) + '</div>' +
+          '<div class="prospect-company">' + esc(s.prospect_company||'') + '</div>' +
+          '<div style="margin-top:3px"><span class="tier-pill ' + tier + '">' + tier.toUpperCase() + '</span></div></td>' +
+        '<td><span class="signal-type-cell">' + sigIcon(s.trigger_name,s.signal_type) + ' ' + esc(s.trigger_name||s.signal_type) + '</span></td>' +
+        '<td>' + (s.source_url ?
+          '<a class="source-link" href="' + esc(s.source_url) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()">' + esc(s.source_name||'Link') + '</a>' :
+          '<span style="color:var(--text3)">' + esc(s.source_name||'—') + '</span>') + '</td>' +
+        '<td class="date-cell">' + timeAgo(s.detected_at) + '</td>' +
+        '<td><span class="score-badge ' + scClass(s.score) + '">' + (s.score||0) + '</span></td>' +
+        '<td class="excerpt-cell">' + esc(s.summary||s.title||'') + '</td>' +
+        '</tr>';
+    }).join('');
+  }
+
+  async function loadProspects(search) {
+    try {
+      const params = search ? '?search=' + encodeURIComponent(search) : '';
+      const d = await fetch('/api/broker/radar/prospects' + params).then(r=>r.json());
+      if (!d.success) return;
+      allProspects = d.prospects || [];
+      renderTierView(search||'');
+    } catch(e) {}
+  }
+
+  function renderTierView(search) {
+    const q = search.toLowerCase();
+    const filtered = !q ? allProspects : allProspects.filter(p =>
+      (p.name||'').toLowerCase().includes(q) ||
+      (p.company||'').toLowerCase().includes(q) ||
+      (p.location||'').toLowerCase().includes(q)
+    );
+    const hot=[], warm=[], cold=[];
+    for (const p of filtered) {
+      const t = (p.heat_tier||'cold').toLowerCase();
+      if (t==='hot') hot.push(p); else if (t==='warm') warm.push(p); else cold.push(p);
+    }
+    document.getElementById('tier-hot-cnt').textContent = hot.length;
+    document.getElementById('tier-warm-cnt').textContent = warm.length;
+    document.getElementById('tier-cold-cnt').textContent = cold.length;
+    renderTierCol('tier-hot-body', hot, 'hot');
+    renderTierCol('tier-warm-body', warm, 'warm');
+    renderTierCol('tier-cold-body', cold, 'cold');
+  }
+
+  function renderTierCol(bodyId, prospects, tier) {
+    const el = document.getElementById(bodyId);
+    if (!prospects.length) { el.innerHTML = '<div class="empty-state" style="padding:24px"><p>No ' + tier + ' prospects</p></div>'; return; }
+    el.innerHTML = prospects.map(p =>
+      '<div class="prospect-card" onclick="openDetail(' + p.id + ')">' +
+        '<div class="pc-header"><div>' +
+          '<div class="pc-name">' + esc(p.name) + '</div>' +
+          '<div class="pc-company">' + esc(p.company||p.location||'—') + '</div>' +
+        '</div><div class="pc-score ' + tier + '">' + (p.heat_score||0) + '</div></div>' +
+        '<div class="pc-signal">📡 ' + esc(p.latest_signal_title||'No signals yet') + '</div>' +
+        (parseInt(p.signal_count) > 0 ? '<div style="margin-top:4px;font-size:11px;color:var(--text3)">⚡ ' + p.signal_count + ' signal' + (p.signal_count!=1?'s':'') + '</div>' : '') +
+      '</div>'
+    ).join('');
+  }
+
+  // ── TABS ──────────────────────────────────────────────────────────────────────
+  function switchTab(tab) {
+    document.getElementById('view-feed').style.display = tab==='feed' ? '' : 'none';
+    document.getElementById('view-tier').style.display = tab==='tier' ? '' : 'none';
+    document.getElementById('tab-feed').classList.toggle('active', tab==='feed');
+    document.getElementById('tab-tier').classList.toggle('active', tab==='tier');
+    if (tab==='tier' && !allProspects.length) loadProspects('');
+  }
+
+  let searchTimer;
+  function handleSearch(val) {
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(() => {
+      const view = document.getElementById('view-feed').style.display !== 'none' ? 'feed' : 'tier';
+      if (view==='feed') renderFeed(val); else renderTierView(val);
+    }, 200);
+  }
+
+  // ── ADD PROSPECT ──────────────────────────────────────────────────────────────
+  function openAddModal() {
+    if (IS_READONLY) return;
+    ['add-name','add-company','add-email','add-phone','add-location','add-yacht','add-social','add-notes'].forEach(id => {
+      const el = document.getElementById(id); if (el) el.value = '';
+    });
+    document.getElementById('add-error').style.display = 'none';
+    document.getElementById('add-submit-btn').disabled = false;
+    document.getElementById('add-submit-btn').textContent = 'Add Prospect';
+    document.getElementById('add-modal').classList.add('open');
+    setTimeout(() => document.getElementById('add-name').focus(), 50);
+  }
+  function closeAddModal() { document.getElementById('add-modal').classList.remove('open'); }
+
+  async function submitAddProspect() {
+    if (IS_READONLY) return;
+    const name = document.getElementById('add-name').value.trim();
+    if (!name) { const e = document.getElementById('add-error'); e.textContent='Name is required'; e.style.display='block'; return; }
+    const btn = document.getElementById('add-submit-btn');
+    btn.disabled = true; btn.textContent = 'Adding…';
+    const errEl = document.getElementById('add-error'); errEl.style.display = 'none';
+    let social = {};
+    const sv = document.getElementById('add-social').value.trim();
+    if (sv) { try { social = JSON.parse(sv); } catch(_) { social = {raw:sv}; } }
+    try {
+      const r = await fetch('/api/broker/radar/prospects', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          name, email: document.getElementById('add-email').value.trim()||null,
+          phone: document.getElementById('add-phone').value.trim()||null,
+          company: document.getElementById('add-company').value.trim()||null,
+          location: document.getElementById('add-location').value.trim()||null,
+          current_yacht_interest: document.getElementById('add-yacht').value.trim()||null,
+          social_handles: social,
+          notes: document.getElementById('add-notes').value.trim()||null
+        })
+      });
+      const d = await r.json();
+      if (d.success) {
+        closeAddModal();
+        await Promise.all([loadStats(), loadSignalFeed(''), loadProspects('')]);
+      } else {
+        errEl.textContent = d.message||'Failed'; errEl.style.display = 'block';
+        btn.disabled = false; btn.textContent = 'Add Prospect';
+      }
+    } catch(e) {
+      errEl.textContent = 'Network error'; errEl.style.display = 'block';
+      btn.disabled = false; btn.textContent = 'Add Prospect';
+    }
+  }
+
+  // ── PROSPECT DETAIL ───────────────────────────────────────────────────────────
+  async function openDetail(pid) {
+    currentPid = pid;
+    document.getElementById('detail-modal-title').textContent = 'Loading…';
+    document.getElementById('detail-modal-body').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+    document.getElementById('detail-scan-btn').style.display = 'none';
+    const db = document.getElementById('detail-delete-btn'); if(db) db.style.display='none';
+    document.getElementById('detail-modal').classList.add('open');
+    try {
+      const d = await fetch('/api/broker/radar/prospects/' + pid).then(r=>r.json());
+      if (!d.success) { document.getElementById('detail-modal-body').innerHTML='<p style="color:var(--hot)">Failed to load</p>'; return; }
+      renderDetail(d.prospect, d.signals, d.scan_history);
+    } catch(e) { document.getElementById('detail-modal-body').innerHTML='<p style="color:var(--hot)">Network error</p>'; }
+  }
+
+  function renderDetail(p, signals, scans) {
+    const tier = (p.heat_tier||'cold').toLowerCase();
+    document.getElementById('detail-modal-title').textContent = p.name;
+    const scoreColor = tier==='hot'?'var(--hot)':tier==='warm'?'var(--warm)':'var(--cold)';
+    const social = p.social_handles||{};
+    const socialHtml = Object.entries(social).map(([k,v])=>'<span class="detail-tag">📱 '+esc(k)+': '+esc(v)+'</span>').join('');
+    const fieldDefs = [
+      ['Company',p.company],['Location',p.location],['Email',p.email],['Phone',p.phone],
+      ['Yacht Interest',p.current_yacht_interest],['Commercial Contact',p.commercial_contact],
+      ['Date Added',p.date_added?new Date(p.date_added).toLocaleDateString('en-GB'):null],
+      ['Last Scanned',p.last_scanned_at?timeAgo(p.last_scanned_at):'Never']
+    ].filter(f=>f[1]);
+
+    let html = '<div class="detail-header"><div class="detail-avatar">👤</div><div style="flex:1">';
+    html += '<div class="detail-name">'+esc(p.name)+'</div>';
+    if(p.company) html += '<div class="detail-company">'+esc(p.company)+'</div>';
+    html += '<div class="detail-meta"><span class="tier-pill '+tier+'">'+tier.toUpperCase()+'</span>';
+    if(signals.length) html += '<span class="detail-tag">⚡ '+signals.length+' signal'+(signals.length!==1?'s':'')+'</span>';
+    html += socialHtml + '</div></div>';
+    html += '<div class="detail-score"><div class="score-num" style="color:'+scoreColor+'">'+(p.heat_score||0)+'</div><div class="score-label">Score</div></div>';
+    html += '</div>';
+
+    if (fieldDefs.length) {
+      html += '<div class="detail-section"><h4>Profile</h4><div class="detail-grid">';
+      fieldDefs.forEach(([lbl,val]) => { html += '<div class="detail-field"><div class="df-label">'+esc(lbl)+'</div><div class="df-value">'+esc(val)+'</div></div>'; });
+      html += '</div></div>';
+    }
+    if (p.notes) html += '<div class="detail-section"><h4>Notes</h4><div class="detail-field"><div class="df-value">'+esc(p.notes)+'</div></div></div>';
+
+    html += '<div class="detail-section"><h4>Signal Timeline ('+signals.length+')</h4>';
+    if (!signals.length) {
+      html += '<div style="color:var(--text3);font-size:13px;padding:12px 0">No signals detected yet. Click "Scan Now" to run a search.</div>';
+    } else {
+      html += '<div class="timeline">';
+      signals.forEach(s => {
+        const cat = s.trigger_category||'low';
+        html += '<div class="tl-item '+cat+'">';
+        html += '<div class="tl-date">'+timeAgo(s.detected_at)+(s.source_name?' · '+esc(s.source_name):'')+'</div>';
+        html += '<div class="tl-title">'+sigIcon(s.trigger_name,s.signal_type)+' '+esc(s.title||s.trigger_name||s.signal_type)+'</div>';
+        if(s.summary) html += '<div class="tl-summary">'+esc(s.summary)+'</div>';
+        html += '<div class="tl-source"><span class="score-badge '+scClass(s.score)+'" style="width:24px;height:24px;font-size:11px">'+(s.score||0)+'</span>';
+        if(s.source_url) html += '<a class="source-link" href="'+esc(s.source_url)+'" target="_blank" rel="noopener">View Source →</a>';
+        html += '</div></div>';
+      });
+      html += '</div>';
+    }
+    html += '</div>';
+
+    document.getElementById('detail-modal-body').innerHTML = html;
+    if (!IS_READONLY) document.getElementById('detail-scan-btn').style.display = '';
+    const db = document.getElementById('detail-delete-btn'); if(db) db.style.display='';
+  }
+
+  function closeDetailModal() { document.getElementById('detail-modal').classList.remove('open'); currentPid=null; }
+
+  async function scanCurrentProspect() {
+    if (!currentPid||IS_READONLY) return;
+    const btn = document.getElementById('detail-scan-btn');
+    btn.disabled=true; btn.textContent='⏳ Scanning…';
+    try {
+      const d = await fetch('/api/broker/radar/scanner/scan/'+currentPid,{method:'POST'}).then(r=>r.json());
+      if(d.success) {
+        btn.textContent='✅ Done (' + (d.signals_found||0) + ' new)';
+        setTimeout(async()=>{ btn.disabled=false; btn.textContent='🔍 Scan Now';
+          await openDetail(currentPid);
+          await Promise.all([loadStats(), loadSignalFeed(''), loadScannerStatus()]);
+        }, 2000);
+      } else {
+        btn.textContent='❌ '+(d.message||'Failed');
+        setTimeout(()=>{ btn.disabled=false; btn.textContent='🔍 Scan Now'; }, 3000);
+      }
+    } catch(e) { btn.textContent='❌ Error'; setTimeout(()=>{ btn.disabled=false; btn.textContent='🔍 Scan Now'; },3000); }
+  }
+
+  async function deleteCurrentProspect() {
+    if (!currentPid||IS_READONLY||!IS_ADMIN) return;
+    const nm = document.getElementById('detail-modal-title').textContent;
+    if (!confirm('Delete '+nm+'? This cannot be undone.')) return;
+    try {
+      const d = await fetch('/api/broker/radar/prospects/'+currentPid,{method:'DELETE'}).then(r=>r.json());
+      if(d.success) { closeDetailModal(); await Promise.all([loadStats(),loadSignalFeed(''),loadProspects('')]); }
+    } catch(e) { alert('Delete failed'); }
+  }
+
+  // ── CSV ───────────────────────────────────────────────────────────────────────
+  function openCsvModal() {
+    if (IS_READONLY) return;
+    document.getElementById('csv-preview').style.display='none';
+    document.getElementById('import-summary').style.display='none';
+    document.getElementById('csv-error').style.display='none';
+    document.getElementById('csv-import-btn').style.display='none';
+    document.getElementById('csv-file-input').value='';
+    csvRows=[];
+    document.getElementById('csv-modal').classList.add('open');
+  }
+  function closeCsvModal() { document.getElementById('csv-modal').classList.remove('open'); csvRows=[]; }
+
+  function handleCsvFile(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        csvRows = parseCsv(e.target.result);
+        showCsvPreview(csvRows);
+      } catch(err) {
+        const el=document.getElementById('csv-error'); el.textContent='Parse error: '+err.message; el.style.display='block';
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  function parseCsv(txt) {
+    const lines = txt.trim().split(/\\r?\\n/);
+    if (lines.length < 2) throw new Error('Need at least header + 1 row');
+    const headers = lines[0].split(',').map(h=>h.trim().replace(/^["\\'']|["\\'']$/g,'').toLowerCase());
+    if (!headers.includes('name')) throw new Error('CSV must have a "name" column');
+    return lines.slice(1).filter(l=>l.trim()).map(l => {
+      const vals = splitCsv(l);
+      const row = {}; headers.forEach((h,j) => row[h]=(vals[j]||'').trim().replace(/^["\\'']|["\\'']$/g,''));
+      return row;
+    }).filter(r=>r.name);
+  }
+
+  function splitCsv(line) {
+    const res=[]; let cur='',inQ=false;
+    for(let i=0;i<line.length;i++){const c=line[i];if(c==='"'){inQ=!inQ;}else if(c===','&&!inQ){res.push(cur);cur='';}else{cur+=c;}}
+    res.push(cur); return res;
+  }
+
+  function showCsvPreview(data) {
+    if (!data.length) { const e=document.getElementById('csv-error'); e.textContent='No valid rows found'; e.style.display='block'; return; }
+    const keys=Object.keys(data[0]);
+    document.getElementById('preview-thead').innerHTML='<tr>'+keys.map(k=>'<th>'+esc(k)+'</th>').join('')+'</tr>';
+    document.getElementById('preview-tbody').innerHTML=data.slice(0,5).map(r=>'<tr>'+keys.map(k=>'<td>'+esc(r[k]||'')+'</td>').join('')+'</tr>').join('');
+    document.getElementById('csv-row-count').textContent=data.length+' prospects ready to import'+(data.length>5?' (showing first 5)':'');
+    document.getElementById('csv-preview').style.display='block';
+    document.getElementById('csv-import-btn').style.display='inline-flex';
+    document.getElementById('import-summary').style.display='none';
+    document.getElementById('csv-error').style.display='none';
+  }
+
+  async function importCsv() {
+    if (!csvRows.length||IS_READONLY) return;
+    const btn=document.getElementById('csv-import-btn'); btn.disabled=true; btn.textContent='Importing…';
+    try {
+      const d = await fetch('/api/broker/radar/prospects/import',{
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({prospects: csvRows})
+      }).then(r=>r.json());
+      if(d.success) {
+        const s=document.getElementById('import-summary');
+        s.innerHTML='<span class="ok">✅ '+d.imported+' imported</span>  <span class="skip">⏭ '+d.skipped+' skipped</span>'+(d.errors&&d.errors.length?'  <span class="err">⚠️ '+d.errors.length+' errors</span>':'');
+        s.style.display='block';
+        document.getElementById('csv-import-btn').style.display='none';
+        csvRows=[];
+        await Promise.all([loadStats(),loadSignalFeed(''),loadProspects('')]);
+      } else {
+        const e=document.getElementById('csv-error'); e.textContent=d.message||'Import failed'; e.style.display='block';
+        btn.disabled=false; btn.textContent='Import Prospects';
+      }
+    } catch(e) {
+      const el=document.getElementById('csv-error'); el.textContent='Network error'; el.style.display='block';
+      btn.disabled=false; btn.textContent='Import Prospects';
+    }
+  }
+
+  // ── DRAG & DROP ───────────────────────────────────────────────────────────────
+  const dz = document.getElementById('drop-zone');
+  if(dz) {
+    dz.addEventListener('dragover', e=>{e.preventDefault();dz.classList.add('drag-over');});
+    dz.addEventListener('dragleave', ()=>dz.classList.remove('drag-over'));
+    dz.addEventListener('drop', e=>{e.preventDefault();dz.classList.remove('drag-over');const f=e.dataTransfer.files[0];if(f)handleCsvFile(f);});
+  }
+
+  // ── MODAL CLOSE ON OVERLAY CLICK ─────────────────────────────────────────────
+  ['add-modal','csv-modal','detail-modal'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.addEventListener('click',e=>{if(e.target===el)el.classList.remove('open');});
+  });
+  document.addEventListener('keydown', e=>{
+    if(e.key==='Escape') ['add-modal','csv-modal','detail-modal'].forEach(id=>document.getElementById(id).classList.remove('open'));
+  });
+
+  // ── INIT ──────────────────────────────────────────────────────────────────────
+  Promise.all([loadStats(), loadSignalFeed(''), loadScannerStatus()]);
+</script>
 </body>
 </html>`);
 });
