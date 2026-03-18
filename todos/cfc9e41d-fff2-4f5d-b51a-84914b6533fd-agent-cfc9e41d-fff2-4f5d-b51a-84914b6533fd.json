@@ -1,0 +1,22 @@
+[
+  {
+    "content": "Create migration 016: add tenant_id to prospects/signals/scan_history",
+    "status": "completed",
+    "activeForm": "Creating migration 016"
+  },
+  {
+    "content": "Add tenant-scoped broker API routes for Signal Radar",
+    "status": "completed",
+    "activeForm": "Adding broker radar API routes"
+  },
+  {
+    "content": "Build /broker/signal-radar dashboard HTML page",
+    "status": "completed",
+    "activeForm": "Building signal radar dashboard"
+  },
+  {
+    "content": "Push to remote and verify",
+    "status": "in_progress",
+    "activeForm": "Pushing to remote"
+  }
+]
