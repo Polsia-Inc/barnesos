@@ -53,7 +53,8 @@ function requireAuth(req, res, next) {
   if (req.path && req.path.startsWith('/api/')) {
     return res.status(401).json({ success: false, message: 'Authentication required' });
   }
-  return res.redirect('/login');
+  // Redirect to broker login (email+password) — legacy /login is for internal Barnes team only
+  return res.redirect('/broker/login');
 }
 
 // Block unauthenticated access to HTML pages and root
@@ -66,7 +67,8 @@ app.use((req, res, next) => {
   // Block root (express.static would serve public/index.html) and .html files
   if (req.path === '/' || req.path.endsWith('.html')) {
     if (!req.session || !req.session.authenticated) {
-      return res.redirect('/login');
+      // Redirect to broker login (email+password) — legacy /login is for internal Barnes team only
+      return res.redirect('/broker/login');
     }
   }
   next();
