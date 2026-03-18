@@ -1,0 +1,37 @@
+[
+  {
+    "content": "Create migration 018 for logo_url + company_display_name",
+    "status": "completed",
+    "activeForm": "Creating migration 018"
+  },
+  {
+    "content": "Update tenant session objects to include logo_url + company_display_name",
+    "status": "completed",
+    "activeForm": "Updating tenant session objects"
+  },
+  {
+    "content": "Add branding API endpoints (GET/PUT branding, POST/DELETE logo)",
+    "status": "completed",
+    "activeForm": "Adding branding API endpoints"
+  },
+  {
+    "content": "Add /broker/settings/branding admin page",
+    "status": "completed",
+    "activeForm": "Adding branding settings page"
+  },
+  {
+    "content": "Apply branding to dashboard topbar + login page + signal radar topbar",
+    "status": "completed",
+    "activeForm": "Applying branding to pages"
+  },
+  {
+    "content": "Add branded login page /broker/login/:slug",
+    "status": "completed",
+    "activeForm": "Adding branded login page"
+  },
+  {
+    "content": "Validate, push, and verify deployment",
+    "status": "in_progress",
+    "activeForm": "Validating and deploying"
+  }
+]
