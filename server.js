@@ -6,6 +6,7 @@ const fs = require('fs');
 const https = require('https');
 const crypto = require('crypto');
 const OpenAI = require('openai');
+const cron = require('node-cron');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -870,41 +871,150 @@ app.get('/api/broker/radar/signals/feed', requireBrokerAuth, async (req, res) =>
 app.get('/api/broker/radar/scanner/status', requireBrokerAuth, async (req, res) => {
   const tid = req.session.brokerTenant.id;
   try {
-    const { rows: recentScans } = await pool.query(
-      `SELECT sh.*, p.name as prospect_name
-       FROM scan_history sh
-       JOIN prospects p ON sh.prospect_id = p.id
-       WHERE sh.tenant_id = $1
-       ORDER BY sh.started_at DESC LIMIT 5`,
-      [tid]
-    );
+    const [recentScansResult, countRow, scannedRow, errRow, tenantRow] = await Promise.all([
+      pool.query(
+        `SELECT sh.*, p.name as prospect_name
+         FROM scan_history sh
+         JOIN prospects p ON sh.prospect_id = p.id
+         WHERE sh.tenant_id = $1
+         ORDER BY sh.started_at DESC LIMIT 5`,
+        [tid]
+      ),
+      pool.query(`SELECT COUNT(*) as total FROM prospects WHERE tenant_id = $1`, [tid]),
+      pool.query(`SELECT COUNT(*) as scanned FROM prospects WHERE tenant_id = $1 AND last_scanned_at IS NOT NULL`, [tid]),
+      pool.query(
+        `SELECT COUNT(*) as errors FROM scan_history sh
+         JOIN prospects p ON sh.prospect_id = p.id
+         WHERE sh.tenant_id = $1 AND sh.status = 'error' AND sh.started_at >= NOW() - INTERVAL '24 hours'`,
+        [tid]
+      ),
+      pool.query(`SELECT scan_enabled, scan_frequency, last_daily_scan_at FROM tenants WHERE id = $1`, [tid])
+    ]);
 
-    const { rows: countRow } = await pool.query(
-      `SELECT COUNT(*) as total FROM prospects WHERE tenant_id = $1`, [tid]
-    );
-
-    const { rows: scannedRow } = await pool.query(
-      `SELECT COUNT(*) as scanned FROM prospects WHERE tenant_id = $1 AND last_scanned_at IS NOT NULL`, [tid]
-    );
-
-    const { rows: errRow } = await pool.query(
-      `SELECT COUNT(*) as errors FROM scan_history sh
-       JOIN prospects p ON sh.prospect_id = p.id
-       WHERE sh.tenant_id = $1 AND sh.status = 'error' AND sh.started_at >= NOW() - INTERVAL '24 hours'`,
-      [tid]
-    );
+    const tenant = tenantRow.rows[0] || {};
+    // Calculate next scheduled scan time
+    let next_scheduled_scan = null;
+    if (tenant.scan_enabled && tenant.last_daily_scan_at) {
+      const freqHours = tenant.scan_frequency === 'weekly' ? 168 : 24;
+      next_scheduled_scan = new Date(new Date(tenant.last_daily_scan_at).getTime() + freqHours * 60 * 60 * 1000).toISOString();
+    } else if (tenant.scan_enabled && !tenant.last_daily_scan_at) {
+      next_scheduled_scan = 'Scheduled — pending first run';
+    }
 
     res.json({
       success: true,
-      recent_scans: recentScans,
-      total_prospects: parseInt(countRow[0].total),
-      scanned_prospects: parseInt(scannedRow[0].scanned),
-      errors_24h: parseInt(errRow[0].errors),
-      sources_active: ['Google News', 'Web Search']
+      recent_scans: recentScansResult.rows,
+      total_prospects: parseInt(countRow.rows[0].total),
+      scanned_prospects: parseInt(scannedRow.rows[0].scanned),
+      errors_24h: parseInt(errRow.rows[0].errors),
+      sources_active: ['Google News', 'Web Search'],
+      scan_config: {
+        scan_enabled: tenant.scan_enabled !== false,
+        scan_frequency: tenant.scan_frequency || 'daily',
+        last_daily_scan_at: tenant.last_daily_scan_at || null,
+        next_scheduled_scan
+      }
     });
   } catch (err) {
     console.error('[Radar] Scanner status error:', err.message);
     res.status(500).json({ success: false, message: 'Failed to fetch scanner status' });
+  }
+});
+
+// ─── BROKER RADAR: Get scan configuration ────────────────────────────────────
+app.get('/api/broker/radar/scan/config', requireBrokerAuth, async (req, res) => {
+  const tid = req.session.brokerTenant.id;
+  try {
+    const { rows } = await pool.query(
+      `SELECT scan_enabled, scan_frequency, last_daily_scan_at FROM tenants WHERE id = $1`, [tid]
+    );
+    if (!rows.length) return res.status(404).json({ success: false, message: 'Tenant not found' });
+    const t = rows[0];
+
+    const freqHours = t.scan_frequency === 'weekly' ? 168 : 24;
+    const next_scheduled_scan = t.scan_enabled && t.last_daily_scan_at
+      ? new Date(new Date(t.last_daily_scan_at).getTime() + freqHours * 3600000).toISOString()
+      : t.scan_enabled ? 'Pending first run' : null;
+
+    res.json({
+      success: true,
+      scan_enabled: t.scan_enabled !== false,
+      scan_frequency: t.scan_frequency || 'daily',
+      last_daily_scan_at: t.last_daily_scan_at || null,
+      next_scheduled_scan
+    });
+  } catch (err) {
+    console.error('[Radar] Scan config GET error:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to get scan config' });
+  }
+});
+
+// ─── BROKER RADAR: Update scan configuration ─────────────────────────────────
+app.post('/api/broker/radar/scan/config', requireBrokerAuth, async (req, res) => {
+  const tid = req.session.brokerTenant.id;
+  try {
+    const { scan_enabled, scan_frequency } = req.body;
+
+    const validFreqs = ['daily', 'weekly'];
+    const freq = validFreqs.includes(scan_frequency) ? scan_frequency : 'daily';
+    const enabled = scan_enabled !== false && scan_enabled !== 'false';
+
+    await pool.query(
+      `UPDATE tenants SET scan_enabled = $1, scan_frequency = $2 WHERE id = $3`,
+      [enabled, freq, tid]
+    );
+
+    console.log(`[Radar] Tenant ${tid} scan config updated: enabled=${enabled}, freq=${freq}`);
+    res.json({ success: true, scan_enabled: enabled, scan_frequency: freq });
+  } catch (err) {
+    console.error('[Radar] Scan config POST error:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to update scan config' });
+  }
+});
+
+// ─── BROKER RADAR: Manually trigger full daily scan for tenant ────────────────
+app.post('/api/broker/radar/scan/trigger-daily', requireBrokerAuth, async (req, res) => {
+  const tid = req.session.brokerTenant.id;
+  try {
+    const { rows: prospects } = await pool.query(
+      `SELECT * FROM prospects WHERE tenant_id = $1 ORDER BY
+         CASE heat_tier WHEN 'hot' THEN 1 WHEN 'warm' THEN 2 ELSE 3 END,
+         last_scanned_at ASC NULLS FIRST
+       LIMIT 50`,
+      [tid]
+    );
+
+    if (!prospects.length) {
+      return res.json({ success: true, message: 'No prospects to scan', scanned: 0 });
+    }
+
+    // Respond immediately — scan runs in background
+    res.json({
+      success: true,
+      message: `Daily scan triggered for ${prospects.length} prospects`,
+      prospect_count: prospects.length
+    });
+
+    // Background: scan each prospect with stagger
+    (async () => {
+      let totalSignals = 0;
+      for (const prospect of prospects) {
+        try {
+          const result = await scanProspect(prospect, 'scheduled');
+          totalSignals += result.signals_found;
+          await new Promise(r => setTimeout(r, 2000)); // 2s between prospects
+        } catch (e) {
+          console.error(`[DailyScan] Error scanning ${prospect.name}:`, e.message);
+        }
+      }
+      // Update last_daily_scan_at
+      await pool.query(`UPDATE tenants SET last_daily_scan_at = NOW() WHERE id = $1`, [tid]);
+      console.log(`[DailyScan] Tenant ${tid} manual trigger complete. ${totalSignals} total signals found.`);
+    })();
+
+  } catch (err) {
+    console.error('[Radar] Trigger daily scan error:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to trigger daily scan' });
   }
 });
 
@@ -2452,7 +2562,7 @@ function buildSearchQueries(prospect) {
 }
 
 // Main scanner — replaces the stub with real live searches
-async function scanProspect(prospect) {
+async function scanProspect(prospect, scanType = 'manual') {
   const scanStart = new Date();
   let signalsFound = 0;
 
@@ -2579,9 +2689,9 @@ async function scanProspect(prospect) {
 
     // Log the scan
     await pool.query(
-      `INSERT INTO scan_history (prospect_id, scan_type, signals_found, search_queries, status, completed_at)
-       VALUES ($1, 'manual', $2, $3, 'completed', NOW())`,
-      [prospect.id, signalsFound, searchQueries]
+      `INSERT INTO scan_history (prospect_id, tenant_id, scan_type, signals_found, search_queries, status, completed_at)
+       VALUES ($1, $2, $3, $4, $5, 'completed', NOW())`,
+      [prospect.id, prospect.tenant_id || null, scanType, signalsFound, searchQueries]
     );
 
     console.log(`[Scanner] ${prospect.name} — done. ${signalsFound} new signals saved.`);
@@ -2589,9 +2699,9 @@ async function scanProspect(prospect) {
 
   } catch (err) {
     await pool.query(
-      `INSERT INTO scan_history (prospect_id, scan_type, signals_found, status, error_message, completed_at)
-       VALUES ($1, 'manual', 0, 'failed', $2, NOW())`,
-      [prospect.id, err.message]
+      `INSERT INTO scan_history (prospect_id, tenant_id, scan_type, signals_found, status, error_message, completed_at)
+       VALUES ($1, $2, $3, 0, 'failed', $4, NOW())`,
+      [prospect.id, prospect.tenant_id || null, scanType, err.message]
     ).catch(() => {});
     throw err;
   }
@@ -2907,18 +3017,31 @@ app.post('/api/prospects/:id/send-email', requireAuth, async (req, res) => {
 // ─── Heat Score Recalculation ────────────────────────────────────────────────
 async function recalcProspectHeat(prospectId) {
   try {
-    // Sum scores from recent signals (last 90 days)
-    const { rows } = await pool.query(
-      `SELECT COALESCE(SUM(score), 0) as total_score
+    // Fetch all signals from the last 90 days with their detected_at timestamps
+    const { rows: signals } = await pool.query(
+      `SELECT score, detected_at
        FROM prospect_signals
-       WHERE prospect_id = $1 AND detected_at > NOW() - INTERVAL '90 days'`,
+       WHERE prospect_id = $1 AND detected_at > NOW() - INTERVAL '90 days'
+       ORDER BY detected_at DESC`,
       [prospectId]
     );
 
-    const totalScore = parseInt(rows[0].total_score);
+    // Apply 3-tier time decay:
+    //   0-30 days  → 100% weight
+    //   30-90 days → 50% weight
+    //   >90 days   → 0% (already excluded by query)
+    const now = Date.now();
+    let totalScore = 0;
+    for (const sig of signals) {
+      const ageDays = (now - new Date(sig.detected_at).getTime()) / (1000 * 60 * 60 * 24);
+      const weight = ageDays <= 30 ? 1.0 : 0.5;
+      totalScore += Math.round(sig.score * weight);
+    }
+
+    // Tier thresholds: HOT ≥15 pts, WARM 6-14 pts, COLD 0-5 pts
     let tier = 'cold';
-    if (totalScore >= 10) tier = 'hot';
-    else if (totalScore >= 4) tier = 'warm';
+    if (totalScore >= 15) tier = 'hot';
+    else if (totalScore >= 6) tier = 'warm';
 
     await pool.query(
       'UPDATE prospects SET heat_score = $1, heat_tier = $2, updated_at = NOW() WHERE id = $3',
@@ -3799,12 +3922,29 @@ app.get('/broker/signal-radar', (req, res) => {
     .stat-sub { font-size: 11px; color: var(--text3); margin-top: 4px; }
 
     /* ── SCANNER BAR ── */
-    .scanner-bar { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; margin-bottom: 20px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+    .scanner-bar { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; margin-bottom: 12px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
     .scanner-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text3); }
     .scanner-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text2); }
     .scanner-dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 6px #22c55e; flex-shrink: 0; }
     .scanner-dot.idle { background: var(--text3); box-shadow: none; }
     .scanner-dot.error { background: var(--hot); box-shadow: 0 0 6px var(--hot); }
+    /* ── SCAN CONFIG BAR ── */
+    .scan-config-bar { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 16px; margin-bottom: 20px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    .scan-config-left { display: flex; align-items: center; gap: 14px; }
+    .scan-config-right { display: flex; align-items: center; gap: 12px; }
+    .scan-config-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text3); }
+    .toggle-switch { position: relative; display: inline-flex; align-items: center; cursor: pointer; }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-track { display: inline-block; width: 38px; height: 20px; background: var(--border2); border-radius: 10px; transition: background 0.2s; position: relative; }
+    .toggle-track::after { content: ''; position: absolute; left: 3px; top: 3px; width: 14px; height: 14px; background: #fff; border-radius: 50%; transition: transform 0.2s; }
+    .toggle-switch input:checked + .toggle-track { background: #22c55e; }
+    .toggle-switch input:checked + .toggle-track::after { transform: translateX(18px); }
+    .scan-freq-select { background: var(--surface2); color: var(--text2); border: 1px solid var(--border2); border-radius: 6px; padding: 4px 8px; font-size: 12px; cursor: pointer; outline: none; }
+    .scan-freq-select:focus { border-color: var(--accent); }
+    .btn-scan-now { background: linear-gradient(135deg, #1e40af, #3b82f6); color: #fff; border: none; border-radius: 6px; padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: pointer; transition: opacity 0.15s; }
+    .btn-scan-now:hover { opacity: 0.85; }
+    .btn-scan-now:disabled { opacity: 0.5; cursor: not-allowed; }
+    .next-scan-info { font-size: 11px; color: var(--text3); }
 
     /* ── TOOLBAR ── */
     .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
@@ -4040,6 +4180,27 @@ app.get('/broker/signal-radar', (req, res) => {
       </div>
     </div>
 
+    ${isReadOnly ? '' : `
+    <!-- AUTO-SCAN CONFIG BAR -->
+    <div class="scan-config-bar" id="scanConfigBar">
+      <div class="scan-config-left">
+        <span class="scan-config-label">⏰ Auto-Scan</span>
+        <label class="toggle-switch" title="Enable/disable automated daily scanning">
+          <input type="checkbox" id="scanEnabled" onchange="updateScanConfig()">
+          <span class="toggle-track"></span>
+        </label>
+        <select class="scan-freq-select" id="scanFrequency" onchange="updateScanConfig()" title="Scan frequency">
+          <option value="daily">Daily</option>
+          <option value="weekly">Weekly</option>
+        </select>
+        <span class="next-scan-info" id="nextScanText"></span>
+      </div>
+      <div class="scan-config-right">
+        <button class="btn-scan-now" id="btnScanNow" onclick="triggerDailyScan()">▶ Run Now</button>
+      </div>
+    </div>
+    `}
+
     <!-- TOOLBAR -->
     <div class="toolbar">
       <div class="tab-group">
@@ -4259,7 +4420,78 @@ app.get('/broker/signal-radar', (req, res) => {
         document.getElementById('scanner-err-item').style.display = '';
         document.getElementById('scanner-err-text').textContent = d.errors_24h + ' error(s) last 24h';
       }
+      // Populate scan config panel
+      if (d.scan_config) {
+        const cfg = d.scan_config;
+        const enabledEl = document.getElementById('scanEnabled');
+        const freqEl = document.getElementById('scanFrequency');
+        const nextEl = document.getElementById('nextScanText');
+        if (enabledEl) enabledEl.checked = cfg.scan_enabled !== false;
+        if (freqEl) freqEl.value = cfg.scan_frequency || 'daily';
+        if (nextEl) {
+          if (cfg.next_scheduled_scan && cfg.scan_enabled) {
+            const isDateStr = cfg.next_scheduled_scan.match(/^\d{4}-/);
+            if (isDateStr) {
+              const nextDate = new Date(cfg.next_scheduled_scan);
+              const now = new Date();
+              const diffMs = nextDate - now;
+              if (diffMs > 0) {
+                const diffH = Math.round(diffMs / 3600000);
+                nextEl.textContent = diffH < 2 ? 'Next scan in < 2h' : 'Next in ~' + diffH + 'h';
+              } else {
+                nextEl.textContent = 'Scan due — will run next hour';
+              }
+            } else {
+              nextEl.textContent = cfg.next_scheduled_scan;
+            }
+          } else if (!cfg.scan_enabled) {
+            nextEl.textContent = 'Auto-scan disabled';
+          } else {
+            nextEl.textContent = 'Pending first run';
+          }
+        }
+      }
     } catch(e) {}
+  }
+
+  async function updateScanConfig() {
+    const enabled = document.getElementById('scanEnabled')?.checked;
+    const freq = document.getElementById('scanFrequency')?.value || 'daily';
+    try {
+      await fetch('/api/broker/radar/scan/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scan_enabled: enabled, scan_frequency: freq })
+      });
+      // Refresh status after save
+      setTimeout(loadScannerStatus, 300);
+    } catch(e) { console.error('Failed to save scan config', e); }
+  }
+
+  async function triggerDailyScan() {
+    const btn = document.getElementById('btnScanNow');
+    if (!btn) return;
+    btn.disabled = true;
+    btn.textContent = '⏳ Scanning…';
+    try {
+      const d = await fetch('/api/broker/radar/scan/trigger-daily', { method: 'POST' }).then(r=>r.json());
+      if (d.success) {
+        btn.textContent = '✓ Scan started';
+        btn.style.background = 'linear-gradient(135deg,#065f46,#059669)';
+        setTimeout(() => {
+          btn.textContent = '▶ Run Now';
+          btn.style.background = '';
+          btn.disabled = false;
+          loadScannerStatus();
+        }, 4000);
+      } else {
+        btn.textContent = '✗ Failed';
+        setTimeout(() => { btn.textContent = '▶ Run Now'; btn.disabled = false; }, 3000);
+      }
+    } catch(e) {
+      btn.textContent = '▶ Run Now';
+      btn.disabled = false;
+    }
   }
 
   async function loadSignalFeed(search) {
@@ -5572,6 +5804,85 @@ app.get('/brokers', (req, res) => {
 app.listen(port, () => {
   console.log(`BarnesOS Command Center running on port ${port}`);
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// DAILY SCAN SCHEDULER
+// Runs every hour. For each tenant with scan_enabled=true and last scan
+// older than the configured frequency (daily=24h, weekly=168h), triggers
+// a full prospect scan in the background.
+// ═══════════════════════════════════════════════════════════════════════════════
+async function runDailyScansForDueTenants() {
+  try {
+    const { rows: tenants } = await pool.query(`
+      SELECT id, name, scan_frequency, last_daily_scan_at
+      FROM tenants
+      WHERE scan_enabled = TRUE
+        AND billing_status IN ('active', 'trial')
+        AND (
+          last_daily_scan_at IS NULL
+          OR (
+            scan_frequency = 'daily'   AND last_daily_scan_at < NOW() - INTERVAL '24 hours'
+          )
+          OR (
+            scan_frequency = 'weekly'  AND last_daily_scan_at < NOW() - INTERVAL '7 days'
+          )
+        )
+    `);
+
+    if (!tenants.length) {
+      console.log('[DailyScan] Cron check — no tenants due for scanning');
+      return;
+    }
+
+    console.log(`[DailyScan] ${tenants.length} tenant(s) due for scheduled scan`);
+
+    for (const tenant of tenants) {
+      console.log(`[DailyScan] Starting scan for tenant: ${tenant.name} (id=${tenant.id})`);
+
+      // Mark scan as started to prevent double-trigger
+      await pool.query(`UPDATE tenants SET last_daily_scan_at = NOW() WHERE id = $1`, [tenant.id]);
+
+      const { rows: prospects } = await pool.query(`
+        SELECT * FROM prospects
+        WHERE tenant_id = $1
+        ORDER BY
+          CASE heat_tier WHEN 'hot' THEN 1 WHEN 'warm' THEN 2 ELSE 3 END,
+          last_scanned_at ASC NULLS FIRST
+        LIMIT 50
+      `, [tenant.id]);
+
+      if (!prospects.length) {
+        console.log(`[DailyScan] Tenant ${tenant.id} has no prospects — skipping`);
+        continue;
+      }
+
+      // Fire and forget with stagger — don't block the scheduler loop
+      (async () => {
+        let totalSignals = 0;
+        for (const prospect of prospects) {
+          try {
+            const result = await scanProspect(prospect, 'scheduled');
+            totalSignals += result.signals_found;
+            await new Promise(r => setTimeout(r, 3000)); // 3s gap between prospects
+          } catch (e) {
+            console.error(`[DailyScan] Error scanning ${prospect.name} (tenant ${tenant.id}):`, e.message);
+          }
+        }
+        console.log(`[DailyScan] Tenant ${tenant.id} done. ${prospects.length} prospects scanned, ${totalSignals} new signals.`);
+      })();
+    }
+  } catch (err) {
+    console.error('[DailyScan] Scheduler error:', err.message);
+  }
+}
+
+// Run every hour at :05 to avoid on-the-hour traffic spikes
+cron.schedule('5 * * * *', () => {
+  console.log('[DailyScan] Hourly check triggered by cron');
+  runDailyScansForDueTenants();
+}, { timezone: 'UTC' });
+
+console.log('[DailyScan] Scheduler initialized — checks every hour for due tenant scans');
 
 
 // ═══════════════════════════════════════════════════════════════════════════════

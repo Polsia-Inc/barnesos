@@ -1,0 +1,32 @@
+[
+  {
+    "content": "Migration 017: add scan config fields to tenants table",
+    "status": "completed",
+    "activeForm": "Creating migration 017"
+  },
+  {
+    "content": "Implement time decay scoring (50% at 30d, 0% at 90d) + update tier thresholds",
+    "status": "completed",
+    "activeForm": "Implementing time decay scoring"
+  },
+  {
+    "content": "Install node-cron and build daily scan scheduler",
+    "status": "completed",
+    "activeForm": "Building daily scan scheduler"
+  },
+  {
+    "content": "Add scan config API endpoints (GET/POST /broker/radar/scan/config + manual trigger)",
+    "status": "completed",
+    "activeForm": "Adding scan config API endpoints"
+  },
+  {
+    "content": "Update Signal Radar UI with Scan Configuration panel",
+    "status": "completed",
+    "activeForm": "Updating scan config UI"
+  },
+  {
+    "content": "Deploy and verify",
+    "status": "in_progress",
+    "activeForm": "Deploying and verifying"
+  }
+]
