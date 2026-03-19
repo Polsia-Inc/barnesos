@@ -9,32 +9,24 @@ module.exports = {
     `);
     console.log('[019] yachts: added product_url column');
 
-    // ── Populate known URLs ──────────────────────────────────────────────────
+    // ── Populate brand product page URLs ─────────────────────────────────────
     //
-    // Azimut Grande series  →  azimut-yachts.com/en/grande/grande-{slug}
-    // Azimut Atlantis       →  azimut-yachts.com/en/atlantis/{slug}-atlantis
-    // Azimut Flybridge/S    →  azimut-yachts.com/en/flybridge/{slug}-flybridge
-    // Benetti               →  benettiyachts.it/en/yachts/{slug}
-    // Riva                  →  riva-yacht.com/en/motorboats/{slug}
-    // Custom Line Navetta   →  customline-yacht.com/en/navetta-{num}
-    // Custom Line Saetta    →  customline-yacht.com/en/saetta-{num}
-    // Mangusta              →  mangusta.it/mangusta-{num}  (or oceano-{num})
-    // San Lorenzo SL        →  sanlorenzoyacht.com/en/sl{num}
-    // San Lorenzo SD        →  sanlorenzoyacht.com/en/sd{num}
-    // San Lorenzo Steel     →  sanlorenzoyacht.com/en/{num}steel
+    // Strategy: use REPLACE + LOWER (no REGEXP_REPLACE character classes) to
+    // avoid POSIX regex quoting issues. Prefix-stripping uses REGEXP_REPLACE
+    // with the 4th 'i' flag for case-insensitive matching (PostgreSQL ARE).
     //
-    // Pattern: ILIKE matches are case-insensitive; we match builder + name patterns
-    // to construct accurate product page URLs.
-    // If no match, product_url stays NULL → image is non-clickable (no broken links).
+    // If builder/name doesn't match, product_url stays NULL → image is
+    // non-clickable in Matchmaker (no broken external links).
 
-    // ── Azimut Grande ──
+    // ── Azimut Grande ──────────────────────────────────────────────────────────
+    // e.g. "Grande 30M" → /en/grande/grande-30m/
     await client.query(`
       UPDATE yachts
       SET product_url = CONCAT(
         'https://www.azimut-yachts.com/en/grande/grande-',
-        LOWER(REGEXP_REPLACE(
-          REGEXP_REPLACE(name, '^(Azimut\\s+)?Grande\\s*', '', 'i'),
-          '\\s+', '-', 'g'
+        LOWER(REPLACE(
+          TRIM(REGEXP_REPLACE(name, '^(Azimut )?Grande ?', '', 'i')),
+          ' ', '-'
         )),
         '/'
       )
@@ -43,14 +35,14 @@ module.exports = {
         AND product_url IS NULL
     `);
 
-    // ── Azimut Atlantis ──
+    // ── Azimut Atlantis ────────────────────────────────────────────────────────
     await client.query(`
       UPDATE yachts
       SET product_url = CONCAT(
         'https://www.azimut-yachts.com/en/atlantis/',
-        LOWER(REGEXP_REPLACE(
-          REGEXP_REPLACE(name, '^(Azimut\\s+)?Atlantis\\s*', '', 'i'),
-          '\\s+', '-', 'g'
+        LOWER(REPLACE(
+          TRIM(REGEXP_REPLACE(name, '^(Azimut )?Atlantis ?', '', 'i')),
+          ' ', '-'
         )),
         '-atlantis/'
       )
@@ -59,30 +51,34 @@ module.exports = {
         AND product_url IS NULL
     `);
 
-    // ── Azimut Flybridge / S series (numeric model) ──
+    // ── Azimut Flybridge / S / numeric models ──────────────────────────────────
     await client.query(`
       UPDATE yachts
       SET product_url = CONCAT(
         'https://www.azimut-yachts.com/en/flybridge/',
-        LOWER(REGEXP_REPLACE(
-          REGEXP_REPLACE(name, '^(Azimut\\s+)?', '', 'i'),
-          '\\s+', '-', 'g'
+        LOWER(REPLACE(
+          TRIM(REGEXP_REPLACE(name, '^Azimut ?', '', 'i')),
+          ' ', '-'
         )),
         '-flybridge/'
       )
       WHERE builder ILIKE '%azimut%'
-        AND name !~* 'grande|atlantis'
+        AND name NOT ILIKE '%grande%'
+        AND name NOT ILIKE '%atlantis%'
         AND product_url IS NULL
     `);
 
-    // ── Benetti ──
+    // ── Benetti ────────────────────────────────────────────────────────────────
     await client.query(`
       UPDATE yachts
       SET product_url = CONCAT(
         'https://www.benettiyachts.it/en/yachts/',
-        LOWER(REGEXP_REPLACE(
-          REGEXP_REPLACE(name, '^(Benetti\\s+)?', '', 'i'),
-          '[\\s/]+', '-', 'g'
+        LOWER(REPLACE(
+          REPLACE(
+            TRIM(REGEXP_REPLACE(name, '^Benetti ?', '', 'i')),
+            '/', '-'
+          ),
+          ' ', '-'
         )),
         '/'
       )
@@ -90,14 +86,14 @@ module.exports = {
         AND product_url IS NULL
     `);
 
-    // ── Riva ──
+    // ── Riva ───────────────────────────────────────────────────────────────────
     await client.query(`
       UPDATE yachts
       SET product_url = CONCAT(
         'https://www.riva-yacht.com/en/motorboats/',
-        LOWER(REGEXP_REPLACE(
-          REGEXP_REPLACE(name, '^(Riva\\s+)?', '', 'i'),
-          '[\\s\\']+', '-', 'g'
+        LOWER(REPLACE(
+          TRIM(REGEXP_REPLACE(name, '^Riva ?', '', 'i')),
+          ' ', '-'
         )),
         '/'
       )
@@ -105,14 +101,14 @@ module.exports = {
         AND product_url IS NULL
     `);
 
-    // ── Custom Line Navetta ──
+    // ── Custom Line Navetta ────────────────────────────────────────────────────
     await client.query(`
       UPDATE yachts
       SET product_url = CONCAT(
         'https://www.customline-yacht.com/en/navetta-',
-        LOWER(REGEXP_REPLACE(
-          REGEXP_REPLACE(name, '^(Custom\\s*Line\\s+)?Navetta\\s*', '', 'i'),
-          '\\s+', '-', 'g'
+        LOWER(REPLACE(
+          TRIM(REGEXP_REPLACE(name, '^(Custom ?Line )?Navetta ?', '', 'i')),
+          ' ', '-'
         )),
         '/'
       )
@@ -121,14 +117,14 @@ module.exports = {
         AND product_url IS NULL
     `);
 
-    // ── Custom Line Saetta ──
+    // ── Custom Line Saetta ─────────────────────────────────────────────────────
     await client.query(`
       UPDATE yachts
       SET product_url = CONCAT(
         'https://www.customline-yacht.com/en/saetta-',
-        LOWER(REGEXP_REPLACE(
-          REGEXP_REPLACE(name, '^(Custom\\s*Line\\s+)?Saetta\\s*', '', 'i'),
-          '\\s+', '-', 'g'
+        LOWER(REPLACE(
+          TRIM(REGEXP_REPLACE(name, '^(Custom ?Line )?Saetta ?', '', 'i')),
+          ' ', '-'
         )),
         '/'
       )
@@ -137,14 +133,17 @@ module.exports = {
         AND product_url IS NULL
     `);
 
-    // ── Custom Line (other models) ──
+    // ── Custom Line (other models) ─────────────────────────────────────────────
     await client.query(`
       UPDATE yachts
       SET product_url = CONCAT(
         'https://www.customline-yacht.com/en/',
-        LOWER(REGEXP_REPLACE(
-          REGEXP_REPLACE(name, '^(Custom\\s*Line\\s+)?', '', 'i'),
-          '[\\s/]+', '-', 'g'
+        LOWER(REPLACE(
+          REPLACE(
+            TRIM(REGEXP_REPLACE(name, '^Custom ?Line ?', '', 'i')),
+            '/', '-'
+          ),
+          ' ', '-'
         )),
         '/'
       )
@@ -152,14 +151,14 @@ module.exports = {
         AND product_url IS NULL
     `);
 
-    // ── Mangusta Oceano ──
+    // ── Mangusta Oceano ────────────────────────────────────────────────────────
     await client.query(`
       UPDATE yachts
       SET product_url = CONCAT(
         'https://mangusta.it/oceano-',
-        LOWER(REGEXP_REPLACE(
-          REGEXP_REPLACE(name, '^(Mangusta\\s+)?Oceano\\s*', '', 'i'),
-          '\\s+', '-', 'g'
+        LOWER(REPLACE(
+          TRIM(REGEXP_REPLACE(name, '^(Mangusta )?Oceano ?', '', 'i')),
+          ' ', '-'
         )),
         '/'
       )
@@ -168,14 +167,14 @@ module.exports = {
         AND product_url IS NULL
     `);
 
-    // ── Mangusta (main line) ──
+    // ── Mangusta main line ─────────────────────────────────────────────────────
     await client.query(`
       UPDATE yachts
       SET product_url = CONCAT(
         'https://mangusta.it/mangusta-',
-        LOWER(REGEXP_REPLACE(
-          REGEXP_REPLACE(name, '^(Mangusta\\s+)?', '', 'i'),
-          '\\s+', '-', 'g'
+        LOWER(REPLACE(
+          TRIM(REGEXP_REPLACE(name, '^Mangusta ?', '', 'i')),
+          ' ', '-'
         )),
         '/'
       )
@@ -183,30 +182,37 @@ module.exports = {
         AND product_url IS NULL
     `);
 
-    // ── San Lorenzo SL series ──
+    // ── San Lorenzo (SL / SD / Steel / Sport) ─────────────────────────────────
+    // SL102 → /en/sl102/ — no spaces/hyphens needed for pure alphanumeric slugs
     await client.query(`
       UPDATE yachts
       SET product_url = CONCAT(
         'https://www.sanlorenzoyacht.com/en/',
-        LOWER(REGEXP_REPLACE(
-          REGEXP_REPLACE(name, '^(San\\s*Lorenzo\\s+)?', '', 'i'),
-          '\\s+', '', 'g'
+        LOWER(REPLACE(
+          TRIM(REGEXP_REPLACE(name, '^(San ?Lorenzo )?', '', 'i')),
+          ' ', ''
         )),
         '/'
       )
       WHERE builder ILIKE '%san%lorenzo%'
-        AND (name ILIKE '%SL%' OR name ILIKE '%SD%' OR name ILIKE '%Steel%' OR name ILIKE '%Sport%')
+        AND (
+          name ILIKE '%SL%' OR name ILIKE '%SD%' OR
+          name ILIKE '%Steel%' OR name ILIKE '%Sport%'
+        )
         AND product_url IS NULL
     `);
 
-    // ── San Lorenzo (remaining) ──
+    // ── San Lorenzo (remaining) ────────────────────────────────────────────────
     await client.query(`
       UPDATE yachts
       SET product_url = CONCAT(
         'https://www.sanlorenzoyacht.com/en/',
-        LOWER(REGEXP_REPLACE(
-          REGEXP_REPLACE(name, '^(San\\s*Lorenzo\\s+)?', '', 'i'),
-          '[\\s/]+', '-', 'g'
+        LOWER(REPLACE(
+          REPLACE(
+            TRIM(REGEXP_REPLACE(name, '^(San ?Lorenzo )?', '', 'i')),
+            '/', '-'
+          ),
+          ' ', '-'
         )),
         '/'
       )
@@ -214,7 +220,9 @@ module.exports = {
         AND product_url IS NULL
     `);
 
-    const { rows } = await client.query(`SELECT COUNT(*) FROM yachts WHERE product_url IS NOT NULL`);
+    const { rows } = await client.query(
+      `SELECT COUNT(*) FROM yachts WHERE product_url IS NOT NULL`
+    );
     console.log(`[019] Populated product_url for ${rows[0].count} yachts`);
     console.log('[019] yacht_product_url migration complete');
   },
