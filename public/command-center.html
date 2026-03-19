@@ -4274,6 +4274,12 @@ function renderInventoryTable() {
       <td style="max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(y.location_text||'')}">${esc(y.location_text || '—')}</td>
       <td>${activeB} ${approvedB}</td>
       <td style="max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${esc(y.brokers||'')}">${esc(y.brokers || '—')}</td>
+      <td style="white-space:nowrap;">
+        ${y.product_url
+          ? `<a href="${esc(y.product_url)}" target="_blank" rel="noopener noreferrer" style="color:#c9a96e;font-size:11px;text-decoration:none;margin-right:6px;" title="${esc(y.product_url)}">↗ link</a>`
+          : '<span style="color:#555;font-size:11px;margin-right:6px;">—</span>'}
+        <button onclick="editProductUrl(${y.id}, ${JSON.stringify(y.product_url || '')})" style="background:none;border:1px solid rgba(201,169,110,0.25);color:#c9a96e;font-size:10px;padding:2px 7px;border-radius:4px;cursor:pointer;">edit</button>
+      </td>
     </tr>`;
   }).join('');
 
@@ -4283,7 +4289,7 @@ function renderInventoryTable() {
         <tr>
           <th>Img</th><th>Name</th><th>Builder</th><th>Length</th><th>LOB</th>
           <th>Built</th><th>Refit</th><th>Price</th><th>Curr</th>
-          <th>Location</th><th>Status</th><th>Brokers</th>
+          <th>Location</th><th>Status</th><th>Brokers</th><th>Product URL</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
@@ -4302,6 +4308,25 @@ async function scrapeImages() {
   } catch (err) {
     btn.textContent = '✗ Failed';
     setTimeout(() => { btn.textContent = '🖼 Fetch Images'; btn.disabled = false; }, 3000);
+  }
+}
+
+async function editProductUrl(yachtId, currentUrl) {
+  const newUrl = prompt('Product URL (leave blank to remove):', currentUrl || '');
+  if (newUrl === null) return; // cancelled
+  try {
+    const data = await api(`/api/yachts/${yachtId}/product-url`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ product_url: newUrl.trim() })
+    });
+    if (data.success) {
+      loadInventoryTable();
+    } else {
+      alert('Failed to update: ' + (data.message || 'unknown error'));
+    }
+  } catch (err) {
+    alert('Error: ' + err.message);
   }
 }
 

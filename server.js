@@ -6940,6 +6940,22 @@ app.patch('/api/yachts/:id/image', requireAuth, express.json(), async (req, res)
   }
 });
 
+// ─── API: Set / clear product URL for a yacht ─────────────────────────────────
+app.patch('/api/yachts/:id/product-url', requireAuth, express.json(), async (req, res) => {
+  try {
+    const { product_url } = req.body;
+    // Allow null/empty to clear the URL
+    const url = product_url ? product_url.trim() : null;
+    await pool.query(
+      'UPDATE yachts SET product_url = $1, updated_at = NOW() WHERE id = $2',
+      [url, req.params.id]
+    );
+    res.json({ success: true, product_url: url });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // WHATSAPP PRESS FEED — Signal source from exported WhatsApp chats
