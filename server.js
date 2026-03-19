@@ -828,7 +828,12 @@ app.get('/api/broker/radar/prospects', requireBrokerAuth, async (req, res) => {
     else query += ' ORDER BY p.heat_score DESC, p.name ASC';
 
     const { rows } = await pool.query(query, params);
-    res.json({ success: true, prospects: rows, count: rows.length });
+    // Return demo_count so the frontend can show/hide the "Clear Demo Data" banner
+    const { rows: demoRows } = await pool.query(
+      'SELECT COUNT(*) AS cnt FROM prospects WHERE tenant_id = $1 AND is_demo = TRUE', [tid]
+    );
+    const demo_count = parseInt(demoRows[0].cnt, 10);
+    res.json({ success: true, prospects: rows, count: rows.length, demo_count });
   } catch (err) {
     console.error('[Radar] Prospects error:', err.message);
     res.status(500).json({ success: false, message: 'Failed to fetch prospects' });
@@ -923,6 +928,41 @@ app.put('/api/broker/radar/prospects/:id', requireBrokerAuth, async (req, res) =
   } catch (err) {
     console.error('[Radar] Update prospect error:', err.message);
     res.status(500).json({ success: false, message: 'Failed to update prospect' });
+  }
+});
+
+// ─── BROKER RADAR: Clear demo prospects ──────────────────────────────────────
+app.delete('/api/broker/radar/prospects/clear-demo', requireBrokerAuth, async (req, res) => {
+  const tid = req.session.brokerTenant.id;
+  try {
+    // Count first so we can report back
+    const { rows: countRows } = await pool.query(
+      'SELECT COUNT(*) AS cnt FROM prospects WHERE tenant_id = $1 AND is_demo = TRUE', [tid]
+    );
+    const demoCount = parseInt(countRows[0].cnt, 10);
+
+    if (demoCount === 0) {
+      return res.json({ success: true, deleted: 0, message: 'No demo prospects to remove' });
+    }
+
+    // Cascade: remove signals and scan history first (FK constraints)
+    await pool.query(
+      `DELETE FROM prospect_signals WHERE prospect_id IN
+        (SELECT id FROM prospects WHERE tenant_id = $1 AND is_demo = TRUE)`, [tid]
+    );
+    await pool.query(
+      `DELETE FROM scan_history WHERE prospect_id IN
+        (SELECT id FROM prospects WHERE tenant_id = $1 AND is_demo = TRUE)`, [tid]
+    );
+    const { rowCount } = await pool.query(
+      'DELETE FROM prospects WHERE tenant_id = $1 AND is_demo = TRUE', [tid]
+    );
+
+    console.log(`[Radar] Cleared ${rowCount} demo prospects for tenant ${tid}`);
+    res.json({ success: true, deleted: rowCount, message: `Removed ${rowCount} demo prospect${rowCount !== 1 ? 's' : ''}` });
+  } catch (err) {
+    console.error('[Radar] Clear demo error:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to clear demo prospects' });
   }
 });
 
@@ -4219,6 +4259,15 @@ app.get('/broker/signal-radar', (req, res) => {
     .btn-scan-now:disabled { opacity: 0.5; cursor: not-allowed; }
     .next-scan-info { font-size: 11px; color: var(--text3); }
 
+    /* ── DEMO BANNER ── */
+    .demo-banner { display: flex; align-items: center; gap: 12px; background: rgba(234,179,8,0.1); border: 1px solid rgba(234,179,8,0.35); border-radius: 8px; padding: 10px 16px; margin-bottom: 16px; font-size: 13px; }
+    .demo-banner-icon { font-size: 16px; flex-shrink: 0; }
+    .demo-banner-text { flex: 1; color: var(--text2); }
+    .demo-banner-text strong { color: #eab308; }
+    .btn-clear-demo { background: rgba(234,179,8,0.15); color: #eab308; border: 1px solid rgba(234,179,8,0.4); border-radius: 6px; padding: 6px 14px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s; white-space: nowrap; flex-shrink: 0; }
+    .btn-clear-demo:hover { background: rgba(234,179,8,0.25); border-color: #eab308; }
+    .btn-clear-demo:disabled { opacity: 0.5; cursor: not-allowed; }
+
     /* ── TOOLBAR ── */
     .toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
     .tab-group { display: flex; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
@@ -4474,6 +4523,16 @@ app.get('/broker/signal-radar', (req, res) => {
       </div>
     </div>
     `}
+
+    <!-- DEMO DATA BANNER (shown only when is_demo prospects exist) -->
+    <div class="demo-banner" id="demoBanner" style="display:none">
+      <div class="demo-banner-icon">⚠️</div>
+      <div class="demo-banner-text">
+        <strong id="demoBannerCount">23 demo prospects</strong> are loaded as sample data.
+        Import your real prospect list via CSV or add them manually, then remove the placeholders.
+      </div>
+      <button class="btn-clear-demo" id="btnClearDemo" onclick="clearDemoProspects()">🗑 Clear Demo Data</button>
+    </div>
 
     <!-- TOOLBAR -->
     <div class="toolbar">
@@ -4818,8 +4877,50 @@ app.get('/broker/signal-radar', (req, res) => {
       const d = await fetch('/api/broker/radar/prospects' + params).then(r=>r.json());
       if (!d.success) return;
       allProspects = d.prospects || [];
+      updateDemoBanner(d.demo_count || 0);
       renderTierView(search||'');
     } catch(e) {}
+  }
+
+  function updateDemoBanner(demoCount) {
+    const banner = document.getElementById('demoBanner');
+    if (!banner) return;
+    if (demoCount > 0) {
+      document.getElementById('demoBannerCount').textContent =
+        demoCount + ' demo prospect' + (demoCount !== 1 ? 's' : '');
+      banner.style.display = 'flex';
+    } else {
+      banner.style.display = 'none';
+    }
+  }
+
+  async function clearDemoProspects() {
+    const btn = document.getElementById('btnClearDemo');
+    const countText = document.getElementById('demoBannerCount').textContent;
+    if (!confirm('Remove ' + countText + '? This cannot be undone.\\n\\nOnly demo placeholder prospects will be deleted — any real prospects you have added are safe.')) return;
+    btn.disabled = true;
+    btn.textContent = 'Clearing…';
+    try {
+      const d = await fetch('/api/broker/radar/prospects/clear-demo', { method: 'DELETE' }).then(r=>r.json());
+      if (d.success) {
+        document.getElementById('demoBanner').style.display = 'none';
+        await Promise.all([loadStats(), loadSignalFeed(''), loadProspects('')]);
+        // Brief success flash
+        const flash = document.createElement('div');
+        flash.style.cssText = 'position:fixed;bottom:24px;right:24px;background:#16a34a;color:#fff;padding:12px 20px;border-radius:8px;font-size:14px;font-weight:600;z-index:9999;box-shadow:0 4px 20px rgba(0,0,0,0.3)';
+        flash.textContent = '✓ ' + d.message;
+        document.body.appendChild(flash);
+        setTimeout(() => flash.remove(), 3500);
+      } else {
+        alert('Failed to clear demo prospects: ' + (d.message || 'Unknown error'));
+        btn.disabled = false;
+        btn.textContent = '🗑 Clear Demo Data';
+      }
+    } catch(e) {
+      alert('Request failed. Please try again.');
+      btn.disabled = false;
+      btn.textContent = '🗑 Clear Demo Data';
+    }
   }
 
   function renderTierView(search) {
