@@ -1,0 +1,27 @@
+[
+  {
+    "content": "Create migration 019 to add product_url to yachts table",
+    "status": "completed",
+    "activeForm": "Creating migration 019 for product_url field"
+  },
+  {
+    "content": "Add PATCH /api/yachts/:id/product-url endpoint to server.js",
+    "status": "completed",
+    "activeForm": "Updating API endpoints"
+  },
+  {
+    "content": "Update Matchmaker UI to make images clickable links",
+    "status": "completed",
+    "activeForm": "Updating Matchmaker UI"
+  },
+  {
+    "content": "Update admin inventory table with product_url column + edit button",
+    "status": "completed",
+    "activeForm": "Updating admin inventory table"
+  },
+  {
+    "content": "Push to remote and run migration",
+    "status": "in_progress",
+    "activeForm": "Pushing to remote"
+  }
+]
