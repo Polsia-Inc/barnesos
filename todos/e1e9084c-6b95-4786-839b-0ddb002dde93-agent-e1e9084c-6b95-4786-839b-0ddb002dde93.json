@@ -1,0 +1,37 @@
+[
+  {
+    "content": "Add Outreach Campaign CSS styles",
+    "status": "completed",
+    "activeForm": "Adding CSS styles for outreach chain UI"
+  },
+  {
+    "content": "Add Outreach Campaign button to tier view cards",
+    "status": "completed",
+    "activeForm": "Adding outreach button to tier view cards"
+  },
+  {
+    "content": "Add Outreach Campaign button to signal feed rows",
+    "status": "completed",
+    "activeForm": "Adding outreach button to signal feed rows"
+  },
+  {
+    "content": "Add Outreach Campaign button to detail modal footer",
+    "status": "completed",
+    "activeForm": "Adding outreach button to detail modal footer"
+  },
+  {
+    "content": "Add outreach modal HTML",
+    "status": "completed",
+    "activeForm": "Adding outreach chain modal HTML"
+  },
+  {
+    "content": "Add outreach JavaScript functions",
+    "status": "completed",
+    "activeForm": "Adding outreach chain JS functions"
+  },
+  {
+    "content": "Push and verify",
+    "status": "in_progress",
+    "activeForm": "Pushing and verifying fix"
+  }
+]
