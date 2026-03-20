@@ -1,0 +1,32 @@
+[
+  {
+    "content": "Add Three.js + topojson CDN scripts to cockpit.html head",
+    "status": "completed",
+    "activeForm": "Adding CDN scripts to cockpit.html head"
+  },
+  {
+    "content": "Modify renderRadar() to include globe HTML section",
+    "status": "completed",
+    "activeForm": "Modifying renderRadar() for globe support"
+  },
+  {
+    "content": "Add globe JS functions (CITY_COORDS, geocodeLocation, initGlobe)",
+    "status": "completed",
+    "activeForm": "Adding globe JavaScript functions"
+  },
+  {
+    "content": "Hook loadProspects to update globe dots",
+    "status": "completed",
+    "activeForm": "Hooking loadProspects for globe updates"
+  },
+  {
+    "content": "Verify Matchmaker page integrity",
+    "status": "completed",
+    "activeForm": "Verifying Matchmaker page"
+  },
+  {
+    "content": "Push to remote and deploy",
+    "status": "in_progress",
+    "activeForm": "Pushing to remote"
+  }
+]
