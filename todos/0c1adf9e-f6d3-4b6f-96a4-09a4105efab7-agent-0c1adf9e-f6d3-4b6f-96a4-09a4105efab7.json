@@ -1,0 +1,17 @@
+[
+  {
+    "content": "Create migration 022 for sheet_syncs table",
+    "status": "completed",
+    "activeForm": "Creating migration 022"
+  },
+  {
+    "content": "Add syncInventoryFromSheet() function + cron + API endpoints to server.js",
+    "status": "completed",
+    "activeForm": "Adding sheet sync code to server.js"
+  },
+  {
+    "content": "Push to remote and verify",
+    "status": "in_progress",
+    "activeForm": "Pushing to remote"
+  }
+]
