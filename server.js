@@ -4452,6 +4452,35 @@ app.get('/broker/signal-radar', (req, res) => {
       .form-grid { grid-template-columns: 1fr; }
     }
     @media (max-width: 480px) { .stats-row { grid-template-columns: 1fr 1fr; } }
+    .btn-outreach { background: linear-gradient(135deg,#7c3aed,#a855f7); color:#fff; }
+    .btn-outreach:hover { background: linear-gradient(135deg,#6d28d9,#9333ea); }
+    /* ── OUTREACH CHAIN MODAL ── */
+    .chain-card { background: var(--surface2); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; margin-bottom: 12px; }
+    .chain-title-row { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+    .chain-name { font-size:13px; font-weight:600; color:var(--text); }
+    .chain-meta { font-size:11px; color:var(--text3); margin-top:2px; }
+    .step-row { display:flex; align-items:flex-start; gap:10px; padding:8px 0; border-bottom:1px solid var(--border); }
+    .step-row:last-child { border-bottom:none; }
+    .step-num { width:22px; height:22px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:700; flex-shrink:0; margin-top:1px; }
+    .step-num.pending { background:var(--surface2); color:var(--text3); border:1px solid var(--border2); }
+    .step-num.sent { background:var(--accent-dim); color:#60a5fa; border:1px solid #1e3a5f; }
+    .step-num.replied { background:rgba(34,197,94,0.15); color:#22c55e; border:1px solid rgba(34,197,94,0.3); }
+    .step-num.bounced,.step-num.skipped { background:var(--hot-bg); color:var(--hot); border:1px solid var(--hot-border); }
+    .step-body { flex:1; min-width:0; }
+    .step-channel { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.5px; color:var(--text3); margin-bottom:2px; }
+    .step-subject { font-size:12px; font-weight:600; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .step-preview { font-size:11px; color:var(--text3); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .step-status-pill { display:inline-flex; padding:2px 7px; border-radius:3px; font-size:10px; font-weight:700; text-transform:uppercase; margin-top:4px; }
+    .step-status-pill.pending { background:var(--surface2); color:var(--text3); }
+    .step-status-pill.sent { background:var(--accent-dim); color:#60a5fa; }
+    .step-status-pill.replied { background:rgba(34,197,94,0.1); color:#22c55e; }
+    .step-status-pill.bounced,.step-status-pill.skipped { background:var(--hot-bg); color:var(--hot); }
+    .step-btns { display:flex; flex-direction:column; gap:3px; flex-shrink:0; }
+    .btn-xs { padding:3px 8px; border:none; border-radius:4px; font-size:10px; font-weight:600; cursor:pointer; transition:opacity 0.15s; white-space:nowrap; }
+    .btn-xs:hover { opacity:0.85; }
+    .btn-xs-sent { background:var(--accent-dim); color:#60a5fa; }
+    .btn-xs-replied { background:rgba(34,197,94,0.15); color:#22c55e; }
+    .outreach-empty { text-align:center; padding:32px 16px; color:var(--text3); font-size:13px; }
     /* Globe */
     .globe-section { width: 100%; background: linear-gradient(180deg, #060d1f 0%, #091428 100%); border: 1px solid rgba(40,140,255,0.35); border-radius: 12px; margin-bottom: 20px; overflow: hidden; position: relative; height: 480px; box-shadow: 0 0 60px rgba(20,80,220,0.25), inset 0 0 100px rgba(0,20,80,0.6); }
     #globe-tier-controls button:hover { filter: brightness(1.35); }
@@ -4617,7 +4646,7 @@ app.get('/broker/signal-radar', (req, res) => {
         <div id="feed-content" style="display:none">
           <table class="feed-table">
             <thead><tr>
-              <th>#</th><th>Prospect</th><th>Signal</th><th>Source</th><th>Date</th><th>Score</th><th>Excerpt</th>
+              <th>#</th><th>Prospect</th><th>Signal</th><th>Source</th><th>Date</th><th>Score</th><th>Excerpt</th><th></th>
             </tr></thead>
             <tbody id="feed-tbody"></tbody>
           </table>
@@ -4730,6 +4759,23 @@ app.get('/broker/signal-radar', (req, res) => {
   </div>
 </div>
 
+<!-- OUTREACH CHAIN MODAL -->
+<div class="modal-overlay" id="outreach-modal">
+  <div class="modal modal-lg">
+    <div class="modal-header">
+      <div class="modal-title" id="outreach-modal-title">📧 Outreach Campaign</div>
+      <button class="modal-close" onclick="closeOutreachModal()">×</button>
+    </div>
+    <div class="modal-body" id="outreach-modal-body">
+      <div class="loading"><div class="spinner"></div></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline btn-sm" onclick="closeOutreachModal()">Close</button>
+      ${!isReadOnly ? `<button class="btn btn-outreach btn-sm" id="outreach-new-chain-btn" onclick="createNewChain()">＋ New Sequence</button>` : ''}
+    </div>
+  </div>
+</div>
+
 <!-- PROSPECT DETAIL MODAL -->
 <div class="modal-overlay" id="detail-modal">
   <div class="modal modal-lg">
@@ -4742,6 +4788,7 @@ app.get('/broker/signal-radar', (req, res) => {
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline btn-sm" onclick="closeDetailModal()">Close</button>
+      ${!isReadOnly ? `<button class="btn btn-outreach btn-sm" id="detail-outreach-btn" onclick="openOutreachFromDetail()" style="display:none">📧 Outreach Campaign</button>` : ''}
       <button class="btn btn-primary btn-sm" id="detail-scan-btn" onclick="scanCurrentProspect()" style="display:none">🔍 Scan Now</button>
       ${user.role === 'admin' && !isReadOnly ? `<button class="btn btn-danger btn-sm" id="detail-delete-btn" onclick="deleteCurrentProspect()" style="display:none">Delete</button>` : ''}
     </div>
@@ -4925,6 +4972,7 @@ app.get('/broker/signal-radar', (req, res) => {
         '<td class="date-cell">' + timeAgo(s.detected_at) + '</td>' +
         '<td><span class="score-badge ' + scClass(s.score) + '">' + (s.score||0) + '</span></td>' +
         '<td class="excerpt-cell">' + esc(s.summary||s.title||'') + '</td>' +
+        '<td onclick="event.stopPropagation()">' + (!IS_READONLY ? '<button class="btn btn-outreach btn-sm" style="font-size:11px;padding:4px 10px;white-space:nowrap" onclick="openOutreach(' + s.prospect_id + ',\\'' + esc(s.prospect_name).replace(/\\'/g,"\\\\'") + '\\')">📧 Outreach</button>' : '') + '</td>' +
         '</tr>';
     }).join('');
   }
@@ -5012,6 +5060,7 @@ app.get('/broker/signal-radar', (req, res) => {
         '</div><div class="pc-score ' + tier + '">' + (p.heat_score||0) + '</div></div>' +
         '<div class="pc-signal">📡 ' + esc(p.latest_signal_title||'No signals yet') + '</div>' +
         (parseInt(p.signal_count) > 0 ? '<div style="margin-top:4px;font-size:11px;color:var(--text3)">⚡ ' + p.signal_count + ' signal' + (p.signal_count!=1?'s':'') + '</div>' : '') +
+        (!IS_READONLY ? '<div style="margin-top:8px"><button class="btn btn-outreach btn-sm" style="font-size:11px;padding:4px 10px;width:100%" onclick="event.stopPropagation();openOutreach(' + p.id + ',\\'' + esc(p.name).replace(/\\'/g,"\\\\'") + '\\')">📧 Outreach Campaign</button></div>' : '') +
       '</div>'
     ).join('');
   }
@@ -5149,7 +5198,10 @@ app.get('/broker/signal-radar', (req, res) => {
     html += '</div>';
 
     document.getElementById('detail-modal-body').innerHTML = html;
-    if (!IS_READONLY) document.getElementById('detail-scan-btn').style.display = '';
+    if (!IS_READONLY) {
+      document.getElementById('detail-scan-btn').style.display = '';
+      const ob = document.getElementById('detail-outreach-btn'); if(ob) ob.style.display='';
+    }
     const db = document.getElementById('detail-delete-btn'); if(db) db.style.display='';
   }
 
@@ -5275,13 +5327,142 @@ app.get('/broker/signal-radar', (req, res) => {
   }
 
   // ── MODAL CLOSE ON OVERLAY CLICK ─────────────────────────────────────────────
-  ['add-modal','csv-modal','detail-modal'].forEach(id=>{
+  ['add-modal','csv-modal','detail-modal','outreach-modal'].forEach(id=>{
     const el=document.getElementById(id);
     if(el) el.addEventListener('click',e=>{if(e.target===el)el.classList.remove('open');});
   });
   document.addEventListener('keydown', e=>{
-    if(e.key==='Escape') ['add-modal','csv-modal','detail-modal'].forEach(id=>document.getElementById(id).classList.remove('open'));
+    if(e.key==='Escape') ['add-modal','csv-modal','detail-modal','outreach-modal'].forEach(id=>{ const el=document.getElementById(id); if(el) el.classList.remove('open'); });
   });
+
+  // ── OUTREACH CHAIN ────────────────────────────────────────────────────────────
+  let outreachPid = null, outreachPname = '';
+
+  function openOutreach(pid, pname) {
+    outreachPid = pid;
+    outreachPname = typeof pname === 'string' ? pname : (pname && pname.getAttribute ? pname.getAttribute('data-pname') : String(pname));
+    document.getElementById('outreach-modal-title').textContent = '\\uD83D\\uDCE7 Outreach: ' + outreachPname;
+    document.getElementById('outreach-modal-body').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+    document.getElementById('outreach-modal').classList.add('open');
+    loadOutreachChains(pid);
+  }
+
+  function openOutreachFromDetail() {
+    if (!currentPid) return;
+    const name = document.getElementById('detail-modal-title').textContent;
+    const pid = currentPid;
+    closeDetailModal();
+    openOutreach(pid, name);
+  }
+
+  function closeOutreachModal() {
+    document.getElementById('outreach-modal').classList.remove('open');
+    outreachPid = null; outreachPname = '';
+  }
+
+  async function loadOutreachChains(pid) {
+    try {
+      const d = await fetch('/api/outreach/chains?prospect_id=' + pid).then(r=>r.json());
+      if (!d.success) { document.getElementById('outreach-modal-body').innerHTML='<p style="color:var(--hot);padding:16px">Failed to load outreach chains</p>'; return; }
+      renderOutreachChains(d.chains || []);
+    } catch(e) { document.getElementById('outreach-modal-body').innerHTML='<p style="color:var(--hot);padding:16px">Network error</p>'; }
+  }
+
+  const CH_ICON = { email:'\\uD83D\\uDCE7', linkedin:'\\uD83D\\uDCBC', phone:'\\uD83D\\uDCDE', sms:'\\uD83D\\uDCAC', whatsapp:'\\uD83D\\uDCAC' };
+
+  function renderOutreachChains(chains) {
+    const body = document.getElementById('outreach-modal-body');
+    if (!chains.length) {
+      body.innerHTML = '<div class="outreach-empty"><div style="font-size:36px;margin-bottom:12px">\\uD83D\\uDCED</div>' +
+        '<div style="font-size:14px;font-weight:600;color:var(--text2);margin-bottom:6px">No outreach sequences yet</div>' +
+        '<div style="font-size:12px">Click "＋ New Sequence" to create a 3-step outreach campaign for this prospect.</div></div>';
+      return;
+    }
+    body.innerHTML = chains.map(c => {
+      const steps = c.steps || [];
+      const sentCount = parseInt(c.sent_count)||0;
+      const repliedCount = parseInt(c.replied_count)||0;
+      const statusLabel = repliedCount > 0
+        ? '<span style="color:#22c55e;font-weight:600">\\u2713 Replied</span>'
+        : sentCount > 0 ? '<span style="color:#60a5fa">'+sentCount+' step'+(sentCount!==1?'s':'')+' sent</span>'
+        : '<span style="color:var(--text3)">Draft</span>';
+      const stepsHtml = steps.length ? steps.map(s => {
+        const st = s.status || 'pending';
+        const ch = (s.channel||'email').toLowerCase();
+        const icon = CH_ICON[ch] || '\\uD83D\\uDCEC';
+        const canSent = st === 'pending';
+        const canReplied = st === 'sent';
+        return '<div class="step-row">' +
+          '<div class="step-num '+st+'">'+s.step_number+'</div>' +
+          '<div class="step-body">' +
+            '<div class="step-channel">'+icon+' '+esc(ch.toUpperCase())+'</div>' +
+            '<div class="step-subject">'+(s.subject ? esc(s.subject) : '<em style="color:var(--text3);font-style:italic">No subject</em>')+'</div>' +
+            (s.body ? '<div class="step-preview">'+esc(s.body.substring(0,100))+(s.body.length>100?'\\u2026':'')+'</div>' : '') +
+            '<div><span class="step-status-pill '+st+'">'+st.toUpperCase()+'</span>' +
+            (s.sent_at ? ' <span style="font-size:10px;color:var(--text3)">'+timeAgo(s.sent_at)+'</span>' : '') + '</div>' +
+          '</div>' +
+          '<div class="step-btns">' +
+            (!IS_READONLY && canSent ? '<button class="btn-xs btn-xs-sent" onclick="markStep('+c.id+','+s.id+',\'sent\')">\\u2713 Sent</button>' : '') +
+            (!IS_READONLY && canReplied ? '<button class="btn-xs btn-xs-replied" onclick="markStep('+c.id+','+s.id+',\'replied\')">\\uD83D\\uDCAC Replied</button>' : '') +
+          '</div>' +
+        '</div>';
+      }).join('') : '<div style="font-size:12px;color:var(--text3);padding:8px 0">No steps yet.</div>';
+
+      return '<div class="chain-card">' +
+        '<div class="chain-title-row">' +
+          '<div>' +
+            '<div class="chain-name">'+(c.title ? esc(c.title) : 'Sequence #'+c.id)+'</div>' +
+            '<div class="chain-meta">'+statusLabel+' \\u00B7 '+steps.length+' step'+(steps.length!==1?'s':'')+'</div>' +
+          '</div>' +
+          (!IS_READONLY ? '<button class="btn-xs" style="background:var(--hot-bg);color:var(--hot);border:1px solid var(--hot-border)" onclick="deleteChain('+c.id+')">\\u2715 Delete</button>' : '') +
+        '</div>' +
+        stepsHtml +
+      '</div>';
+    }).join('');
+  }
+
+  async function markStep(chainId, stepId, status) {
+    try {
+      const d = await fetch('/api/outreach/chains/'+chainId+'/steps/'+stepId, {
+        method:'PATCH', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ status })
+      }).then(r=>r.json());
+      if (d.success) loadOutreachChains(outreachPid);
+      else alert('Update failed: ' + (d.message||'Unknown error'));
+    } catch(e) { alert('Network error updating step'); }
+  }
+
+  async function deleteChain(chainId) {
+    if (!confirm('Delete this outreach sequence? This cannot be undone.')) return;
+    try {
+      const d = await fetch('/api/outreach/chains/'+chainId, { method:'DELETE' }).then(r=>r.json());
+      if (d.success) loadOutreachChains(outreachPid);
+      else alert('Delete failed: ' + (d.message||'Unknown error'));
+    } catch(e) { alert('Network error deleting chain'); }
+  }
+
+  async function createNewChain() {
+    if (!outreachPid || IS_READONLY) return;
+    const btn = document.getElementById('outreach-new-chain-btn');
+    if (btn) { btn.disabled=true; btn.textContent='Creating\\u2026'; }
+    try {
+      const d = await fetch('/api/outreach/chains', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          prospect_id: outreachPid,
+          title: 'Outreach \\u2014 ' + outreachPname,
+          steps: [
+            { step_number:1, channel:'email', subject:'Introduction \\u2014 Barnes Yachting', body:'' },
+            { step_number:2, channel:'email', subject:'Following up', body:'' },
+            { step_number:3, channel:'linkedin', subject:'', body:'' }
+          ]
+        })
+      }).then(r=>r.json());
+      if (d.success) loadOutreachChains(outreachPid);
+      else alert('Failed: ' + (d.message||'Unknown error'));
+    } catch(e) { alert('Network error creating sequence'); }
+    if (btn) { btn.disabled=false; btn.textContent='\\uFF0B New Sequence'; }
+  }
 
   // ── GLOBE ─────────────────────────────────────────────────────────────────────
   const CITY_COORDS = {
