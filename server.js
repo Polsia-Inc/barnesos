@@ -6775,6 +6775,146 @@ async function ensureImportJobsTable() {
 }
 ensureImportJobsTable().catch(err => console.error('Failed to ensure import_jobs table:', err.message));
 
+// ═══════════════════════════════════════════════════════════════════════════════
+// GOOGLE SHEET AUTO-SYNC
+// Daily full-replace of yacht inventory from the published Google Sheet.
+// Sheet: https://docs.google.com/spreadsheets/d/1Ayb3TC4-3KXTOoqGOpyvXwq4ihErSdZY
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1Ayb3TC4-3KXTOoqGOpyvXwq4ihErSdZY/export?format=csv&gid=1382914312';
+
+// Ensure sheet_syncs log table exists (idempotent)
+async function ensureSheetSyncsTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS sheet_syncs (
+      id              SERIAL PRIMARY KEY,
+      status          VARCHAR(20) DEFAULT 'running',
+      rows_fetched    INTEGER DEFAULT 0,
+      rows_inserted   INTEGER DEFAULT 0,
+      error_message   TEXT,
+      started_at      TIMESTAMPTZ DEFAULT NOW(),
+      completed_at    TIMESTAMPTZ
+    )
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_sheet_syncs_started_at ON sheet_syncs(started_at DESC)
+  `);
+}
+ensureSheetSyncsTable().catch(err => console.error('[SheetSync] Failed to ensure sheet_syncs table:', err.message));
+
+// Fetch CSV from Google Sheets, following up to 5 redirects
+function fetchSheetCSV(url, redirectsLeft) {
+  if (redirectsLeft === undefined) redirectsLeft = 5;
+  return new Promise((resolve, reject) => {
+    if (redirectsLeft <= 0) return reject(new Error('Too many redirects fetching sheet'));
+    const mod = url.startsWith('https') ? require('https') : require('http');
+    const req = mod.get(url, { timeout: 30000 }, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        res.resume(); // drain
+        return fetchSheetCSV(res.headers.location, redirectsLeft - 1).then(resolve, reject);
+      }
+      if (res.statusCode !== 200) {
+        res.resume();
+        return reject(new Error(`HTTP ${res.statusCode} fetching sheet`));
+      }
+      const chunks = [];
+      res.on('data', c => chunks.push(c));
+      res.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+      res.on('error', reject);
+    });
+    req.on('error', reject);
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error('Sheet fetch timed out after 30s'));
+    });
+  });
+}
+
+// Full sync: fetch → parse → atomic wipe+insert (aborts if fetch/parse fails)
+async function syncInventoryFromSheet() {
+  const { rows: logRows } = await pool.query(
+    `INSERT INTO sheet_syncs (status, started_at) VALUES ('running', NOW()) RETURNING id`
+  );
+  const syncId = logRows[0].id;
+  console.log(`[SheetSync] Starting sync #${syncId}`);
+
+  try {
+    // 1. Fetch CSV from Google Sheets
+    const csvText = await fetchSheetCSV(SHEET_CSV_URL);
+    console.log(`[SheetSync] Fetched ${csvText.length} bytes from sheet`);
+
+    // 2. Parse using existing parser
+    const { rows, errors: parseErrors } = parseYachtCSV(csvText);
+    console.log(`[SheetSync] Parsed ${rows.length} rows, ${parseErrors.length} parse errors`);
+
+    if (rows.length === 0) {
+      throw new Error(
+        `Sheet returned 0 valid rows (${parseErrors.length} parse errors). ` +
+        `Aborting sync to preserve existing inventory.`
+      );
+    }
+
+    // 3. Atomic replace in a single transaction — inventory only wiped if insert succeeds
+    const client = await pool.connect();
+    let insertedCount = 0;
+    try {
+      await client.query('BEGIN');
+      await client.query('DELETE FROM yachts');
+
+      for (const row of rows) {
+        await client.query(
+          `INSERT INTO yachts
+             (name, builder, length, lob, year_built, year_refit,
+              price, currency, location_text, is_active, is_approved, brokers, extra_data)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb)`,
+          [
+            row.name, row.builder, row.length, row.lob,
+            row.year_built, row.year_refit, row.price, row.currency,
+            row.location_text, row.is_active, row.is_approved, row.brokers,
+            row.extra_data ? JSON.stringify(row.extra_data) : '{}'
+          ]
+        );
+        insertedCount++;
+      }
+
+      await client.query('COMMIT');
+      console.log(`[SheetSync] Sync #${syncId} complete: ${insertedCount} yachts`);
+    } catch (dbErr) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw dbErr;
+    } finally {
+      client.release();
+    }
+
+    // 4. Log success
+    await pool.query(
+      `UPDATE sheet_syncs
+       SET status = 'success', rows_fetched = $1, rows_inserted = $2, completed_at = NOW()
+       WHERE id = $3`,
+      [rows.length, insertedCount, syncId]
+    );
+    return { success: true, rows_fetched: rows.length, rows_inserted: insertedCount };
+
+  } catch (err) {
+    console.error(`[SheetSync] Sync #${syncId} failed:`, err.message);
+    await pool.query(
+      `UPDATE sheet_syncs
+       SET status = 'failed', error_message = $1, completed_at = NOW()
+       WHERE id = $2`,
+      [err.message, syncId]
+    ).catch(() => {});
+    return { success: false, error: err.message };
+  }
+}
+
+// Daily cron: 03:00 UTC every day
+cron.schedule('0 3 * * *', () => {
+  console.log('[SheetSync] Daily cron triggered — syncing from Google Sheet');
+  syncInventoryFromSheet().catch(err => console.error('[SheetSync] Cron error:', err.message));
+}, { timezone: 'UTC' });
+
+console.log('[SheetSync] Daily inventory sync scheduled — 03:00 UTC');
+
 // ─── API: Get inventory stats ─────────────────────────────────────────────────
 app.get('/api/inventory/stats', async (req, res) => {
   try {
@@ -6915,6 +7055,34 @@ app.post('/api/inventory/import', requireAuth, express.json({ limit: '20mb' }), 
   } catch (err) {
     console.error('Error starting import:', err.message);
     res.status(500).json({ success: false, message: 'Failed to start import' });
+  }
+});
+
+// ─── API: Manual Google Sheet sync trigger ────────────────────────────────────
+app.post('/api/inventory/sync-sheet', requireAuth, async (req, res) => {
+  try {
+    res.json({ success: true, message: 'Sheet sync started. Check /api/inventory/sheet-syncs for status.' });
+    setImmediate(() => {
+      syncInventoryFromSheet().catch(err => console.error('[SheetSync] Manual trigger error:', err.message));
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─── API: Sheet sync history ──────────────────────────────────────────────────
+app.get('/api/inventory/sheet-syncs', requireAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, status, rows_fetched, rows_inserted, error_message, started_at, completed_at
+       FROM sheet_syncs
+       ORDER BY started_at DESC
+       LIMIT 20`
+    );
+    res.json({ success: true, syncs: rows });
+  } catch (err) {
+    console.error('[SheetSync] History error:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to fetch sync history' });
   }
 });
 
