@@ -730,6 +730,9 @@ input, textarea, select { font-family: inherit; }
   .kpi-strip { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 640px) {
+  .global-nav { padding: 0 12px; }
+  .gn-link { padding: 4px 8px; font-size: 0.75rem; }
+  .gn-logout { padding: 4px 6px; font-size: 0.7rem; }
   .kpi-strip { grid-template-columns: 1fr; }
   .top-nav { padding: 0 16px; }
   .main-content { padding: 16px; }
@@ -1471,7 +1474,7 @@ input, textarea, select { font-family: inherit; }
         <p>AI-powered yacht-to-buyer matching engine</p>
         <div class="placeholder-stat" id="matchmakerYachtCount">--</div>
         <div class="placeholder-stat-label">Available Yachts in Database</div>
-        <a href="/" class="btn-gold">Open Matchmaker &#x2192;</a>
+        <a href="/matchmaker" class="btn-gold">Open Matchmaker &#x2192;</a>
       </div>
     </div>
   </div>
