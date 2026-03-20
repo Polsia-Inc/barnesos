@@ -1,0 +1,22 @@
+[
+  {
+    "content": "Create migration 021 to update trigger rule weights + re-score existing signals",
+    "status": "completed",
+    "activeForm": "Creating migration 021"
+  },
+  {
+    "content": "Fix /api/command-center/kpis endpoint (signals_today → hot_signals_7d)",
+    "status": "completed",
+    "activeForm": "Fixing KPI endpoint"
+  },
+  {
+    "content": "Fix command-center.html widget label + JS key",
+    "status": "completed",
+    "activeForm": "Fixing dashboard widget"
+  },
+  {
+    "content": "Commit, push, deploy",
+    "status": "in_progress",
+    "activeForm": "Committing and deploying"
+  }
+]
