@@ -311,7 +311,7 @@
         .yacht-card-body {
             padding: 24px 28px;
             display: grid;
-            grid-template-columns: 1fr auto;
+            grid-template-columns: auto 1fr;
             gap: 20px;
         }
         .yacht-main { display: flex; flex-direction: column; gap: 12px; }
@@ -390,6 +390,18 @@
             align-items: flex-end;
             justify-content: space-between;
             min-width: 200px;
+        }
+        .yacht-image {
+            width: 320px;
+            height: 240px;
+            flex-shrink: 0;
+            overflow: hidden;
+            border-radius: 8px;
+        }
+        .yacht-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
         }
         .relevance-badge {
             display: flex;
@@ -547,6 +559,7 @@
             .stats-bar { gap: 24px; flex-wrap: wrap; }
             .form-grid { grid-template-columns: 1fr; }
             .yacht-card-body { grid-template-columns: 1fr; }
+            .yacht-image { width: 100%; height: 240px; }
             .yacht-right { align-items: flex-start; flex-direction: row; min-width: auto; gap: 16px; }
             .yacht-price { font-size: 18px; }
             .nav-links { display: none; }
@@ -787,14 +800,14 @@
 
             // Build image container — with optional external-link wrapper when product_url is set
             const imgInner = yacht.image_url
-                ? '<div style="position:relative;width:100%;height:200px;overflow:hidden;flex-shrink:0">' +
-                    '<img src="' + escapeHtml(yacht.image_url) + '" style="width:100%;height:200px;object-fit:cover;transition:transform 0.3s ease;" onerror="this.parentNode.style.background=\'linear-gradient(180deg,#0e1824 0%,#0a1520 100%)\'"/>' +
+                ? '<div style="position:relative;width:100%;height:100%;overflow:hidden;flex-shrink:0">' +
+                    '<img src="' + escapeHtml(yacht.image_url) + '" style="width:100%;height:100%;object-fit:cover;transition:transform 0.3s ease;" onerror="this.parentNode.style.background=\'linear-gradient(180deg,#0e1824 0%,#0a1520 100%)\'"/>' +
                     '<div style="position:absolute;top:12px;left:12px;background:rgba(10,16,28,0.75);border:1px solid rgba(201,169,110,0.55);color:#c9a96e;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;padding:4px 10px;border-radius:4px;backdrop-filter:blur(4px)">' + escapeHtml(yachtBuild) + '</div>' +
                     (yacht.product_url ? '<div style="position:absolute;top:10px;right:10px;background:rgba(10,16,28,0.80);border:1px solid rgba(201,169,110,0.45);color:#c9a96e;font-size:11px;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px);pointer-events:none" title="View on brand site">↗</div>' : '') +
                   '</div>'
-                : '<div style="width:100%;height:200px;background:linear-gradient(135deg,#0b1420 0%,#0e1c30 100%);display:flex;align-items:center;justify-content:center;border-bottom:1px solid rgba(201,169,110,0.08)"><svg xmlns=\'http://www.w3.org/2000/svg\' width=\'64\' height=\'40\' viewBox=\'0 0 64 40\' fill=\'none\'><path d=\'M4 32L10 18H54L60 32H4Z\' fill=\'%231a2840\'/><rect x=\'18\' y=\'10\' width=\'28\' height=\'10\' rx=\'2\' fill=\'%23162234\'/><rect x=\'24\' y=\'4\' width=\'16\' height=\'8\' rx=\'2\' fill=\'%23112030\'/><line x1=\'32\' y1=\'1\' x2=\'32\' y2=\'4\' stroke=\'%23c9a96e\' stroke-width=\'1.5\'/></svg></div>';
+                : '<div style="width:100%;height:100%;background:linear-gradient(135deg,#0b1420 0%,#0e1c30 100%);display:flex;align-items:center;justify-content:center;border-bottom:1px solid rgba(201,169,110,0.08)"><svg xmlns=\'http://www.w3.org/2000/svg\' width=\'64\' height=\'40\' viewBox=\'0 0 64 40\' fill=\'none\'><path d=\'M4 32L10 18H54L60 32H4Z\' fill=\'%231a2840\'/><rect x=\'18\' y=\'10\' width=\'28\' height=\'10\' rx=\'2\' fill=\'%23162234\'/><rect x=\'24\' y=\'4\' width=\'16\' height=\'8\' rx=\'2\' fill=\'%23112030\'/><line x1=\'32\' y1=\'1\' x2=\'32\' y2=\'4\' stroke=\'%23c9a96e\' stroke-width=\'1.5\'/></svg></div>';
             const imgHtml = (yacht.product_url && yacht.image_url)
-                ? '<a href="' + escapeHtml(yacht.product_url) + '" target="_blank" rel="noopener noreferrer" style="display:block;text-decoration:none;overflow:hidden;" title="View ' + escapeHtml(yachtBuild + ' ' + yachtName) + ' on brand website">' + imgInner + '</a>'
+                ? '<a href="' + escapeHtml(yacht.product_url) + '" target="_blank" rel="noopener noreferrer" style="display:block;text-decoration:none;overflow:hidden;width:100%;height:100%;" title="View ' + escapeHtml(yachtBuild + ' ' + yachtName) + ' on brand website">' + imgInner + '</a>'
                 : imgInner;
 
             const priceStr = yachtCurr === 'USD' ? '$' + Number(yachtPrice).toLocaleString()
@@ -802,31 +815,34 @@
                 : formatPrice(yachtPrice);
 
             html += '<div class="yacht-card">' +
-                imgHtml +
                 '<div class="yacht-card-body">' +
-                '<div class="yacht-main">' +
-                    '<div class="yacht-top">' +
-                        '<span class="yacht-brand">' + escapeHtml(yachtBuild) + '</span>' +
-                        '<span class="yacht-model">' + escapeHtml(yachtName) + '</span>' +
+                '<div>' +
+                    '<div class="yacht-main">' +
+                        '<div class="yacht-top">' +
+                            '<span class="yacht-brand">' + escapeHtml(yachtBuild) + '</span>' +
+                            '<span class="yacht-model">' + escapeHtml(yachtName) + '</span>' +
+                        '</div>' +
+                        '<div class="yacht-specs">' +
+                            (yachtLen ? '<div class="spec"><span class="spec-label">Length</span><span class="spec-value">' + Number(yachtLen).toFixed(1) + 'm</span></div>' : '') +
+                            (yacht.year_built ? '<div class="spec"><span class="spec-label">Built</span><span class="spec-value">' + yacht.year_built + '</span></div>' : '') +
+                            (yacht.lob ? '<div class="spec"><span class="spec-label">LOB</span><span class="spec-value">' + Number(yacht.lob).toFixed(1) + 'm</span></div>' : '') +
+                            (yacht.delivery_date ? '<div class="spec"><span class="spec-label">Delivery</span><span class="spec-value">' + escapeHtml(yacht.delivery_date) + '</span></div>' : '') +
+                            '<div class="spec"><span class="spec-label">Location</span><span class="spec-value">' + escapeHtml(yachtLoc) + '</span></div>' +
+                        '</div>' +
+                        '<div class="yacht-tags">' + tags + '</div>' +
+                        reasons +
                     '</div>' +
-                    '<div class="yacht-specs">' +
-                        (yachtLen ? '<div class="spec"><span class="spec-label">Length</span><span class="spec-value">' + Number(yachtLen).toFixed(1) + 'm</span></div>' : '') +
-                        (yacht.year_built ? '<div class="spec"><span class="spec-label">Built</span><span class="spec-value">' + yacht.year_built + '</span></div>' : '') +
-                        (yacht.lob ? '<div class="spec"><span class="spec-label">LOB</span><span class="spec-value">' + Number(yacht.lob).toFixed(1) + 'm</span></div>' : '') +
-                        '<div class="spec"><span class="spec-label">Location</span><span class="spec-value">' + escapeHtml(yachtLoc) + '</span></div>' +
+                    '<div class="yacht-right">' +
+                        '<div class="relevance-badge">' +
+                            '<div class="relevance-ring ' + relClass + '">' + yacht.relevance_score + '</div>' +
+                            '<span class="relevance-label">Match</span>' +
+                        '</div>' +
+                        '<div>' +
+                            '<div class="yacht-price">' + priceStr + '</div>' +
+                        '</div>' +
                     '</div>' +
-                    '<div class="yacht-tags">' + tags + '</div>' +
-                    reasons +
                 '</div>' +
-                '<div class="yacht-right">' +
-                    '<div class="relevance-badge">' +
-                        '<div class="relevance-ring ' + relClass + '">' + yacht.relevance_score + '</div>' +
-                        '<span class="relevance-label">Match</span>' +
-                    '</div>' +
-                    '<div>' +
-                        '<div class="yacht-price">' + priceStr + '</div>' +
-                    '</div>' +
-                '</div>' +
+                '<div class="yacht-image">' + imgHtml + '</div>' +
                 '</div>' +
             '</div>';
         }
