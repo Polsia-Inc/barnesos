@@ -2056,10 +2056,13 @@ app.get('/api/command-center/kpis', async (req, res) => {
     // Total prospects
     const { rows: totalRow } = await pool.query('SELECT COUNT(*) as total FROM prospects');
 
-    // Signals today
-    const { rows: signalsToday } = await pool.query(`
-      SELECT COUNT(*) as count FROM prospect_signals
-      WHERE detected_at >= CURRENT_DATE
+    // Hot signals from the last 7 days (prospects currently in HOT tier)
+    const { rows: hotSignals7d } = await pool.query(`
+      SELECT COUNT(*) as count
+      FROM prospect_signals ps
+      JOIN prospects p ON ps.prospect_id = p.id
+      WHERE ps.detected_at >= NOW() - INTERVAL '7 days'
+        AND p.heat_tier = 'hot'
     `);
 
     // Fund progress (from deals)
@@ -2083,7 +2086,7 @@ app.get('/api/command-center/kpis', async (req, res) => {
         hot_prospects: tiers.hot,
         warm_prospects: tiers.warm,
         cold_prospects: tiers.cold,
-        signals_today: parseInt(signalsToday[0].count),
+        hot_signals_today: parseInt(hotSignals7d[0].count),
         fund_deployed: parseFloat(fundRow[0].deployed) || 0,
         fund_profit: parseFloat(fundRow[0].profit) || 0,
         total_deals: parseInt(fundRow[0].total_deals),
