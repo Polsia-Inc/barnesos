@@ -3591,12 +3591,337 @@ app.get('/matchmaker', (req, res) => {
 // Serve Matchmaker via broker portal (broker auth)
 app.get('/broker/matchmaker', (req, res) => {
   if (!req.session || !req.session.brokerUser) return res.redirect('/broker/login');
-  const htmlPath = path.join(__dirname, 'public', 'index.html');
-  if (fs.existsSync(htmlPath)) {
-    res.type('html').sendFile(htmlPath);
-  } else {
-    res.status(404).json({ message: 'Matchmaker not found' });
+  const user = req.session.brokerUser;
+  const tenant = req.session.brokerTenant;
+  const billingStatus = effectiveBillingStatus(tenant);
+  const daysLeft = trialDaysRemaining(tenant);
+  const isReadOnly = billingStatus === 'past_due' || billingStatus === 'cancelled';
+
+  let billingBanner = '';
+  if (billingStatus === 'trial' && daysLeft <= 7) {
+    billingBanner = `<div class="billing-banner warning">⏰ <strong>${daysLeft} day${daysLeft !== 1 ? 's' : ''} left</strong> on your free trial — <a href="/broker/billing">Subscribe now →</a></div>`;
+  } else if (isReadOnly) {
+    billingBanner = `<div class="billing-banner danger">🔒 <strong>Subscription required.</strong> Read-only mode. <a href="/broker/billing">Subscribe Now →</a></div>`;
   }
+
+  const mmBrandColor = getBrandColor(tenant);
+  const mmDisplayName = getDisplayName(tenant);
+
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Yacht Matchmaker — ${mmDisplayName}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  ${brandColorStyles(tenant)}
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0a0f1e; --surface: #111827; --surface2: #1a2236;
+      --border: #1e2d45; --border2: #263552;
+      --text: #e8edf5; --text2: #8fa3bf; --text3: #4d6480;
+      --gold: #c9a84c; --gold-dim: #8a6d2e;
+      --accent: #3b82f6; --accent-dim: #1e3a5f;
+    }
+    body { font-family: 'Inter', -apple-system, sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    /* TOPBAR */
+    .topbar { position: fixed; top: 0; left: 0; right: 0; z-index: 100; background: rgba(10,15,30,0.95); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); height: 54px; display: flex; align-items: center; padding: 0 28px; gap: 0; }
+    .topbar-brand { font-size: 15px; font-weight: 700; color: var(--gold); letter-spacing: 0.5px; white-space: nowrap; margin-right: 32px; }
+    .topbar-nav { display: flex; align-items: center; gap: 4px; flex: 1; }
+    .topbar-nav a { color: var(--text2); text-decoration: none; font-size: 13px; font-weight: 500; padding: 6px 14px; border-radius: 6px; transition: all 0.15s; white-space: nowrap; }
+    .topbar-nav a:hover { color: var(--text); background: var(--surface2); }
+    .topbar-nav a.active { color: var(--text); background: var(--surface2); }
+    .topbar-right { display: flex; align-items: center; gap: 16px; font-size: 12px; color: var(--text3); white-space: nowrap; }
+    .topbar-right a { color: var(--text3); text-decoration: none; transition: color 0.15s; }
+    .topbar-right a:hover { color: var(--text2); }
+
+    /* BILLING BANNERS */
+    .billing-banner { padding: 10px 28px; font-size: 13px; display: flex; align-items: center; gap: 8px; }
+    .billing-banner.warning { background: #1c1400; border-bottom: 1px solid #78350f; color: #fde68a; }
+    .billing-banner.danger { background: #1a0000; border-bottom: 1px solid #7f1d1d; color: #fca5a5; }
+    .billing-banner a { color: inherit; font-weight: 600; }
+
+    /* MAIN */
+    .page { padding-top: 54px; }
+    .container { max-width: 1100px; margin: 0 auto; padding: 32px 28px 80px; }
+
+    /* FORM CARD */
+    .form-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 28px 32px; margin-bottom: 28px; }
+    .form-card h2 { font-size: 18px; font-weight: 700; color: var(--text); margin-bottom: 6px; }
+    .form-card .subtitle { font-size: 13px; color: var(--text2); margin-bottom: 24px; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+    @media (max-width: 700px) { .form-grid { grid-template-columns: 1fr; } }
+    .full-width { grid-column: 1 / -1; }
+    .form-group { display: flex; flex-direction: column; gap: 7px; }
+    .form-group label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text3); }
+    .form-group input, .form-group select {
+      background: var(--bg); border: 1px solid var(--border2); border-radius: 8px;
+      padding: 9px 13px; font-size: 13px; color: var(--text); outline: none;
+      transition: border-color 0.15s; font-family: inherit;
+    }
+    .form-group input:focus, .form-group select:focus { border-color: var(--accent); }
+    .form-group input::placeholder { color: var(--text3); }
+    .form-group select option { background: var(--surface); }
+
+    /* CHIPS */
+    .chips-wrap { display: flex; flex-wrap: wrap; gap: 7px; min-height: 32px; align-items: center; }
+    .chip {
+      padding: 5px 13px; border-radius: 20px; font-size: 12px; font-weight: 500;
+      border: 1px solid var(--border2); color: var(--text2); background: transparent;
+      cursor: pointer; transition: all 0.15s; white-space: nowrap;
+    }
+    .chip:hover { border-color: var(--gold); color: var(--gold); }
+    .chip.selected { background: var(--gold); color: #0a0f1e; border-color: var(--gold); font-weight: 600; }
+    .chips-loading { font-size: 12px; color: var(--text3); font-style: italic; }
+
+    /* SUBMIT */
+    .btn-match { background: linear-gradient(135deg, var(--accent), #6366f1); color: #fff; border: none; border-radius: 9px; padding: 12px 32px; font-size: 14px; font-weight: 700; cursor: pointer; transition: opacity 0.15s; margin-top: 4px; }
+    .btn-match:hover { opacity: 0.88; }
+    .btn-match:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* RESULTS */
+    #resultsArea { margin-top: 4px; }
+    .results-header { font-size: 14px; font-weight: 600; color: var(--text2); margin-bottom: 16px; }
+    .yacht-card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+      padding: 20px 24px; margin-bottom: 14px; display: grid;
+      grid-template-columns: 200px 1fr auto; gap: 20px; align-items: start;
+    }
+    @media (max-width: 700px) { .yacht-card { grid-template-columns: 1fr; } }
+    .yacht-img { width: 200px; height: 130px; border-radius: 8px; object-fit: cover; background: var(--surface2); display: block; }
+    .yacht-img-placeholder { width: 200px; height: 130px; border-radius: 8px; background: var(--surface2); display: flex; align-items: center; justify-content: center; font-size: 36px; color: var(--border2); }
+    .yacht-info { flex: 1; }
+    .yacht-name { font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 3px; }
+    .yacht-brand-badge { display: inline-block; background: var(--gold-dim); color: var(--gold); font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; padding: 2px 9px; border-radius: 4px; margin-bottom: 10px; }
+    .spec-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px 16px; margin-bottom: 10px; }
+    .spec { display: flex; flex-direction: column; }
+    .spec-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text3); font-weight: 600; }
+    .spec-value { font-size: 13px; color: var(--text2); font-weight: 500; margin-top: 1px; }
+    .match-reasons { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+    .reason { background: var(--accent-dim); color: #93c5fd; font-size: 11px; padding: 2px 9px; border-radius: 4px; font-weight: 500; }
+    .yacht-score { text-align: center; flex-shrink: 0; }
+    .score-ring { width: 64px; height: 64px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 800; border: 3px solid; }
+    .score-ring.high { border-color: #22c55e; color: #22c55e; background: rgba(34,197,94,0.08); }
+    .score-ring.mid { border-color: var(--gold); color: var(--gold); background: rgba(201,168,76,0.08); }
+    .score-ring.low { border-color: var(--border2); color: var(--text3); background: transparent; }
+    .score-label { font-size: 10px; color: var(--text3); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .yacht-price { font-size: 16px; font-weight: 700; color: var(--gold); margin-top: 6px; }
+    .empty-state { text-align: center; padding: 60px 20px; color: var(--text3); }
+    .empty-state .icon { font-size: 42px; margin-bottom: 12px; }
+    .spinner { display: inline-block; width: 20px; height: 20px; border: 2px solid var(--border2); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 8px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .stats-bar { display: flex; gap: 24px; margin-bottom: 28px; flex-wrap: wrap; }
+    .stat-item { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 20px; }
+    .stat-item .sv { font-size: 26px; font-weight: 700; color: var(--text); }
+    .stat-item .sl { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 2px; }
+  </style>
+</head>
+<body>
+  <div class="topbar">
+    <div class="topbar-brand">${topbarLogoHtml(tenant, 22)}</div>
+    <div class="topbar-nav">
+      <a href="/broker/signal-radar">📡 Signal Radar</a>
+      <a href="/broker/matchmaker" class="active">🛥 Matchmaker</a>
+      <a href="/broker/dashboard">Dashboard</a>
+      ${user.role === 'admin' ? '<a href="/broker/settings/branding">⚙ Brand</a>' : ''}
+      <a href="/broker/billing">Billing</a>
+    </div>
+    <div class="topbar-right">
+      <span>${user.first_name || ''} ${user.last_name || ''}</span>
+      <a href="/api/broker/logout">Sign out</a>
+    </div>
+  </div>
+  <div class="page">
+    ${billingBanner}
+    <div class="container">
+      <div style="margin-bottom:24px">
+        <h1 style="font-size:22px;font-weight:700;color:var(--text);margin-bottom:4px">🛥 Yacht Matchmaker</h1>
+        <p style="font-size:13px;color:var(--text2)">Match your client's profile against live new-build inventory. Set filters below and run the match.</p>
+      </div>
+
+      <div class="stats-bar" id="statsBar" style="display:none">
+        <div class="stat-item"><div class="sv" id="statTotal">—</div><div class="sl">Yachts</div></div>
+        <div class="stat-item"><div class="sv" id="statBrands">—</div><div class="sl">Brands</div></div>
+        <div class="stat-item"><div class="sv" id="statMin">—</div><div class="sl">From</div></div>
+        <div class="stat-item"><div class="sv" id="statMax">—</div><div class="sl">Up To</div></div>
+      </div>
+
+      <div class="form-card">
+        <h2>Client Criteria</h2>
+        <p class="subtitle">Define your client's preferences. Fields left blank are treated as "no preference".</p>
+        <form id="matchForm" onsubmit="runMatch(event)">
+          <div class="form-grid">
+            <div class="form-group">
+              <label>Budget Min (EUR)</label>
+              <input type="number" id="budgetMin" placeholder="e.g. 5 000 000" step="100000" inputmode="numeric">
+            </div>
+            <div class="form-group">
+              <label>Budget Max (EUR)</label>
+              <input type="number" id="budgetMax" placeholder="e.g. 25 000 000" step="100000" inputmode="numeric">
+            </div>
+            <div class="form-group">
+              <label>Length Min (m)</label>
+              <input type="number" id="lengthMin" placeholder="e.g. 20" step="0.5" inputmode="decimal">
+            </div>
+            <div class="form-group">
+              <label>Length Max (m)</label>
+              <input type="number" id="lengthMax" placeholder="e.g. 50" step="0.5" inputmode="decimal">
+            </div>
+            <div class="form-group">
+              <label>Delivery Timeline</label>
+              <select id="deliveryPref">
+                <option value="">Any Timeline</option>
+                <option value="immediate">Ready Now</option>
+                <option value="2026">2026</option>
+                <option value="2027">2027</option>
+                <option value="2028">2028+</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label>Sort Results By</label>
+              <select id="sortBy">
+                <option value="relevance">Best Match</option>
+                <option value="price_asc">Price: Low → High</option>
+                <option value="price_desc">Price: High → Low</option>
+                <option value="length_desc">Length: Largest First</option>
+              </select>
+            </div>
+            <div class="form-group full-width">
+              <label>Preferred Brand (click to select, multiple allowed)</label>
+              <div class="chips-wrap" id="brandChips"><span class="chips-loading">Loading brands…</span></div>
+            </div>
+            <div class="form-group full-width">
+              <label>Preferred Build Location (click to select)</label>
+              <div class="chips-wrap" id="locationChips"><span class="chips-loading">Loading locations…</span></div>
+            </div>
+          </div>
+          <button type="submit" class="btn-match" id="matchBtn">🔍 Find Matching Yachts</button>
+        </form>
+      </div>
+
+      <div id="resultsArea"></div>
+    </div>
+  </div>
+
+<script>
+  const IS_READONLY = ${JSON.stringify(isReadOnly)};
+  let selectedBrands = new Set();
+  let selectedLocations = new Set();
+
+  function fmtPrice(n) {
+    if (!n) return '—';
+    const num = Number(n);
+    if (num >= 1e6) return (num/1e6).toFixed(1).replace(/\\.0$/,'') + 'M €';
+    return num.toLocaleString('fr-FR') + ' €';
+  }
+  function esc(s) { if (!s) return ''; return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function scoreClass(s) { return s >= 70 ? 'high' : s >= 40 ? 'mid' : 'low'; }
+
+  function renderChips(containerId, items, selectedSet) {
+    const el = document.getElementById(containerId);
+    if (!items.length) { el.innerHTML = '<span style="font-size:12px;color:var(--text3);font-style:italic">None available</span>'; return; }
+    el.innerHTML = items.map(item => {
+      const sel = selectedSet.has(item) ? ' selected' : '';
+      return '<button type="button" class="chip' + sel + '" onclick="toggleChip(this,\\'' + containerId + '\\',\\'' + esc(item).replace(/'/g,'&#39;') + '\\')">' + esc(item) + '</button>';
+    }).join('');
+  }
+
+  function toggleChip(el, containerId, value) {
+    const set = containerId === 'brandChips' ? selectedBrands : selectedLocations;
+    if (set.has(value)) { set.delete(value); el.classList.remove('selected'); }
+    else { set.add(value); el.classList.add('selected'); }
+  }
+
+  async function init() {
+    try {
+      const res = await fetch('/api/yachts/filters');
+      const data = await res.json();
+      if (data.success) {
+        renderChips('brandChips', data.builders || [], selectedBrands);
+        renderChips('locationChips', data.locations || [], selectedLocations);
+        const s = data.stats || {};
+        document.getElementById('statTotal').textContent = s.total || '—';
+        document.getElementById('statBrands').textContent = (data.builders||[]).length || '—';
+        document.getElementById('statMin').textContent = fmtPrice(s.min_price);
+        document.getElementById('statMax').textContent = fmtPrice(s.max_price);
+        document.getElementById('statsBar').style.display = 'flex';
+      }
+    } catch(e) {
+      document.getElementById('brandChips').innerHTML = '<span style="font-size:12px;color:#ef4444">Failed to load brands. Try refreshing.</span>';
+    }
+  }
+
+  async function runMatch(e) {
+    e.preventDefault();
+    const btn = document.getElementById('matchBtn');
+    const area = document.getElementById('resultsArea');
+    btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Matching…';
+    area.innerHTML = '<div style="padding:32px;text-align:center;color:var(--text2)"><span class="spinner"></span> Scoring inventory…</div>';
+
+    try {
+      const payload = {
+        budget_min: document.getElementById('budgetMin').value || null,
+        budget_max: document.getElementById('budgetMax').value || null,
+        length_min: document.getElementById('lengthMin').value || null,
+        length_max: document.getElementById('lengthMax').value || null,
+        builders: Array.from(selectedBrands),
+        locations: Array.from(selectedLocations),
+        sort_by: document.getElementById('sortBy').value,
+        delivery_pref: document.getElementById('deliveryPref').value || null,
+      };
+      const res = await fetch('/api/match', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+      btn.disabled = false; btn.innerHTML = '🔍 Find Matching Yachts';
+
+      if (!data.success || !data.results || !data.results.length) {
+        area.innerHTML = '<div class="empty-state"><div class="icon">🔍</div><h3 style="font-size:16px;color:var(--text2);margin-bottom:6px">No matches found</h3><p>Try widening your budget range or removing some filters.</p></div>';
+        return;
+      }
+
+      const total = data.results.length;
+      area.innerHTML = '<p class="results-header">' + total + ' yacht' + (total!==1?'s':'') + ' matched — sorted by relevance</p>' +
+        data.results.map(y => {
+          const sc = Math.round(y.match_score || y.score || 0);
+          const imgHtml = y.image_url
+            ? '<img class="yacht-img" src="' + esc(y.image_url) + '" alt="" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">' +
+              '<div class="yacht-img-placeholder" style="display:none">🛥</div>'
+            : '<div class="yacht-img-placeholder">🛥</div>';
+          const reasons = (y.match_reasons||[]).map(r => '<span class="reason">' + esc(r) + '</span>').join('');
+          return '<div class="yacht-card">' +
+            '<div>' + imgHtml + '</div>' +
+            '<div class="yacht-info">' +
+              '<div class="yacht-name">' + esc(y.name||'—') + '</div>' +
+              '<div class="yacht-brand-badge">' + esc(y.builder||'—') + '</div>' +
+              '<div class="spec-grid">' +
+                (y.length ? '<div class="spec"><span class="spec-label">Length</span><span class="spec-value">' + y.length + 'm</span></div>' : '') +
+                (y.year_built ? '<div class="spec"><span class="spec-label">Year</span><span class="spec-value">' + y.year_built + '</span></div>' : '') +
+                (y.location_text ? '<div class="spec"><span class="spec-label">Location</span><span class="spec-value">' + esc(y.location_text) + '</span></div>' : '') +
+                (y.delivery_date ? '<div class="spec"><span class="spec-label">Delivery</span><span class="spec-value">' + esc(y.delivery_date) + '</span></div>' : '') +
+              '</div>' +
+              (reasons ? '<div class="match-reasons">' + reasons + '</div>' : '') +
+              (y.price ? '<div class="yacht-price">' + fmtPrice(y.price) + '</div>' : '') +
+            '</div>' +
+            '<div class="yacht-score">' +
+              '<div class="score-ring ' + scoreClass(sc) + '">' + sc + '</div>' +
+              '<div class="score-label">Match</div>' +
+            '</div>' +
+            '</div>';
+        }).join('');
+    } catch(err) {
+      btn.disabled = false; btn.innerHTML = '🔍 Find Matching Yachts';
+      area.innerHTML = '<div class="empty-state"><div class="icon">⚠️</div><h3 style="color:var(--text2)">Error</h3><p>Could not load results. Try again.</p></div>';
+    }
+  }
+
+  init();
+</script>
+</body>
+</html>`);
 });
 
 // Serve deal flow tracker admin page (requires auth)
@@ -4624,8 +4949,8 @@ app.get('/broker/signal-radar', (req, res) => {
     <!-- TOOLBAR -->
     <div class="toolbar">
       <div class="tab-group">
-        <button class="tab-btn active" id="tab-feed" onclick="switchTab('feed')">📊 Signal Feed</button>
-        <button class="tab-btn" id="tab-tier" onclick="switchTab('tier')">📋 Tier View</button>
+        <button class="tab-btn" id="tab-feed" onclick="switchTab('feed')">📊 Signal Feed</button>
+        <button class="tab-btn active" id="tab-tier" onclick="switchTab('tier')">📋 Tier View</button>
       </div>
       <input type="text" class="search-input" id="search-input" placeholder="Search prospects…" oninput="handleSearch(this.value)">
       <div class="spacer"></div>
@@ -4636,7 +4961,7 @@ app.get('/broker/signal-radar', (req, res) => {
     </div>
 
     <!-- SIGNAL FEED -->
-    <div id="view-feed">
+    <div id="view-feed" style="display:none">
       <div class="section-wrap">
         <div class="section-header">
           <div class="section-title">Recent Signals</div>
@@ -4660,7 +4985,7 @@ app.get('/broker/signal-radar', (req, res) => {
     </div>
 
     <!-- TIER VIEW -->
-    <div id="view-tier" style="display:none">
+    <div id="view-tier">
       <div class="tier-columns">
         <div class="tier-column">
           <div class="tier-column-header hot">
@@ -5768,7 +6093,7 @@ app.get('/broker/signal-radar', (req, res) => {
   }
 
   // ── INIT ──────────────────────────────────────────────────────────────────────
-  Promise.all([loadStats(), loadSignalFeed(''), loadScannerStatus()]);
+  Promise.all([loadStats(), loadSignalFeed(''), loadScannerStatus(), loadProspects('')]);
   initGlobe();
 </script>
 </body>

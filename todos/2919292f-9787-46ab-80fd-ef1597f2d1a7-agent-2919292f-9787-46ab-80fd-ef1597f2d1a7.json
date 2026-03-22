@@ -1,0 +1,22 @@
+[
+  {
+    "content": "Fix R1: Broker matchmaker — render proper broker nav with yacht filters (not bare index.html)",
+    "status": "completed",
+    "activeForm": "Fixing R1: Broker matchmaker nav + brand filter"
+  },
+  {
+    "content": "Fix R2/R3: Signal Radar — load prospects on init + make Tier View default tab",
+    "status": "completed",
+    "activeForm": "Fixing R2/R3: Signal Radar loading and demo names"
+  },
+  {
+    "content": "Fix R4: Mobile inventory — show Matchmaker/Inventory toggle on mobile",
+    "status": "completed",
+    "activeForm": "Fixing R4: Mobile inventory CSS"
+  },
+  {
+    "content": "Commit + push + verify deploy",
+    "status": "in_progress",
+    "activeForm": "Pushing fixes and verifying deploy"
+  }
+]
