@@ -176,7 +176,7 @@ function trialDaysRemaining(tenant) {
 // requireBrokerAuth — verifies broker session (tenant-scoped)
 function requireBrokerAuth(req, res, next) {
   if (req.session && req.session.brokerUser) return next();
-  return res.status(401).json({ success: false, message: 'Broker authentication required' });
+  return res.status(401).set('Cache-Control', 'no-store').json({ success: false, message: 'Broker authentication required' });
 }
 
 // requireBrokerAdmin — broker must have admin role
@@ -833,10 +833,11 @@ app.get('/api/broker/radar/prospects', requireBrokerAuth, async (req, res) => {
       'SELECT COUNT(*) AS cnt FROM prospects WHERE tenant_id = $1 AND is_demo = TRUE', [tid]
     );
     const demo_count = parseInt(demoRows[0].cnt, 10);
+    res.set('Cache-Control', 'no-store');
     res.json({ success: true, prospects: rows, count: rows.length, demo_count });
   } catch (err) {
     console.error('[Radar] Prospects error:', err.message);
-    res.status(500).json({ success: false, message: 'Failed to fetch prospects' });
+    res.status(500).set('Cache-Control', 'no-store').json({ success: false, message: 'Failed to fetch prospects' });
   }
 });
 
@@ -5305,12 +5306,24 @@ app.get('/broker/signal-radar', (req, res) => {
   async function loadProspects(search) {
     try {
       const params = search ? '?search=' + encodeURIComponent(search) : '';
-      const d = await fetch('/api/broker/radar/prospects' + params).then(r=>r.json());
-      if (!d.success) return;
+      const r = await fetch('/api/broker/radar/prospects' + params, {cache: 'no-store'});
+      const d = await r.json();
+      if (!d.success) {
+        ['tier-hot-body','tier-warm-body','tier-cold-body'].forEach(id => {
+          const el = document.getElementById(id);
+          if (el) el.innerHTML = '<div class="empty-state" style="padding:24px;color:var(--hot)"><p>⚠ Failed to load — <a href="javascript:loadProspects(\\'\\')">Retry</a></p></div>';
+        });
+        return;
+      }
       allProspects = d.prospects || [];
       updateDemoBanner(d.demo_count || 0);
       renderTierView(search||'');
-    } catch(e) {}
+    } catch(e) {
+      ['tier-hot-body','tier-warm-body','tier-cold-body'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.innerHTML = '<div class="empty-state" style="padding:24px;color:var(--hot)"><p>⚠ Network error — <a href="javascript:loadProspects(\\'\\')">Retry</a></p></div>';
+      });
+    }
   }
 
   function updateDemoBanner(demoCount) {
