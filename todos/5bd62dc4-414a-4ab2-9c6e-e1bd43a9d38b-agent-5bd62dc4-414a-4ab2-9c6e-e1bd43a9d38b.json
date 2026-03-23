@@ -1,0 +1,17 @@
+[
+  {
+    "content": "Extract globe code to public/js/globe-radar.js",
+    "status": "completed",
+    "activeForm": "Extracting globe code to public/js/globe-radar.js"
+  },
+  {
+    "content": "Update server.js to remove inline globe code and reference external file",
+    "status": "completed",
+    "activeForm": "Updating server.js to remove inline globe code and reference external file"
+  },
+  {
+    "content": "Deploy and verify globe renders with nav/outreach intact",
+    "status": "in_progress",
+    "activeForm": "Deploying and verifying globe renders with nav/outreach intact"
+  }
+]
