@@ -1,0 +1,22 @@
+[
+  {
+    "content": "Query DB and understand data",
+    "status": "completed",
+    "activeForm": "Querying DB and understanding data"
+  },
+  {
+    "content": "Find source of '49 Active Matches' in Command Center",
+    "status": "completed",
+    "activeForm": "Finding source of 49 Active Matches in Command Center"
+  },
+  {
+    "content": "Build /matchmaker-audit page with full audit results",
+    "status": "completed",
+    "activeForm": "Building /matchmaker-audit page with full audit results"
+  },
+  {
+    "content": "Deploy and verify",
+    "status": "in_progress",
+    "activeForm": "Deploying and verifying"
+  }
+]

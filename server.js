@@ -3944,6 +3944,149 @@ app.get('/command-center', requireAuth, (req, res) => {
   }
 });
 
+// Serve Matchmaker Audit page (requires auth)
+app.get('/matchmaker-audit', requireAuth, (req, res) => {
+  const htmlPath = path.join(__dirname, 'public', 'matchmaker-audit.html');
+  if (fs.existsSync(htmlPath)) {
+    res.type('html').sendFile(htmlPath);
+  } else {
+    res.status(404).json({ message: 'Matchmaker Audit not found' });
+  }
+});
+
+// ─── API: Matchmaker Audit Data ───────────────────────────────────────────────
+app.get('/api/matchmaker-audit', requireAuth, async (req, res) => {
+  try {
+    // Yacht stats
+    const { rows: yachtStats } = await pool.query(`
+      SELECT
+        COUNT(*) as total_yachts,
+        COUNT(*) FILTER (WHERE is_active = true) as active_yachts,
+        COUNT(*) FILTER (WHERE is_approved = true) as approved_yachts
+      FROM yachts
+    `);
+
+    // Prospect stats
+    const { rows: prospectStats } = await pool.query(`
+      SELECT
+        COUNT(*) as total_prospects,
+        COUNT(*) FILTER (WHERE is_demo = true) as demo_prospects,
+        COUNT(*) FILTER (WHERE is_demo IS NULL OR is_demo = false) as real_prospects,
+        COUNT(*) FILTER (WHERE assigned_yacht_match_id IS NOT NULL) as assigned_pairs
+      FROM prospects
+    `);
+
+    // Match request stats
+    const { rows: matchStats } = await pool.query(`
+      SELECT
+        COUNT(*) as total_match_requests,
+        COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '30 days') as active_matches_kpi,
+        MIN(created_at) as first_request,
+        MAX(created_at) as last_request
+      FROM match_requests
+    `);
+
+    // All prospects for table
+    const { rows: prospects } = await pool.query(`
+      SELECT name, company, location, yacht_brand, yacht_model, heat_score, heat_tier, is_demo
+      FROM prospects
+      ORDER BY heat_score DESC NULLS LAST
+      LIMIT 30
+    `);
+
+    // Recent match requests
+    const { rows: recent_requests } = await pool.query(`
+      SELECT budget_min, budget_max, length_min, length_max,
+             preferred_brands, preferred_locations, notes, created_at
+      FROM match_requests
+      ORDER BY created_at DESC
+      LIMIT 20
+    `);
+
+    // Generate sample matches: for first 5 prospects with yacht_brand, run them against inventory
+    const { rows: demoProspects } = await pool.query(`
+      SELECT name, company, location, yacht_brand, yacht_model, heat_score
+      FROM prospects
+      WHERE yacht_brand IS NOT NULL AND yacht_brand != ''
+      ORDER BY heat_score DESC NULLS LAST
+      LIMIT 5
+    `);
+
+    const { rows: allYachts } = await pool.query(`SELECT * FROM yachts WHERE is_active = true`);
+
+    const sample_matches = demoProspects.map(p => {
+      // Score yachts against this prospect's brand preference
+      const brand = p.yacht_brand || '';
+      const scored = allYachts
+        .map(y => {
+          let score = 0;
+          const reasons = [];
+          const builderMatch = brand && (
+            (y.builder || '').toLowerCase().includes(brand.toLowerCase()) ||
+            brand.toLowerCase().includes((y.builder || '').toLowerCase())
+          );
+          if (!builderMatch) return null;
+          // Brand match (20 pts)
+          score += 20;
+          reasons.push('Preferred brand');
+          // Neutral budget (10 pts — no filter)
+          score += 10;
+          // Neutral location (5 pts — no filter)
+          score += 5;
+          // Year (3 pts — no filter)
+          score += 3;
+          if (y.is_approved) { score += 2; reasons.push('Approved listing'); }
+          const relevance = Math.round((score / 40) * 100);
+          reasons.push('Within typical range');
+          return { ...y, score: relevance, reasons };
+        })
+        .filter(Boolean)
+        .sort((a, b) => b.score - a.score);
+
+      const top = scored[0];
+      if (!top) return null;
+      return {
+        client_name: p.name,
+        client_company: p.company,
+        client_location: p.location,
+        preferred_brand: brand,
+        preferred_model: p.yacht_model,
+        yacht_name: top.name,
+        yacht_builder: top.builder,
+        yacht_length: top.length,
+        yacht_price: top.price,
+        yacht_currency: top.currency,
+        yacht_location: top.location_text,
+        score: top.score,
+        match_reasons: top.reasons,
+      };
+    }).filter(Boolean);
+
+    res.json({
+      success: true,
+      stats: {
+        total_yachts: parseInt(yachtStats[0].total_yachts),
+        active_yachts: parseInt(yachtStats[0].active_yachts),
+        approved_yachts: parseInt(yachtStats[0].approved_yachts),
+        total_prospects: parseInt(prospectStats[0].total_prospects),
+        demo_prospects: parseInt(prospectStats[0].demo_prospects),
+        real_prospects: parseInt(prospectStats[0].real_prospects),
+        assigned_pairs: parseInt(prospectStats[0].assigned_pairs),
+        total_match_requests: parseInt(matchStats[0].total_match_requests),
+        active_matches_kpi: parseInt(matchStats[0].active_matches_kpi),
+        first_request: matchStats[0].first_request,
+        last_request: matchStats[0].last_request,
+      },
+      prospects,
+      sample_matches,
+      recent_requests,
+    });
+  } catch (err) {
+    console.error('[MatchmakerAudit] Error:', err.message);
+    res.status(500).json({ success: false, message: 'Failed to load audit data' });
+  }
+});
+
 // ─── BROKER PORTAL PAGES ─────────────────────────────────────────────────────
 
 // ── Branding helpers ──────────────────────────────────────────────────────────

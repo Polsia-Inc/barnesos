@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Matchmaker Audit — BarnesOS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+html { font-size: 15px; scroll-behavior: smooth; }
+body {
+  font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+  background: #0a0e1a;
+  color: #e5e7eb;
+  min-height: 100vh;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+a { color: #c9a96e; text-decoration: none; }
+a:hover { color: #dfc08a; }
+
+:root {
+  --bg-primary: #0a0e1a;
+  --bg-card: #111827;
+  --bg-card-hover: #1a2235;
+  --border: #1e293b;
+  --border-light: #2a3352;
+  --gold: #c9a96e;
+  --gold-hover: #dfc08a;
+  --gold-dim: rgba(201,169,110,0.15);
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --success: #22c55e;
+  --warn: #f59e0b;
+  --danger: #ef4444;
+  --info: #3b82f6;
+  --radius: 10px;
+  --radius-sm: 6px;
+}
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #0a0e1a; }
+::-webkit-scrollbar-thumb { background: #2a3352; border-radius: 3px; }
+
+/* NAV */
+.global-nav {
+  position: sticky; top: 0; z-index: 200;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 28px; height: 40px;
+  background: #060c18;
+  border-bottom: 1px solid rgba(201,168,76,0.18);
+}
+.global-nav-links { display: flex; align-items: center; gap: 4px; }
+.gn-link {
+  padding: 4px 14px; border-radius: 6px;
+  font-size: 0.8rem; font-weight: 500;
+  color: var(--text-secondary); text-decoration: none;
+  transition: all 0.2s;
+}
+.gn-link:hover { color: var(--text-primary); background: rgba(255,255,255,0.05); }
+.gn-link.active { color: var(--gold); background: var(--gold-dim); }
+.nav-brand { font-size: 0.85rem; font-weight: 700; color: var(--gold); letter-spacing: 0.05em; }
+
+/* LAYOUT */
+.page { max-width: 1200px; margin: 0 auto; padding: 32px 24px 80px; }
+
+/* HEADER */
+.page-header { margin-bottom: 32px; }
+.page-header h1 {
+  font-size: 1.8rem; font-weight: 700; color: var(--text-primary);
+  display: flex; align-items: center; gap: 10px;
+}
+.page-header p { color: var(--text-secondary); margin-top: 6px; font-size: 0.95rem; }
+.badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 600;
+}
+.badge-warn { background: rgba(245,158,11,0.15); color: #f59e0b; border: 1px solid rgba(245,158,11,0.3); }
+.badge-success { background: rgba(34,197,94,0.12); color: #22c55e; border: 1px solid rgba(34,197,94,0.25); }
+.badge-info { background: rgba(59,130,246,0.12); color: #60a5fa; border: 1px solid rgba(59,130,246,0.25); }
+.badge-gold { background: var(--gold-dim); color: var(--gold); border: 1px solid rgba(201,169,110,0.3); }
+.badge-danger { background: rgba(239,68,68,0.12); color: #f87171; border: 1px solid rgba(239,68,68,0.25); }
+
+/* SUMMARY GRID */
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 32px;
+}
+.stat-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px 22px;
+}
+.stat-card .stat-label {
+  font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--text-muted); margin-bottom: 6px;
+}
+.stat-card .stat-value {
+  font-size: 2rem; font-weight: 800; color: var(--text-primary); line-height: 1;
+}
+.stat-card .stat-sub { font-size: 0.8rem; color: var(--text-secondary); margin-top: 4px; }
+
+/* SECTION */
+.section { margin-bottom: 36px; }
+.section-title {
+  font-size: 1rem; font-weight: 700; color: var(--text-primary);
+  margin-bottom: 16px;
+  display: flex; align-items: center; gap: 10px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+.section-title .icon { font-size: 1.1rem; }
+
+/* ALERT BOX */
+.alert {
+  border-radius: var(--radius); padding: 16px 18px; margin-bottom: 24px;
+  display: flex; align-items: flex-start; gap: 12px;
+}
+.alert-warn { background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.25); }
+.alert-info { background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.25); }
+.alert-icon { font-size: 1.2rem; flex-shrink: 0; margin-top: 1px; }
+.alert-body { flex: 1; }
+.alert-title { font-weight: 700; font-size: 0.9rem; margin-bottom: 3px; }
+.alert-warn .alert-title { color: #f59e0b; }
+.alert-info .alert-title { color: #60a5fa; }
+.alert-text { font-size: 0.85rem; color: var(--text-secondary); line-height: 1.5; }
+
+/* TABLE */
+.table-wrap { overflow-x: auto; border-radius: var(--radius); border: 1px solid var(--border); }
+table { width: 100%; border-collapse: collapse; }
+thead tr { background: #0d1321; }
+th {
+  text-align: left; padding: 10px 14px;
+  font-size: 0.72rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--text-muted);
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+td { padding: 11px 14px; font-size: 0.85rem; color: var(--text-secondary); border-bottom: 1px solid rgba(30,41,59,0.7); }
+tr:last-child td { border-bottom: none; }
+tbody tr:hover { background: rgba(255,255,255,0.02); }
+td.primary { color: var(--text-primary); font-weight: 500; }
+td .mono { font-family: monospace; font-size: 0.8rem; color: var(--text-muted); }
+
+/* SCORE BAR */
+.score-bar-wrap { display: flex; align-items: center; gap: 8px; }
+.score-bar {
+  flex: 1; height: 6px; background: #1e293b; border-radius: 3px; overflow: hidden;
+}
+.score-bar-fill { height: 100%; border-radius: 3px; }
+.score-num { font-size: 0.78rem; font-weight: 700; width: 32px; text-align: right; white-space: nowrap; }
+
+/* SCORING BREAKDOWN */
+.scoring-grid {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px;
+}
+.score-factor {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px;
+}
+.score-factor .factor-label { font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 4px; }
+.score-factor .factor-pts {
+  font-size: 1.5rem; font-weight: 800; color: var(--gold);
+}
+.score-factor .factor-pts span { font-size: 0.85rem; color: var(--text-muted); font-weight: 400; }
+.score-factor .factor-note { font-size: 0.75rem; color: var(--text-muted); margin-top: 4px; }
+
+/* SAMPLE MATCH CARD */
+.match-cards { display: flex; flex-direction: column; gap: 12px; }
+.match-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 16px 18px;
+}
+.match-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.match-client { font-weight: 700; color: var(--text-primary); font-size: 0.95rem; }
+.match-score-ring {
+  display: flex; align-items: center; justify-content: center;
+  width: 44px; height: 44px; border-radius: 50%;
+  font-size: 0.85rem; font-weight: 800; border: 2px solid;
+}
+.match-card-body { display: flex; flex-wrap: wrap; gap: 16px; }
+.match-col { flex: 1; min-width: 140px; }
+.match-col-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 4px; }
+.match-col-val { font-size: 0.88rem; color: var(--text-secondary); }
+.match-col-val strong { color: var(--text-primary); }
+.match-reasons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.reason-chip {
+  display: inline-flex; align-items: center;
+  padding: 2px 9px; border-radius: 20px;
+  font-size: 0.72rem; font-weight: 600;
+  background: rgba(201,169,110,0.1); color: var(--gold);
+  border: 1px solid rgba(201,169,110,0.2);
+}
+
+/* LOADING */
+.loading { text-align: center; padding: 60px; color: var(--text-muted); }
+.loading-spinner {
+  width: 32px; height: 32px; border: 3px solid var(--border);
+  border-top-color: var(--gold); border-radius: 50%;
+  animation: spin 0.8s linear infinite; margin: 0 auto 12px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* SCROLLBACK */
+.back-link {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 0.82rem; color: var(--text-muted); margin-bottom: 20px;
+  padding: 4px 0; transition: color 0.2s;
+}
+.back-link:hover { color: var(--gold); }
+
+/* RESPONSIVE */
+@media (max-width: 640px) {
+  .summary-grid { grid-template-columns: 1fr 1fr; }
+  .scoring-grid { grid-template-columns: 1fr 1fr; }
+}
+</style>
+</head>
+<body>
+
+<nav class="global-nav">
+  <div class="global-nav-links">
+    <span class="nav-brand">🛥 BarnesOS</span>
+    <a href="/" class="gn-link">Command Center</a>
+    <a href="/broker/matchmaker" class="gn-link">Matchmaker</a>
+    <a href="/deals" class="gn-link">Deals</a>
+    <a href="/matchmaker-audit" class="gn-link active">Audit</a>
+  </div>
+</nav>
+
+<div class="page">
+
+  <a href="/" class="back-link">← Back to Command Center</a>
+
+  <div class="page-header">
+    <h1>🔍 Matchmaker Audit</h1>
+    <p>What's behind the numbers — client profiles, matching logic, and real vs. demo data.</p>
+  </div>
+
+  <div id="loading" class="loading">
+    <div class="loading-spinner"></div>
+    Loading audit data…
+  </div>
+
+  <div id="content" style="display:none">
+
+    <!-- SUMMARY STATS -->
+    <div class="summary-grid" id="summary-grid"></div>
+
+    <!-- KEY FINDING ALERTS -->
+    <div id="alerts-section"></div>
+
+    <!-- SECTION: WHAT ARE THE 49 ACTIVE MATCHES? -->
+    <div class="section">
+      <div class="section-title"><span class="icon">❓</span> What Is "Active Matches" in the Command Center?</div>
+      <div id="matches-explanation"></div>
+    </div>
+
+    <!-- SECTION: CLIENT PROFILES -->
+    <div class="section">
+      <div class="section-title"><span class="icon">👤</span> Client Profiles</div>
+      <div id="client-profiles-section"></div>
+    </div>
+
+    <!-- SECTION: SCORING ALGORITHM -->
+    <div class="section">
+      <div class="section-title"><span class="icon">⚖️</span> How Matching Works — Scoring Criteria</div>
+      <div class="scoring-grid" id="scoring-grid"></div>
+      <div style="margin-top:14px;padding:14px 16px;background:rgba(30,41,59,0.5);border-radius:8px;border:1px solid var(--border)">
+        <p style="font-size:0.83rem;color:var(--text-secondary)"><strong style="color:var(--text-primary)">Hard exclusions</strong> (yacht removed entirely if): brand filter specified and no match · location filter specified and no match · budget >30% outside range · length >25% outside range (when length filter is set) · minimum relevance score &lt; 20 out of 100.</p>
+      </div>
+    </div>
+
+    <!-- SECTION: SAMPLE MATCHES -->
+    <div class="section">
+      <div class="section-title"><span class="icon">🎯</span> Sample Matches — Prospect × Yacht Pairs</div>
+      <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:16px">Generated by running each demo prospect's yacht brand preference through the live matching engine. These are <em>illustrative</em> — no persistent pairing exists in the database.</p>
+      <div class="match-cards" id="sample-matches"></div>
+    </div>
+
+    <!-- SECTION: RECENT SEARCH HISTORY -->
+    <div class="section">
+      <div class="section-title"><span class="icon">📋</span> Recent Match Requests (Last 30 Days)</div>
+      <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:16px">Every time a broker uses the Matchmaker, a search is logged here. These are the actual queries that make up the "Active Matches" KPI.</p>
+      <div class="table-wrap" id="match-requests-table"></div>
+    </div>
+
+    <!-- SECTION: ALL DEMO PROSPECTS -->
+    <div class="section">
+      <div class="section-title"><span class="icon">🧪</span> All Prospect Records (Demo Data)</div>
+      <div class="table-wrap" id="prospects-table"></div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const gold = '#c9a96e';
+const colors = ['#22c55e','#3b82f6','#f59e0b','#a78bfa','#06b6d4'];
+
+function fmt(n, cur='EUR') {
+  if (!n) return '—';
+  const v = Number(n);
+  if (v >= 1e6) return (v/1e6).toFixed(1).replace(/\.0$/,'') + 'M ' + cur;
+  if (v >= 1e3) return (v/1e3).toFixed(0) + 'K ' + cur;
+  return v.toLocaleString() + ' ' + cur;
+}
+
+function scoreColor(s) {
+  if (s >= 80) return '#22c55e';
+  if (s >= 60) return '#f59e0b';
+  if (s >= 40) return '#c9a96e';
+  return '#64748b';
+}
+
+function relDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  const now = new Date();
+  const diff = now - d;
+  const days = Math.floor(diff / 86400000);
+  if (days === 0) return 'Today';
+  if (days === 1) return 'Yesterday';
+  if (days < 7) return days + 'd ago';
+  if (days < 30) return Math.floor(days/7) + 'w ago';
+  return d.toLocaleDateString('en-GB', {day:'numeric',month:'short'});
+}
+
+async function load() {
+  try {
+    const r = await fetch('/api/matchmaker-audit');
+    const d = await r.json();
+    if (!d.success) throw new Error(d.message);
+    render(d);
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('content').style.display = 'block';
+  } catch(e) {
+    document.getElementById('loading').innerHTML = `<p style="color:#f87171">Failed to load: ${e.message}</p>`;
+  }
+}
+
+function render(d) {
+  const { stats, prospects, sample_matches, recent_requests, scoring } = d;
+
+  // SUMMARY GRID
+  const grid = document.getElementById('summary-grid');
+  const cards = [
+    { label: 'Total Yachts', value: stats.total_yachts, sub: `${stats.active_yachts} active · 0 approved` },
+    { label: '"Active Matches" KPI', value: stats.active_matches_kpi, sub: 'Broker searches (last 30 days)' },
+    { label: 'Client Profiles', value: stats.total_prospects, sub: `${stats.demo_prospects} demo · ${stats.real_prospects} real` },
+    { label: 'Total Searches Logged', value: stats.total_match_requests, sub: 'Since ' + new Date(stats.first_request).toLocaleDateString('en-GB',{month:'short',year:'numeric'}) },
+    { label: 'Client × Yacht Pairs', value: stats.assigned_pairs, sub: 'Persistent assignments in DB' },
+  ];
+  grid.innerHTML = cards.map(c => `
+    <div class="stat-card">
+      <div class="stat-label">${c.label}</div>
+      <div class="stat-value">${c.value ?? '—'}</div>
+      <div class="stat-sub">${c.sub}</div>
+    </div>
+  `).join('');
+
+  // ALERTS
+  const alertsEl = document.getElementById('alerts-section');
+  alertsEl.innerHTML = `
+    <div class="alert alert-warn">
+      <div class="alert-icon">⚠️</div>
+      <div class="alert-body">
+        <div class="alert-title">All ${stats.total_prospects} client profiles are demo data</div>
+        <div class="alert-text">The prospects table contains well-known billionaires (Jeff Bezos, Mark Zuckerberg, Elon Musk, etc.) seeded as placeholder UHNWI contacts. There are <strong>0 real client profiles</strong> in the system.</div>
+      </div>
+    </div>
+    <div class="alert alert-info">
+      <div class="alert-icon">ℹ️</div>
+      <div class="alert-body">
+        <div class="alert-title">Matching is query-time, not persistent</div>
+        <div class="alert-text">The system doesn't store "this client is matched to that yacht." Every time a broker opens the Matchmaker, they enter preferences live and the algorithm scores all active yachts on-the-fly. The ${stats.active_matches_kpi} "Active Matches" = broker search sessions in the last 30 days.</div>
+      </div>
+    </div>
+  `;
+
+  // WHAT IS "49 ACTIVE MATCHES"
+  const expl = document.getElementById('matches-explanation');
+  expl.innerHTML = `
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:20px 22px">
+      <p style="font-size:0.9rem;color:var(--text-secondary);margin-bottom:12px">
+        The KPI is calculated as: <code style="background:#0d1321;padding:2px 7px;border-radius:4px;color:var(--gold);font-size:0.82rem">SELECT COUNT(*) FROM match_requests WHERE created_at > NOW() - INTERVAL '30 days'</code>
+      </p>
+      <p style="font-size:0.9rem;color:var(--text-secondary);margin-bottom:12px">
+        It counts <strong style="color:var(--text-primary)">anonymous broker search sessions</strong>, not matched pairs. Each row in <code style="color:var(--gold);font-size:0.82rem">match_requests</code> is created when a broker runs the Matchmaker. No client name or identity is stored — just the filter preferences used (budget, brand, length, location).
+      </p>
+      <table style="width:100%;border-collapse:collapse;margin-top:4px">
+        <tr>
+          <td style="padding:6px 0;font-size:0.82rem;color:var(--text-muted);width:200px">What it IS:</td>
+          <td style="padding:6px 0;font-size:0.82rem;color:var(--text-secondary)">Anonymous broker searches logged in last 30 days</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0;font-size:0.82rem;color:var(--text-muted)">What it is NOT:</td>
+          <td style="padding:6px 0;font-size:0.82rem;color:var(--text-secondary)">Named client × specific yacht pairings</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0;font-size:0.82rem;color:var(--text-muted)">Current value:</td>
+          <td style="padding:6px 0;font-size:0.82rem;color:var(--gold);font-weight:700">${stats.active_matches_kpi} searches (last 30 days)</td>
+        </tr>
+        <tr>
+          <td style="padding:6px 0;font-size:0.82rem;color:var(--text-muted)">All-time total:</td>
+          <td style="padding:6px 0;font-size:0.82rem;color:var(--text-secondary)">${stats.total_match_requests} logged searches</td>
+        </tr>
+      </table>
+    </div>
+  `;
+
+  // CLIENT PROFILES
+  const clientEl = document.getElementById('client-profiles-section');
+  clientEl.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
+      <div style="background:var(--bg-card);border:1px solid rgba(239,68,68,0.25);border-radius:var(--radius);padding:18px">
+        <div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;color:#f87171;font-weight:700;margin-bottom:6px">REAL Clients</div>
+        <div style="font-size:2.5rem;font-weight:800;color:var(--text-primary)">${stats.real_prospects}</div>
+        <div style="font-size:0.82rem;color:var(--text-muted);margin-top:4px">No real buyer profiles in the system</div>
+      </div>
+      <div style="background:var(--bg-card);border:1px solid rgba(245,158,11,0.25);border-radius:var(--radius);padding:18px">
+        <div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:0.06em;color:#f59e0b;font-weight:700;margin-bottom:6px">DEMO Clients</div>
+        <div style="font-size:2.5rem;font-weight:800;color:var(--text-primary)">${stats.demo_prospects}</div>
+        <div style="font-size:0.82rem;color:var(--text-muted);margin-top:4px">Placeholder UHNWI billionaires (seeded)</div>
+      </div>
+    </div>
+    <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;margin-bottom:16px">
+      <div style="font-size:0.82rem;font-weight:700;color:var(--text-primary);margin-bottom:10px">Fields stored per client profile:</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        ${['name','company','location','yacht_brand','yacht_model','heat_tier','heat_score','notes','social_handles','assigned_yacht_match_id'].map(f => `
+          <span style="padding:3px 10px;background:#0d1321;border:1px solid var(--border-light);border-radius:20px;font-size:0.75rem;color:var(--text-secondary)">${f}</span>
+        `).join('')}
+      </div>
+    </div>
+    <p style="font-size:0.82rem;color:var(--text-muted)">To add real clients: ask brokers to log buyer preferences via the CRM / Signal Radar, or provide a CSV to barnesos@polsia.app. The <code style="color:var(--gold)">assigned_yacht_match_id</code> column exists on each prospect and can link them to a specific yacht once real data is in place.</p>
+  `;
+
+  // SCORING GRID
+  const scoreFactors = [
+    { label: 'Budget Match', pts: 40, note: 'Hard exclude if >30% outside range', color: '#22c55e' },
+    { label: 'Length Match', pts: 25, note: 'Hard exclude if >25% outside (when specified)', color: '#3b82f6' },
+    { label: 'Brand Preference', pts: 20, note: 'Full 20pts if preferred brand matches', color: '#f59e0b' },
+    { label: 'Location', pts: 10, note: '10pts if preferred location matches', color: '#a78bfa' },
+    { label: 'Year Built', pts: 5, note: '5pts if within year range specified', color: '#06b6d4' },
+    { label: 'Approved Bonus', pts: 2, note: '+2pts for approved listings', color: '#c9a96e' },
+  ];
+  document.getElementById('scoring-grid').innerHTML = scoreFactors.map(f => `
+    <div class="score-factor">
+      <div class="factor-label">${f.label}</div>
+      <div class="factor-pts" style="color:${f.color}">${f.pts} <span>/ 102 pts</span></div>
+      <div class="factor-note">${f.note}</div>
+    </div>
+  `).join('');
+
+  // SAMPLE MATCHES
+  const matchesEl = document.getElementById('sample-matches');
+  if (sample_matches && sample_matches.length > 0) {
+    matchesEl.innerHTML = sample_matches.map(m => {
+      const sc = m.score;
+      const col = scoreColor(sc);
+      return `
+        <div class="match-card">
+          <div class="match-card-header">
+            <div>
+              <div class="match-client">${m.client_name} <span class="badge badge-warn" style="font-size:0.68rem;margin-left:6px">DEMO</span></div>
+              <div style="font-size:0.78rem;color:var(--text-muted)">${m.client_company} · ${m.client_location}</div>
+            </div>
+            <div class="match-score-ring" style="border-color:${col};color:${col}">${sc}%</div>
+          </div>
+          <div class="match-card-body">
+            <div class="match-col">
+              <div class="match-col-label">Client Prefers</div>
+              <div class="match-col-val"><strong>${m.preferred_brand}</strong> · ${m.preferred_model || '—'}</div>
+            </div>
+            <div class="match-col">
+              <div class="match-col-label">Matched Yacht</div>
+              <div class="match-col-val"><strong>${m.yacht_name}</strong> by ${m.yacht_builder}</div>
+            </div>
+            <div class="match-col">
+              <div class="match-col-label">Price</div>
+              <div class="match-col-val"><strong>${fmt(m.yacht_price, m.yacht_currency)}</strong></div>
+            </div>
+            <div class="match-col">
+              <div class="match-col-label">Size</div>
+              <div class="match-col-val"><strong>${m.yacht_length}m</strong> · ${m.yacht_location}</div>
+            </div>
+          </div>
+          ${m.match_reasons && m.match_reasons.length > 0 ? `
+          <div class="match-reasons">
+            ${m.match_reasons.map(r => `<span class="reason-chip">${r}</span>`).join('')}
+          </div>` : ''}
+        </div>
+      `;
+    }).join('');
+  } else {
+    matchesEl.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem">No sample matches available.</p>';
+  }
+
+  // MATCH REQUESTS TABLE
+  const reqTable = document.getElementById('match-requests-table');
+  if (recent_requests && recent_requests.length > 0) {
+    reqTable.innerHTML = `
+      <table>
+        <thead><tr>
+          <th>When</th>
+          <th>Brand Filter</th>
+          <th>Budget Range</th>
+          <th>Length</th>
+          <th>Location</th>
+          <th>Result</th>
+        </tr></thead>
+        <tbody>
+          ${recent_requests.map(r => `
+            <tr>
+              <td class="mono">${relDate(r.created_at)}</td>
+              <td class="primary">${r.preferred_brands ? r.preferred_brands.join(', ') : '—'}</td>
+              <td>${r.budget_min || r.budget_max ? fmt(r.budget_min) + ' – ' + fmt(r.budget_max) : '—'}</td>
+              <td>${r.length_min || r.length_max ? (r.length_min||'?') + '–' + (r.length_max||'?') + 'm' : '—'}</td>
+              <td>${r.preferred_locations ? r.preferred_locations.join(', ') : '—'}</td>
+              <td><span class="badge ${r.notes && r.notes.includes('0 matches') ? 'badge-danger' : 'badge-success'}">${r.notes || '—'}</span></td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  } else {
+    reqTable.innerHTML = '<p style="padding:20px;color:var(--text-muted);font-size:0.85rem">No recent match requests found.</p>';
+  }
+
+  // PROSPECTS TABLE
+  const prosTable = document.getElementById('prospects-table');
+  prosTable.innerHTML = `
+    <table>
+      <thead><tr>
+        <th>Name</th>
+        <th>Company</th>
+        <th>Location</th>
+        <th>Yacht Interest</th>
+        <th>Heat Score</th>
+        <th>Status</th>
+      </tr></thead>
+      <tbody>
+        ${prospects.map(p => `
+          <tr>
+            <td class="primary">${p.name}</td>
+            <td>${p.company || '—'}</td>
+            <td>${p.location || '—'}</td>
+            <td>${p.yacht_brand ? `${p.yacht_brand} ${p.yacht_model || ''}` : '—'}</td>
+            <td>
+              <div class="score-bar-wrap">
+                <div class="score-bar"><div class="score-bar-fill" style="width:${Math.min(100,(p.heat_score||0)/10)}%;background:#ef4444"></div></div>
+                <span class="score-num" style="color:#ef4444">${p.heat_score || 0}</span>
+              </div>
+            </td>
+            <td><span class="badge badge-warn">DEMO</span></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+load();
+</script>
+</body>
+</html>
