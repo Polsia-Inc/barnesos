@@ -719,10 +719,9 @@ app.delete('/api/broker/branding/logo', requireBrokerAuth, async (req, res) => {
 app.use('/api', (req, res, next) => {
   if (req.path.startsWith('/auth/')) return next();
   if (req.path.startsWith('/broker/')) return next();
-  if (!req.session || !req.session.authenticated) {
-    return res.status(401).json({ success: false, message: 'Authentication required' });
-  }
-  next();
+  // Allow legacy site-password sessions AND broker portal sessions
+  if (req.session && (req.session.authenticated || req.session.brokerUser)) return next();
+  return res.status(401).json({ success: false, message: 'Authentication required' });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
