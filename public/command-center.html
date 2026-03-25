@@ -1433,8 +1433,7 @@ input, textarea, select { font-family: inherit; }
   <div class="nav-tabs">
     <button class="nav-tab active" data-panel="matchmaker">Matchmaker</button>
     <button class="nav-tab" data-panel="radar">Signal Radar</button>
-    <button class="nav-tab" data-panel="fund">Fund Tracker</button>
-    <button class="nav-tab" data-panel="inventory">🗂 Inventory</button>
+<button class="nav-tab" data-panel="inventory">🗂 Inventory</button>
   </div>
   <div class="nav-date" id="navDate"></div>
 </nav>
@@ -1451,12 +1450,7 @@ input, textarea, select { font-family: inherit; }
     <div class="kpi-value" id="kpiSignals">--<span class="kpi-icon">&#x1F525;</span></div>
     <div class="kpi-sub" id="kpiSignalsSub">Loading...</div>
   </div>
-  <div class="kpi-card">
-    <div class="kpi-label">Fund Deployed</div>
-    <div class="kpi-value" id="kpiFund">--</div>
-    <div class="kpi-sub" id="kpiFundSub">Loading...</div>
-  </div>
-  <div class="kpi-card">
+<div class="kpi-card">
     <div class="kpi-label">Active Matches</div>
     <div class="kpi-value" id="kpiMatches">--</div>
     <div class="kpi-sub" id="kpiMatchesSub">Loading...</div>
@@ -1655,18 +1649,6 @@ input, textarea, select { font-family: inherit; }
     </div>
   </div>
 
-  <!-- PANEL: FUND TRACKER -->
-  <div class="panel" id="panel-fund">
-    <div class="placeholder-panel">
-      <div class="placeholder-card">
-        <h2>Fund Tracker</h2>
-        <p>Real-time fund deployment and deal pipeline analytics</p>
-        <div class="placeholder-stat" id="fundTotalDeployed">&euro;--</div>
-        <div class="placeholder-stat-label" id="fundDealsLabel">Loading fund data...</div>
-        <a href="/deals" class="btn-gold">Open Deal Pipeline &#x2192;</a>
-      </div>
-    </div>
-  </div>
 
 </div>
 
@@ -2405,17 +2387,12 @@ async function loadKPIs() {
     $('#kpiSignals').innerHTML = hotSignals + '<span class="kpi-icon">&#x1F525;</span>';
     $('#kpiSignalsSub').textContent = kpis.signals_sub || 'High-priority signals';
 
-    const fund = kpis.fund_deployed ?? kpis.fundDeployed;
-    $('#kpiFund').textContent = fund != null ? formatCurrency(fund) : '\u20AC--';
-    $('#kpiFundSub').textContent = kpis.fund_sub || 'Total deployed capital';
-
-    $('#kpiMatches').textContent = kpis.active_matches ?? kpis.activeMatches ?? '--';
+$('#kpiMatches').textContent = kpis.active_matches ?? kpis.activeMatches ?? '--';
     $('#kpiMatchesSub').textContent = kpis.matches_sub || 'Yacht-buyer pairs';
   } catch (err) {
     console.warn('KPI load failed:', err);
     $('#kpiProspectsSub').textContent = 'Unable to load';
     $('#kpiSignalsSub').textContent = 'Unable to load';
-    $('#kpiFundSub').textContent = 'Unable to load';
     $('#kpiMatchesSub').textContent = 'Unable to load';
   }
 }
@@ -2432,21 +2409,6 @@ async function loadMatchmakerData() {
   }
 }
 
-// ==================== FUND TRACKER PANEL ====================
-async function loadFundData() {
-  try {
-    const data = await api('/api/deals/analytics/fund');
-    const fund = data.fund || data;
-    const deployed = fund.total_deployed ?? fund.totalDeployed ?? fund.deployed;
-    $('#fundTotalDeployed').textContent = deployed != null ? formatCurrency(deployed) : '\u20AC--';
-    const deals = fund.total_deals ?? fund.totalDeals ?? fund.deals_count;
-    $('#fundDealsLabel').textContent = deals != null ? deals + ' deals in pipeline' : 'Fund analytics';
-  } catch (err) {
-    console.warn('Fund data load failed:', err);
-    $('#fundTotalDeployed').textContent = '\u20AC--';
-    $('#fundDealsLabel').textContent = 'Unable to load fund data';
-  }
-}
 
 // ==================== PROSPECTS ====================
 async function loadProspects() {
@@ -3571,7 +3533,6 @@ async function init() {
   await Promise.allSettled([
     loadKPIs(),
     loadMatchmakerData(),
-    loadFundData(),
   ]);
 
   // Start auto-refresh
