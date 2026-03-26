@@ -1105,7 +1105,7 @@ app.get('/api/broker/radar/scanner/status', requireBrokerAuth, async (req, res) 
       total_prospects: parseInt(countRow.rows[0].total),
       scanned_prospects: parseInt(scannedRow.rows[0].scanned),
       errors_24h: parseInt(errRow.rows[0].errors),
-      sources_active: ['Google News', 'Web Search'],
+      sources_active: ['Google News', 'Twitter/X', 'LinkedIn', 'Boat International RSS', 'SuperYacht Times RSS'],
       scan_config: {
         scan_enabled: tenant.scan_enabled !== false,
         scan_frequency: tenant.scan_frequency || 'daily',
@@ -1170,6 +1170,29 @@ app.post('/api/broker/radar/scan/config', requireBrokerAuth, async (req, res) =>
   }
 });
 
+// ─── BROKER RADAR: Get/Set alert email for tier-change notifications ──────────
+app.get('/api/broker/radar/alert-email', requireBrokerAuth, async (req, res) => {
+  const tid = req.session.brokerTenant.id;
+  try {
+    const { rows } = await pool.query('SELECT alert_email FROM tenants WHERE id = $1', [tid]);
+    res.json({ success: true, alert_email: rows[0]?.alert_email || null });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Failed to get alert email' });
+  }
+});
+
+app.post('/api/broker/radar/alert-email', requireBrokerAuth, express.json(), async (req, res) => {
+  const tid = req.session.brokerTenant.id;
+  const { alert_email } = req.body;
+  try {
+    await pool.query('UPDATE tenants SET alert_email = $1 WHERE id = $2', [alert_email || null, tid]);
+    console.log(`[Radar] Tenant ${tid} alert email set to: ${alert_email}`);
+    res.json({ success: true, alert_email: alert_email || null });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Failed to update alert email' });
+  }
+});
+
 // ─── BROKER RADAR: Manually trigger full daily scan for tenant ────────────────
 app.post('/api/broker/radar/scan/trigger-daily', requireBrokerAuth, async (req, res) => {
   const tid = req.session.brokerTenant.id;
@@ -1193,12 +1216,18 @@ app.post('/api/broker/radar/scan/trigger-daily', requireBrokerAuth, async (req, 
       prospect_count: prospects.length
     });
 
-    // Background: scan each prospect with stagger
+    // Background: pre-fetch yacht RSS, then scan each prospect with stagger
     (async () => {
+      let yachtRSSArticles = [];
+      try {
+        const [boatIntl, syt] = await Promise.all([fetchBoatIntlRSS(50), fetchSuperYachtTimesRSS(50)]);
+        yachtRSSArticles = [...boatIntl, ...syt];
+      } catch (e) { /* RSS not critical */ }
+
       let totalSignals = 0;
       for (const prospect of prospects) {
         try {
-          const result = await scanProspect(prospect, 'scheduled');
+          const result = await scanProspect(prospect, 'scheduled', { yachtRSSArticles });
           totalSignals += result.signals_found;
           await new Promise(r => setTimeout(r, 2000)); // 2s between prospects
         } catch (e) {
@@ -2537,11 +2566,19 @@ app.post('/api/scanner/scan-all', async (req, res) => {
          last_scanned_at ASC NULLS FIRST
        LIMIT 50`
     );
+
+    // Pre-fetch yacht RSS once for the whole batch
+    let yachtRSSArticles = [];
+    try {
+      const [boatIntl, syt] = await Promise.all([fetchBoatIntlRSS(50), fetchSuperYachtTimesRSS(50)]);
+      yachtRSSArticles = [...boatIntl, ...syt];
+    } catch (e) { /* RSS not critical */ }
+
     const results = { scanned: 0, signals_found: 0, errors: 0, details: [] };
 
     for (const prospect of prospects) {
       try {
-        const result = await scanProspect(prospect);
+        const result = await scanProspect(prospect, 'manual', { yachtRSSArticles });
         results.scanned++;
         results.signals_found += result.signals_found;
         results.details.push({ name: prospect.name, tier: prospect.heat_tier, signals: result.signals_found });
@@ -2733,6 +2770,186 @@ function matchArticleToRules(article, rules) {
   return { rule: bestRule, baseScore: bestScore };
 }
 
+// ─── SOURCE 2: Twitter/X Search ───────────────────────────────────────────────
+// Searches DuckDuckGo for prospect mentions on Twitter/X with yacht keywords
+const TWITTER_YACHT_KEYWORDS = [
+  'superyacht', 'yacht', 'Monaco', 'Cannes boat show', 'FLIBS',
+  'charter', 'sailing', 'Azimut', 'Benetti', 'Sanlorenzo', 'Riva', 'Lürssen', 'Feadship'
+];
+
+function fetchTwitterSearch(name, company, maxResults = 5) {
+  const kwList = TWITTER_YACHT_KEYWORDS.slice(0, 6).join(' OR ');
+  const query = `"${name}" (${kwList}) (site:twitter.com OR site:x.com)`;
+  return fetchDuckDuckGoSearch(query, 'twitter', maxResults);
+}
+
+// ─── SOURCE 3: LinkedIn via Google Site Search ─────────────────────────────────
+function fetchLinkedInSearch(name, maxResults = 3) {
+  // Detect role changes, promotions, new positions
+  const query = `site:linkedin.com "${name}" ("is now" OR "appointed" OR "joined" OR "promoted" OR "new role")`;
+  return fetchDuckDuckGoSearch(query, 'linkedin', maxResults);
+}
+
+// ─── DuckDuckGo HTML scraper ───────────────────────────────────────────────────
+function fetchDuckDuckGoSearch(query, sourceLabel, maxResults = 5) {
+  return new Promise((resolve) => {
+    const encodedQuery = encodeURIComponent(query);
+    const options = {
+      hostname: 'html.duckduckgo.com',
+      path: `/html/?q=${encodedQuery}&ia=web`,
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9'
+      },
+      timeout: 12000
+    };
+    const req = https.request(options, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400) {
+        // Redirect — skip
+        resolve([]);
+        return;
+      }
+      let data = '';
+      res.on('data', chunk => { data += chunk; });
+      res.on('end', () => {
+        try {
+          resolve(parseDDGResults(data, sourceLabel, maxResults));
+        } catch (e) { resolve([]); }
+      });
+    });
+    req.on('error', () => resolve([]));
+    req.on('timeout', () => { req.destroy(); resolve([]); });
+    req.end();
+  });
+}
+
+function parseDDGResults(html, sourceLabel, maxResults) {
+  const items = [];
+  // DuckDuckGo HTML results: each result block has result__a (link) and result__snippet
+  const titleRe = /<a[^>]+class="result__a"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/g;
+  const snippetRe = /<a[^>]+class="result__snippet"[^>]*>([\s\S]*?)<\/a>/g;
+  const titles = [];
+  const snippets = [];
+  let m;
+  while ((m = titleRe.exec(html)) !== null && titles.length < maxResults * 2) {
+    titles.push({ url: cleanXml(m[1]), title: cleanXml(m[2]) });
+  }
+  while ((m = snippetRe.exec(html)) !== null && snippets.length < maxResults * 2) {
+    snippets.push(cleanXml(m[1]));
+  }
+  const sourceName = sourceLabel === 'twitter' ? 'Twitter/X' : 'LinkedIn';
+  for (let i = 0; i < Math.min(titles.length, maxResults); i++) {
+    const t = titles[i];
+    if (!t.url || !t.title || t.title.length < 5) continue;
+    items.push({
+      title: t.title.substring(0, 200),
+      url: t.url,
+      publishedAt: new Date(),
+      sourceName,
+      sourceUrl: t.url,
+      summary: snippets[i] || ''
+    });
+  }
+  return items;
+}
+
+// ─── SOURCE 4a: Boat International RSS ────────────────────────────────────────
+function fetchBoatIntlRSS(maxResults = 30) {
+  return fetchRSSFeedWithRetry('www.boatinternational.com', '/rss', 'Boat International', maxResults);
+}
+
+// ─── SOURCE 4b: SuperYacht Times RSS ──────────────────────────────────────────
+function fetchSuperYachtTimesRSS(maxResults = 30) {
+  return fetchRSSFeedWithRetry('www.superyachttimes.com', '/rss.xml', 'SuperYacht Times', maxResults);
+}
+
+// Generic RSS fetcher with 1-level redirect support
+function fetchRSSFeedWithRetry(hostname, path, sourceName, maxResults, _redirectCount = 0) {
+  return new Promise((resolve) => {
+    if (_redirectCount > 3) { resolve([]); return; }
+    const options = {
+      hostname,
+      path,
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; BarnesOS/1.0; Signal Scanner)',
+        'Accept': 'application/rss+xml, application/xml, application/atom+xml, text/xml, */*'
+      },
+      timeout: 10000
+    };
+    const req = https.request(options, (res) => {
+      if ((res.statusCode === 301 || res.statusCode === 302) && res.headers.location) {
+        try {
+          const loc = res.headers.location;
+          const u = new URL(loc.startsWith('http') ? loc : `https://${hostname}${loc}`);
+          fetchRSSFeedWithRetry(u.hostname, u.pathname + (u.search || ''), sourceName, maxResults, _redirectCount + 1)
+            .then(resolve).catch(() => resolve([]));
+        } catch (e) { resolve([]); }
+        return;
+      }
+      let data = '';
+      res.on('data', chunk => { data += chunk; });
+      res.on('end', () => {
+        try {
+          const items = parseRSSItems(data, maxResults).map(i => ({
+            ...i,
+            sourceName
+          }));
+          resolve(items);
+        } catch (e) { resolve([]); }
+      });
+    });
+    req.on('error', () => resolve([]));
+    req.on('timeout', () => { req.destroy(); resolve([]); });
+    req.end();
+  });
+}
+
+// Match pre-fetched RSS articles to a specific prospect by name/company
+function matchRSSArticlesToProspect(articles, prospect) {
+  const nameTokens = (prospect.name || '').toLowerCase().split(/\s+/).filter(w => w.length > 2);
+  const compTokens = (prospect.company || '').toLowerCase().split(/\s+/).filter(w => w.length > 3);
+  return articles.filter(article => {
+    const text = `${article.title || ''} ${article.summary || ''}`.toLowerCase();
+    const nameHit = nameTokens.length > 0 && nameTokens.every(w => text.includes(w));
+    const compHit = compTokens.length > 0 && compTokens.some(w => {
+      const re = new RegExp(`\\b${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`);
+      return re.test(text);
+    });
+    return nameHit || compHit;
+  });
+}
+
+// ─── Tier change alert ─────────────────────────────────────────────────────────
+async function sendTierChangeAlert(prospect, oldTier, newTier, latestSignal, alertEmail) {
+  const email = alertEmail || process.env.BROKER_ALERT_EMAIL;
+  if (!email) return;
+  const TIER_RANK = { cold: 0, warm: 1, hot: 2 };
+  const dirIcon = TIER_RANK[newTier] > TIER_RANK[oldTier] ? '🔺' : '🔻';
+  const tierLabel = { hot: '🔴 HOT', warm: '🟠 WARM', cold: '🔵 COLD' };
+  const subject = `${dirIcon} ${prospect.name} — ${tierLabel[oldTier] || oldTier} → ${tierLabel[newTier] || newTier}`;
+  const signalInfo = latestSignal
+    ? `\nTriggering signal: "${latestSignal.title}"\nSource: ${latestSignal.source_name || 'Unknown'}${latestSignal.source_url ? '\nURL: ' + latestSignal.source_url : ''}\n`
+    : '\n(No specific signal attached)\n';
+  const body = `Signal Radar Alert\n\n${prospect.name} (${prospect.company || 'Unknown Company'}) has changed tier:\n\n  ${tierLabel[oldTier] || oldTier} → ${tierLabel[newTier] || newTier}\n${signalInfo}\nView prospect:\nhttps://barnesos.polsia.app/broker/signal-radar\n\n— Barnes OS Signal Radar`;
+
+  try {
+    await fetch('https://polsia.com/api/proxy/email/send', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.POLSIA_API_KEY}`
+      },
+      body: JSON.stringify({ to: email, subject, body, transactional: true })
+    });
+    console.log(`[TierAlert] Sent email to ${email}: ${prospect.name} ${oldTier} → ${newTier}`);
+  } catch (e) {
+    console.error('[TierAlert] Email failed:', e.message);
+  }
+}
+
 // Build the multi-query search plan for a prospect
 function buildSearchQueries(prospect) {
   const name = prospect.name;
@@ -2762,8 +2979,9 @@ function buildSearchQueries(prospect) {
   return queries;
 }
 
-// Main scanner — replaces the stub with real live searches
-async function scanProspect(prospect, scanType = 'manual') {
+// Main scanner — multi-source: Google News, Twitter/X, LinkedIn, Yacht RSS
+// opts.yachtRSSArticles: pre-fetched articles from yacht publications (passed from batch runner)
+async function scanProspect(prospect, scanType = 'manual', opts = {}) {
   const scanStart = new Date();
   let signalsFound = 0;
 
@@ -2778,9 +2996,9 @@ async function scanProspect(prospect, scanType = 'manual') {
     // Build queries
     const searchQueries = buildSearchQueries(prospect);
 
-    console.log(`[Scanner] ${prospect.name} (${tier}) — running ${searchQueries.length} queries, ${maxPerQuery} results each`);
+    console.log(`[Scanner] ${prospect.name} (${tier}) — running ${searchQueries.length} Google News + Twitter + LinkedIn + RSS sources`);
 
-    // Fetch all articles in parallel (batches of 4 to avoid hammering)
+    // SOURCE 1: Google News RSS (batch fetch)
     const allRawArticles = [];
     const batchSize = 4;
     for (let i = 0; i < searchQueries.length; i += batchSize) {
@@ -2795,7 +3013,38 @@ async function scanProspect(prospect, scanType = 'manual') {
       }
     }
 
-    console.log(`[Scanner] ${prospect.name} — fetched ${allRawArticles.length} raw articles`);
+    // SOURCE 2: Twitter/X — search for prospect name + yacht keywords on X/Twitter
+    try {
+      const twitterResults = await fetchTwitterSearch(prospect.name, prospect.company, 5);
+      if (twitterResults.length) {
+        console.log(`[Scanner] ${prospect.name} — ${twitterResults.length} Twitter/X results`);
+        allRawArticles.push(...twitterResults);
+      }
+    } catch (e) {
+      console.warn(`[Scanner] Twitter search failed for ${prospect.name}:`, e.message);
+    }
+
+    // SOURCE 3: LinkedIn via DuckDuckGo site search — detect job changes, promotions
+    try {
+      const linkedinResults = await fetchLinkedInSearch(prospect.name, 3);
+      if (linkedinResults.length) {
+        console.log(`[Scanner] ${prospect.name} — ${linkedinResults.length} LinkedIn results`);
+        allRawArticles.push(...linkedinResults);
+      }
+    } catch (e) {
+      console.warn(`[Scanner] LinkedIn search failed for ${prospect.name}:`, e.message);
+    }
+
+    // SOURCE 4: Yacht publication RSS — match pre-fetched articles to this prospect
+    if (opts.yachtRSSArticles && opts.yachtRSSArticles.length) {
+      const rssMatches = matchRSSArticlesToProspect(opts.yachtRSSArticles, prospect);
+      if (rssMatches.length) {
+        console.log(`[Scanner] ${prospect.name} — ${rssMatches.length} yacht RSS article matches`);
+        allRawArticles.push(...rssMatches);
+      }
+    }
+
+    console.log(`[Scanner] ${prospect.name} — fetched ${allRawArticles.length} raw articles (all sources)`);
 
     // Annotate each article with quality score before dedup
     const annotated = allRawArticles.map(a => ({
@@ -3215,9 +3464,17 @@ app.post('/api/prospects/:id/send-email', requireAuth, async (req, res) => {
   }
 });
 
-// ─── Heat Score Recalculation ────────────────────────────────────────────────
-async function recalcProspectHeat(prospectId) {
+// ─── Heat Score Recalculation ─────────────────────────────────────────────────
+// sendAlerts=false skips tier-change emails (used during initial seed)
+async function recalcProspectHeat(prospectId, sendAlerts = true) {
   try {
+    // Get current tier BEFORE updating (for change detection)
+    const { rows: currentRows } = await pool.query(
+      'SELECT heat_tier, name, company, tenant_id FROM prospects WHERE id = $1',
+      [prospectId]
+    );
+    const oldTier = currentRows[0]?.heat_tier || 'cold';
+
     // Fetch all signals from the last 90 days with their detected_at timestamps
     const { rows: signals } = await pool.query(
       `SELECT score, detected_at
@@ -3240,14 +3497,54 @@ async function recalcProspectHeat(prospectId) {
     }
 
     // Tier thresholds: HOT ≥15 pts, WARM 6-14 pts, COLD 0-5 pts
-    let tier = 'cold';
-    if (totalScore >= 15) tier = 'hot';
-    else if (totalScore >= 6) tier = 'warm';
+    let newTier = 'cold';
+    if (totalScore >= 15) newTier = 'hot';
+    else if (totalScore >= 6) newTier = 'warm';
 
     await pool.query(
       'UPDATE prospects SET heat_score = $1, heat_tier = $2, updated_at = NOW() WHERE id = $3',
-      [totalScore, tier, prospectId]
+      [totalScore, newTier, prospectId]
     );
+
+    // ── Tier change detection & email alert ────────────────────────────────────
+    if (sendAlerts && oldTier && newTier !== oldTier) {
+      console.log(`[TierChange] ${currentRows[0]?.name}: ${oldTier} → ${newTier} (score ${totalScore})`);
+
+      // Get the latest signal for context
+      const { rows: latestSigs } = await pool.query(
+        `SELECT title, source_name, source_url
+         FROM prospect_signals WHERE prospect_id = $1
+         ORDER BY detected_at DESC LIMIT 1`,
+        [prospectId]
+      );
+
+      // Get broker alert email from tenant settings
+      let alertEmail = null;
+      if (currentRows[0]?.tenant_id) {
+        const { rows: tRows } = await pool.query(
+          'SELECT alert_email FROM tenants WHERE id = $1', [currentRows[0].tenant_id]
+        );
+        alertEmail = tRows[0]?.alert_email;
+      }
+
+      // Send email alert (fire and forget)
+      sendTierChangeAlert(
+        { id: prospectId, ...currentRows[0] },
+        oldTier,
+        newTier,
+        latestSigs[0] || null,
+        alertEmail
+      ).catch(e => console.error('[TierAlert] Failed:', e.message));
+
+      // Log tier change as a system signal in the signals table
+      try {
+        await pool.query(
+          `INSERT INTO signals (prospect_id, source, signal_type, weight, raw_text, detected_at)
+           VALUES ($1, 'system', 'tier_change', 0, $2, NOW())`,
+          [prospectId, `Tier changed: ${oldTier} → ${newTier} (score: ${totalScore})`]
+        );
+      } catch (_) { /* signals table may not exist yet */ }
+    }
   } catch (err) {
     console.error('Error recalculating heat:', err.message);
   }
@@ -5079,6 +5376,21 @@ app.get('/broker/signal-radar', (req, res) => {
     </div>
     `}
 
+    ${isReadOnly ? '' : `
+    <!-- ALERT EMAIL BAR -->
+    <div class="scan-config-bar" id="alertEmailBar" style="margin-top:-12px">
+      <div class="scan-config-left" style="flex:1;gap:10px">
+        <span class="scan-config-label">📧 Alert Email</span>
+        <input type="email" id="alertEmailInput" placeholder="broker@yourfirm.com — tier change alerts"
+          style="background:var(--bg);border:1px solid var(--border2);border-radius:6px;padding:6px 12px;font-size:12px;color:var(--text);outline:none;width:280px;font-family:inherit"
+          onkeydown="if(event.key==='Enter')saveAlertEmail()">
+        <button onclick="saveAlertEmail()" style="background:var(--surface2);border:1px solid var(--border2);color:var(--text2);padding:6px 14px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;transition:all 0.15s" onmouseover="this.style.borderColor='var(--gold)'" onmouseout="this.style.borderColor='var(--border2)'">Save</button>
+        <span id="alertEmailStatus" style="font-size:11px;color:var(--text3)"></span>
+      </div>
+      <div style="font-size:11px;color:var(--text3)">Sends email when a prospect tier changes</div>
+    </div>
+    `}
+
     <!-- DEMO DATA BANNER (shown only when is_demo prospects exist) -->
     <div class="demo-banner" id="demoBanner" style="display:none">
       <div class="demo-banner-icon">⚠️</div>
@@ -5398,6 +5710,33 @@ app.get('/broker/signal-radar', (req, res) => {
       btn.textContent = '▶ Run Now';
       btn.disabled = false;
     }
+  }
+
+  // Alert email management
+  async function loadAlertEmail() {
+    try {
+      const d = await fetch('/api/broker/radar/alert-email').then(r=>r.json());
+      const inp = document.getElementById('alertEmailInput');
+      if (inp && d.alert_email) inp.value = d.alert_email;
+    } catch(e) { /* not critical */ }
+  }
+
+  async function saveAlertEmail() {
+    const inp = document.getElementById('alertEmailInput');
+    const status = document.getElementById('alertEmailStatus');
+    if (!inp || !status) return;
+    const email = inp.value.trim();
+    try {
+      const d = await fetch('/api/broker/radar/alert-email', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ alert_email: email || null })
+      }).then(r=>r.json());
+      if (d.success) {
+        status.textContent = email ? '✓ Saved' : '✓ Cleared';
+        status.style.color = '#86efac';
+        setTimeout(() => { status.textContent = ''; }, 3000);
+      }
+    } catch(e) { status.textContent = 'Error'; status.style.color = '#fca5a5'; }
   }
 
   async function loadSignalFeed(search) {
@@ -5945,7 +6284,7 @@ app.get('/broker/signal-radar', (req, res) => {
   }
 
   // ── INIT ──────────────────────────────────────────────────────────────────────
-  Promise.all([loadStats(), loadSignalFeed(''), loadScannerStatus(), loadProspects('')]);
+  Promise.all([loadStats(), loadSignalFeed(''), loadScannerStatus(), loadProspects(''), loadAlertEmail()]);
 </script>
 <script src="/js/globe-radar.js"></script>
 </body>
@@ -7261,10 +7600,23 @@ async function runDailyScansForDueTenants() {
 
       // Fire and forget with stagger — don't block the scheduler loop
       (async () => {
+        // Pre-fetch yacht publication RSS once per scan cycle (shared across all prospects)
+        let yachtRSSArticles = [];
+        try {
+          const [boatIntl, sytArticles] = await Promise.all([
+            fetchBoatIntlRSS(50),
+            fetchSuperYachtTimesRSS(50)
+          ]);
+          yachtRSSArticles = [...boatIntl, ...sytArticles];
+          console.log(`[DailyScan] Pre-fetched ${yachtRSSArticles.length} yacht RSS articles (Boat Intl + SYT)`);
+        } catch (e) {
+          console.warn('[DailyScan] RSS pre-fetch failed:', e.message);
+        }
+
         let totalSignals = 0;
         for (const prospect of prospects) {
           try {
-            const result = await scanProspect(prospect, 'scheduled');
+            const result = await scanProspect(prospect, 'scheduled', { yachtRSSArticles });
             totalSignals += result.signals_found;
             await new Promise(r => setTimeout(r, 3000)); // 3s gap between prospects
           } catch (e) {

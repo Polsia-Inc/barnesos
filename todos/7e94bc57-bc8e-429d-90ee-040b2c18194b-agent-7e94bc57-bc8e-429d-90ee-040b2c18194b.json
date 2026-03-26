@@ -1,0 +1,27 @@
+[
+  {
+    "content": "Add Twitter/X + LinkedIn + yacht RSS sources to scanner",
+    "status": "completed",
+    "activeForm": "Adding multi-source scanner to server.js"
+  },
+  {
+    "content": "Add tier change email alert system",
+    "status": "completed",
+    "activeForm": "Adding tier change alerts"
+  },
+  {
+    "content": "Create migrations for alert settings + new prospects",
+    "status": "completed",
+    "activeForm": "Creating migrations"
+  },
+  {
+    "content": "Add alert email UI to broker signal radar page",
+    "status": "completed",
+    "activeForm": "Adding alert email UI"
+  },
+  {
+    "content": "Push to remote and verify",
+    "status": "in_progress",
+    "activeForm": "Pushing to remote and verifying"
+  }
+]
