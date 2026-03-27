@@ -1,0 +1,27 @@
+[
+  {
+    "content": "Fix broker matchmaker: server-side render chips data + add pre-loaded fallback",
+    "status": "completed",
+    "activeForm": "Fixing broker matchmaker with server-side rendered chips"
+  },
+  {
+    "content": "Fix public matchmaker: inject pre-loaded data into index.html route",
+    "status": "completed",
+    "activeForm": "Fixing public matchmaker route"
+  },
+  {
+    "content": "Update public/index.html init() to use window.PRELOADED_* variables",
+    "status": "completed",
+    "activeForm": "Updating public/index.html init function"
+  },
+  {
+    "content": "Push and deploy",
+    "status": "in_progress",
+    "activeForm": "Pushing and deploying fix"
+  },
+  {
+    "content": "Verify fix works: test API and chip rendering",
+    "status": "pending",
+    "activeForm": "Verifying matchmaker fix"
+  }
+]
