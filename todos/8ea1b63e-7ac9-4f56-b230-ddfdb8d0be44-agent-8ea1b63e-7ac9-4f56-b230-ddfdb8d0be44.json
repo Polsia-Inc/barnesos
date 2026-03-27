@@ -1,0 +1,22 @@
+[
+  {
+    "content": "Parse yacht-raw.txt and check for new boats vs DB inventory",
+    "status": "completed",
+    "activeForm": "Parsing yacht-raw.txt and checking dedup against DB"
+  },
+  {
+    "content": "Add dedup to merge mode + Postmark inbound email webhook for auto-import",
+    "status": "in_progress",
+    "activeForm": "Adding dedup merge mode and email webhook to server.js"
+  },
+  {
+    "content": "Deploy new feature",
+    "status": "pending",
+    "activeForm": "Deploying to production"
+  },
+  {
+    "content": "Verify in Matchmaker UI and report results",
+    "status": "pending",
+    "activeForm": "Verifying in Matchmaker and reporting results"
+  }
+]
