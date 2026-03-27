@@ -4003,19 +4003,51 @@ app.get('/', requireAuth, (req, res) => {
 });
 
 // Serve Matchmaker page (requires auth — accepts both regular and broker session)
-app.get('/matchmaker', (req, res) => {
+app.get('/matchmaker', async (req, res) => {
   const isAuth = (req.session && req.session.authenticated) || (req.session && req.session.brokerUser);
   if (!isAuth) return res.redirect('/broker/login');
   const htmlPath = path.join(__dirname, 'public', 'index.html');
-  if (fs.existsSync(htmlPath)) {
+  if (!fs.existsSync(htmlPath)) {
+    return res.status(404).json({ message: 'Matchmaker not found' });
+  }
+
+  try {
+    // Pre-fetch filter data server-side so chips render immediately without a client-side fetch
+    let preloadedBuilders = [];
+    let preloadedLocations = [];
+    let preloadedStats = {};
+    try {
+      const [bRows, lRows, sRows] = await Promise.all([
+        pool.query(`SELECT DISTINCT builder FROM yachts WHERE builder IS NOT NULL AND is_active = TRUE ORDER BY builder`),
+        pool.query(`SELECT DISTINCT location_text FROM yachts WHERE location_text IS NOT NULL AND is_active = TRUE ORDER BY location_text`),
+        pool.query(`SELECT COUNT(*) as total, MIN(price) as min_price, MAX(price) as max_price FROM yachts WHERE is_active = TRUE`)
+      ]);
+      preloadedBuilders = bRows.rows.map(r => r.builder);
+      preloadedLocations = lRows.rows.map(r => r.location_text);
+      preloadedStats = sRows.rows[0] || {};
+    } catch (dbErr) {
+      console.error('[Matchmaker] Pre-fetch error:', dbErr.message);
+    }
+
+    // Read the HTML and inject pre-loaded data as a script before the closing </body>
+    let html = fs.readFileSync(htmlPath, 'utf8');
+    const injectedScript = `
+<script>
+  // Server-side pre-loaded filter data
+  window.PRELOADED_BUILDERS = ${JSON.stringify(preloadedBuilders)};
+  window.PRELOADED_LOCATIONS = ${JSON.stringify(preloadedLocations)};
+  window.PRELOADED_STATS = ${JSON.stringify(preloadedStats)};
+</script>`;
+    html = html.replace('</body>', injectedScript + '</body>');
+    res.type('html').send(html);
+  } catch (err) {
+    console.error('[Matchmaker] Route error:', err.message);
     res.type('html').sendFile(htmlPath);
-  } else {
-    res.status(404).json({ message: 'Matchmaker not found' });
   }
 });
 
 // Serve Matchmaker via broker portal (broker auth)
-app.get('/broker/matchmaker', (req, res) => {
+app.get('/broker/matchmaker', async (req, res) => {
   if (!req.session || !req.session.brokerUser) return res.redirect('/broker/login');
   const user = req.session.brokerUser;
   const tenant = req.session.brokerTenant;
@@ -4032,6 +4064,24 @@ app.get('/broker/matchmaker', (req, res) => {
 
   const mmBrandColor = getBrandColor(tenant);
   const mmDisplayName = getDisplayName(tenant);
+
+  // Pre-fetch filter data server-side so chips render immediately without a client-side fetch
+  let preloadedBuilders = [];
+  let preloadedLocations = [];
+  let preloadedStats = {};
+  try {
+    const [bRows, lRows, sRows] = await Promise.all([
+      pool.query(`SELECT DISTINCT builder FROM yachts WHERE builder IS NOT NULL AND is_active = TRUE ORDER BY builder`),
+      pool.query(`SELECT DISTINCT location_text FROM yachts WHERE location_text IS NOT NULL AND is_active = TRUE ORDER BY location_text`),
+      pool.query(`SELECT COUNT(*) as total, MIN(price) as min_price, MAX(price) as max_price FROM yachts WHERE is_active = TRUE`)
+    ]);
+    preloadedBuilders = bRows.rows.map(r => r.builder);
+    preloadedLocations = lRows.rows.map(r => r.location_text);
+    preloadedStats = sRows.rows[0] || {};
+    console.log(`[Matchmaker] Pre-loaded ${preloadedBuilders.length} builders, ${preloadedLocations.length} locations`);
+  } catch (dbErr) {
+    console.error('[Matchmaker] Pre-fetch error:', dbErr.message);
+  }
 
   res.send(`<!DOCTYPE html>
 <html lang="en">
@@ -4233,6 +4283,10 @@ app.get('/broker/matchmaker', (req, res) => {
 
 <script>
   const IS_READONLY = ${JSON.stringify(isReadOnly)};
+  // Server-side pre-loaded filter data — chips render immediately without waiting for fetch
+  const PRELOADED_BUILDERS = ${JSON.stringify(preloadedBuilders)};
+  const PRELOADED_LOCATIONS = ${JSON.stringify(preloadedLocations)};
+  const PRELOADED_STATS = ${JSON.stringify(preloadedStats)};
   let selectedBrands = new Set();
   let selectedLocations = new Set();
 
@@ -4260,22 +4314,45 @@ app.get('/broker/matchmaker', (req, res) => {
     else { set.add(value); el.classList.add('selected'); }
   }
 
+  function applyFilterData(builders, locations, stats) {
+    if (builders && builders.length > 0) {
+      renderChips('brandChips', builders, selectedBrands);
+    } else {
+      document.getElementById('brandChips').innerHTML = '<span style="font-size:12px;color:var(--text3);font-style:italic">No brands available</span>';
+    }
+    if (locations && locations.length > 0) {
+      renderChips('locationChips', locations, selectedLocations);
+    } else {
+      document.getElementById('locationChips').innerHTML = '<span style="font-size:12px;color:var(--text3);font-style:italic">No locations available</span>';
+    }
+    if (stats && (stats.total || stats.min_price)) {
+      document.getElementById('statTotal').textContent = stats.total || stats.active || '—';
+      document.getElementById('statBrands').textContent = (builders||[]).length || '—';
+      document.getElementById('statMin').textContent = fmtPrice(stats.min_price);
+      document.getElementById('statMax').textContent = fmtPrice(stats.max_price);
+      document.getElementById('statsBar').style.display = 'flex';
+    }
+  }
+
   async function init() {
+    // Immediately render with server-side pre-loaded data (no fetch needed)
+    if (PRELOADED_BUILDERS.length > 0 || PRELOADED_LOCATIONS.length > 0) {
+      applyFilterData(PRELOADED_BUILDERS, PRELOADED_LOCATIONS, PRELOADED_STATS);
+    }
+
+    // Then refresh from API in the background for freshness
     try {
       const res = await fetch('/api/yachts/filters');
       const data = await res.json();
-      if (data.success) {
-        renderChips('brandChips', data.builders || [], selectedBrands);
-        renderChips('locationChips', data.locations || [], selectedLocations);
-        const s = data.stats || {};
-        document.getElementById('statTotal').textContent = s.total || '—';
-        document.getElementById('statBrands').textContent = (data.builders||[]).length || '—';
-        document.getElementById('statMin').textContent = fmtPrice(s.min_price);
-        document.getElementById('statMax').textContent = fmtPrice(s.max_price);
-        document.getElementById('statsBar').style.display = 'flex';
+      if (data.success && (data.builders||[]).length > 0) {
+        applyFilterData(data.builders, data.locations, data.stats);
       }
     } catch(e) {
-      document.getElementById('brandChips').innerHTML = '<span style="font-size:12px;color:#ef4444">Failed to load brands. Try refreshing.</span>';
+      console.error('[Matchmaker] Filter refresh failed:', e.message);
+      // Pre-loaded data is already showing — not fatal
+      if (PRELOADED_BUILDERS.length === 0) {
+        document.getElementById('brandChips').innerHTML = '<span style="font-size:12px;color:#ef4444">Failed to load brands. Try refreshing.</span>';
+      }
     }
   }
 

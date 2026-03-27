@@ -681,32 +681,59 @@
     let selectedLocations = new Set();
     let allYachts = [];
 
+    // ─── APPLY FILTER DATA ────────────────
+    function applyFilterData(buildersArr, locationsArr, statsObj) {
+        if (buildersArr && buildersArr.length > 0) {
+            brands = buildersArr;
+            renderChips('brandChips', brands, selectedBrands);
+        }
+        if (locationsArr && locationsArr.length > 0) {
+            locations = locationsArr;
+            renderChips('locationChips', locations, selectedLocations);
+        }
+        if (statsObj && (statsObj.total || statsObj.min_price)) {
+            const s = statsObj;
+            document.getElementById('statTotal').textContent = s.total || s.active || '—';
+            document.getElementById('statBrands').textContent = (buildersArr||[]).length || '—';
+            document.getElementById('statMinPrice').textContent = formatPriceShort(s.min_price);
+            document.getElementById('statMaxPrice').textContent = formatPriceShort(s.max_price);
+        }
+    }
+
     // ─── INIT ─────────────────────────────
     async function init() {
+        // Immediately render with server-side pre-loaded data (no fetch delay)
+        const preBuilders = window.PRELOADED_BUILDERS || [];
+        const preLocations = window.PRELOADED_LOCATIONS || [];
+        const preStats = window.PRELOADED_STATS || {};
+        if (preBuilders.length > 0 || preLocations.length > 0) {
+            applyFilterData(preBuilders, preLocations, preStats);
+        }
+
+        // Refresh from API in background
         try {
             const res = await fetch('/api/yachts/filters');
             const data = await res.json();
-            if (data.success) {
-                brands = data.builders || data.brands || [];
-                locations = data.locations || [];
-                renderChips('brandChips', brands, selectedBrands);
-                renderChips('locationChips', locations, selectedLocations);
-
-                const s = data.stats;
-                document.getElementById('statTotal').textContent = s.total;
-                document.getElementById('statBrands').textContent = brands.length;
-                document.getElementById('statMinPrice').textContent = formatPriceShort(s.min_price);
-                document.getElementById('statMaxPrice').textContent = formatPriceShort(s.max_price);
+            if (data.success && (data.builders || data.brands || []).length > 0) {
+                applyFilterData(
+                    data.builders || data.brands || [],
+                    data.locations || [],
+                    data.stats || {}
+                );
             }
+        } catch (e) {
+            console.error('Filter refresh error:', e);
+        }
 
-            // Pre-load inventory
+        // Pre-load inventory
+        try {
             const yRes = await fetch('/api/yachts');
             const yData = await yRes.json();
             if (yData.success) {
                 allYachts = yData.yachts;
             }
         } catch (e) {
-            console.error('Init error:', e);
+            console.error('Inventory load error:', e);
         }
     }
 
