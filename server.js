@@ -4039,9 +4039,11 @@ app.get('/matchmaker', async (req, res) => {
   window.PRELOADED_STATS = ${JSON.stringify(preloadedStats)};
 </script>`;
     html = html.replace('</body>', injectedScript + '</body>');
+    res.setHeader('Cache-Control', 'no-store');
     res.type('html').send(html);
   } catch (err) {
     console.error('[Matchmaker] Route error:', err.message);
+    res.setHeader('Cache-Control', 'no-store');
     res.type('html').sendFile(htmlPath);
   }
 });
@@ -4083,6 +4085,7 @@ app.get('/broker/matchmaker', async (req, res) => {
     console.error('[Matchmaker] Pre-fetch error:', dbErr.message);
   }
 
+  res.setHeader('Cache-Control', 'no-store');
   res.send(`<!DOCTYPE html>
 <html lang="en">
 <head>
