@@ -8185,6 +8185,7 @@ app.post('/api/inventory/import', requireAuth, express.json({ limit: '20mb' }), 
     setImmediate(async () => {
       let insertedCount = 0;
       let rejectedCount = parseErrors.length;
+      let skippedCount = 0; // dedup skips in merge mode
       const batchErrors = [...parseErrors.slice(0, 50)];
       const BATCH_SIZE = 50;
 
@@ -8202,6 +8203,17 @@ app.post('/api/inventory/import', requireAuth, express.json({ limit: '20mb' }), 
             try {
               await client.query('BEGIN');
               for (const row of batch) {
+                if (mode === 'merge') {
+                  // Dedup: skip if a yacht with same builder+name already exists
+                  const { rows: existing } = await client.query(
+                    `SELECT 1 FROM yachts
+                     WHERE LOWER(TRIM(builder)) = LOWER(TRIM($1))
+                       AND LOWER(TRIM(name))    = LOWER(TRIM($2))
+                     LIMIT 1`,
+                    [row.builder || '', row.name || '']
+                  );
+                  if (existing.length > 0) { skippedCount++; continue; }
+                }
                 await client.query(
                   `INSERT INTO yachts (name, builder, length, lob, year_built, year_refit,
                      price, currency, location_text, is_active, is_approved, brokers, extra_data)
@@ -8238,7 +8250,7 @@ app.post('/api/inventory/import', requireAuth, express.json({ limit: '20mb' }), 
            errors = $3::jsonb, completed_at = NOW() WHERE id = $4`,
           [insertedCount, rejectedCount, JSON.stringify(batchErrors.slice(0, 50)), jobId]
         );
-        console.log(`[Import] Job ${jobId} complete: ${insertedCount} inserted, ${rejectedCount} rejected`);
+        console.log(`[Import] Job ${jobId} complete: ${insertedCount} inserted, ${skippedCount} dedup-skipped, ${rejectedCount} rejected`);
 
       } catch (err) {
         console.error(`[Import] Job ${jobId} failed:`, err.message);
@@ -8281,6 +8293,132 @@ app.get('/api/inventory/sheet-syncs', requireAuth, async (req, res) => {
   } catch (err) {
     console.error('[SheetSync] History error:', err.message);
     res.status(500).json({ success: false, message: 'Failed to fetch sync history' });
+  }
+});
+
+// ─── POSTMARK INBOUND EMAIL → YACHT IMPORT ───────────────────────────────────
+// Receives inbound emails via Postmark webhook. If the email contains a CSV or
+// XLSX attachment, parses it and merges new boats into the inventory (dedup by
+// builder+name). Trusted senders: b.delahaye@barnes-yachting.com
+//
+// Configure Postmark inbound stream to POST to:
+//   https://barnesos.polsia.app/api/webhooks/email-inbound
+// ─────────────────────────────────────────────────────────────────────────────
+app.post('/api/webhooks/email-inbound', express.json({ limit: '10mb' }), async (req, res) => {
+  // Ack immediately so Postmark doesn't retry
+  res.json({ success: true });
+
+  const TRUSTED_SENDERS = ['b.delahaye@barnes-yachting.com'];
+  try {
+    const body = req.body || {};
+    const fromEmail = (body.FromFull?.Email || body.From || '').toLowerCase();
+    const subject   = body.Subject || '';
+    const attachments = body.Attachments || [];
+
+    console.log(`[EmailImport] Inbound from ${fromEmail}: "${subject}" — ${attachments.length} attachment(s)`);
+
+    if (!TRUSTED_SENDERS.includes(fromEmail)) {
+      console.log(`[EmailImport] Ignored — untrusted sender: ${fromEmail}`);
+      return;
+    }
+
+    // Find CSV or XLSX attachments
+    const importable = attachments.filter(a => {
+      const name = (a.Name || '').toLowerCase();
+      const ct   = (a.ContentType || '').toLowerCase();
+      return name.endsWith('.csv') || name.endsWith('.tsv') || name.endsWith('.txt') ||
+             name.endsWith('.xlsx') || name.endsWith('.xls') ||
+             ct.includes('spreadsheet') || ct.includes('excel') ||
+             ct.includes('csv') || ct.includes('text/plain');
+    });
+
+    if (importable.length === 0) {
+      console.log(`[EmailImport] No importable attachments found`);
+      return;
+    }
+
+    let csvContent = '';
+
+    for (const att of importable) {
+      const name = (att.Name || '').toLowerCase();
+      const rawBytes = Buffer.from(att.Content || '', 'base64');
+
+      if (name.endsWith('.xlsx') || name.endsWith('.xls') ||
+          (att.ContentType || '').toLowerCase().includes('spreadsheet')) {
+        // Parse Excel → CSV using xlsx package
+        try {
+          const XLSX = require('xlsx');
+          const wb  = XLSX.read(rawBytes, { type: 'buffer' });
+          const ws  = wb.Sheets[wb.SheetNames[0]];
+          csvContent = XLSX.utils.sheet_to_csv(ws);
+          console.log(`[EmailImport] Parsed XLSX "${att.Name}": ${csvContent.split('\n').length} rows`);
+        } catch (xlsxErr) {
+          console.error(`[EmailImport] XLSX parse error for "${att.Name}":`, xlsxErr.message);
+          continue;
+        }
+      } else {
+        // CSV / TSV / plain text
+        csvContent = rawBytes.toString('utf8');
+        console.log(`[EmailImport] Using text attachment "${att.Name}": ${csvContent.split('\n').length} rows`);
+      }
+
+      if (csvContent.trim()) break; // Use the first successful attachment
+    }
+
+    if (!csvContent.trim()) {
+      console.log(`[EmailImport] Could not extract CSV content from attachments`);
+      return;
+    }
+
+    // Parse and import with dedup-merge
+    const { rows: parsed, errors: parseErrors } = parseYachtCSV(csvContent);
+    console.log(`[EmailImport] Parsed ${parsed.length} rows, ${parseErrors.length} parse errors`);
+
+    if (parsed.length === 0) {
+      console.log(`[EmailImport] No valid yacht rows found`);
+      return;
+    }
+
+    let insertedCount = 0, skippedCount = 0, errorCount = parseErrors.length;
+
+    const client = await pool.connect();
+    try {
+      for (const row of parsed) {
+        try {
+          // Dedup check
+          const { rows: existing } = await client.query(
+            `SELECT 1 FROM yachts
+             WHERE LOWER(TRIM(builder)) = LOWER(TRIM($1))
+               AND LOWER(TRIM(name))    = LOWER(TRIM($2))
+             LIMIT 1`,
+            [row.builder || '', row.name || '']
+          );
+          if (existing.length > 0) { skippedCount++; continue; }
+
+          await client.query(
+            `INSERT INTO yachts (name, builder, length, lob, year_built, year_refit,
+               price, currency, location_text, is_active, is_approved, brokers, extra_data)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13::jsonb)`,
+            [row.name, row.builder, row.length, row.lob, row.year_built, row.year_refit,
+             row.price, row.currency, row.location_text,
+             row.is_active !== false, row.is_approved || false,
+             row.brokers, row.extra_data ? JSON.stringify(row.extra_data) : '{}']
+          );
+          insertedCount++;
+        } catch (rowErr) {
+          errorCount++;
+          console.error(`[EmailImport] Row insert error (${row.builder} ${row.name}):`, rowErr.message);
+        }
+      }
+    } finally {
+      client.release();
+    }
+
+    console.log(`[EmailImport] Done — ${insertedCount} added, ${skippedCount} already existed, ${errorCount} errors`);
+    console.log(`[EmailImport] Subject: "${subject}" | From: ${fromEmail}`);
+
+  } catch (err) {
+    console.error('[EmailImport] Webhook handler error:', err.message);
   }
 });
 
