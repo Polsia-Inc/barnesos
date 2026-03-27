@@ -16,12 +16,12 @@
   },
   {
     "content": "Push and deploy",
-    "status": "in_progress",
+    "status": "completed",
     "activeForm": "Pushing and deploying fix"
   },
   {
     "content": "Verify fix works: test API and chip rendering",
-    "status": "pending",
+    "status": "in_progress",
     "activeForm": "Verifying matchmaker fix"
   }
 ]
