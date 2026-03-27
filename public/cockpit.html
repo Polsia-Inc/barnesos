@@ -555,6 +555,83 @@
       .tb-metric { padding: 0 8px; }
     }
   #globe-tier-controls button:hover { filter: brightness(1.35); }
+
+  /* ─── PANEL 3: FUND TRACKER ────────────────────────────────────────────── */
+  .fund-grid { display: grid; grid-template-columns: 1fr 280px; gap: 16px; margin-bottom: 20px; }
+  @media (max-width: 900px) { .fund-grid { grid-template-columns: 1fr; } }
+
+  .thermometer-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 20px; }
+  .therm-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+  .therm-title { font-family: 'Syne', sans-serif; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+  .therm-readout { font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700; color: var(--gold); white-space: nowrap; }
+  .therm-readout span { font-size: 11px; color: var(--muted); font-weight: 400; margin: 0 4px; }
+  .therm-sublabel { font-size: 11px; color: var(--muted); margin-bottom: 6px; }
+  .therm-track-wrap { position: relative; height: 32px; background: rgba(255,255,255,0.04); border-radius: 16px; overflow: hidden; }
+  .therm-fill-pipeline { position: absolute; top: 0; left: 0; height: 100%; background: rgba(201,168,76,0.25); border-radius: 16px; transition: width 0.9s ease; }
+  .therm-fill-confirmed { position: absolute; top: 5px; left: 0; height: calc(100% - 10px); background: linear-gradient(90deg, #c9a84c, #f4d47c); border-radius: 12px; transition: width 0.9s ease; box-shadow: 0 0 16px rgba(201,168,76,0.45); }
+  .therm-tick-row { display: flex; justify-content: space-between; margin-top: 6px; font-size: 10px; color: rgba(107,114,128,0.7); }
+  .therm-legend { display: flex; gap: 14px; margin-top: 14px; flex-wrap: wrap; }
+  .therm-legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text); }
+  .therm-legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+  .therm-legend-dot.pipeline { background: rgba(201,168,76,0.35); border: 1.5px solid rgba(201,168,76,0.55); }
+  .therm-legend-dot.confirmed { background: #c9a84c; }
+  .therm-stage-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 16px; }
+  .therm-stage-chip { background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 6px; padding: 8px; text-align: center; }
+  .therm-stage-chip .sc-count { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 22px; color: var(--text); }
+  .therm-stage-chip .sc-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px; }
+  .therm-stage-chip.confirmed-chip { border-color: var(--gold-dim); }
+  .therm-stage-chip.confirmed-chip .sc-count { color: var(--gold); }
+
+  .runway-card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 20px; display: flex; flex-direction: column; }
+  .runway-label { font-family: 'Syne', sans-serif; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); margin-bottom: 10px; }
+  .runway-number { font-family: 'Syne', sans-serif; font-size: 60px; font-weight: 800; line-height: 1; letter-spacing: -2px; }
+  .runway-number.green { color: #22c55e; text-shadow: 0 0 28px rgba(34,197,94,0.35); }
+  .runway-number.yellow { color: #f97316; text-shadow: 0 0 28px rgba(249,115,22,0.35); }
+  .runway-number.red { color: #ef4444; text-shadow: 0 0 28px rgba(239,68,68,0.35); }
+  .runway-unit { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .runway-formula { font-size: 11px; color: var(--muted); margin-top: 10px; line-height: 1.5; font-style: italic; }
+  .runway-scale { display: flex; gap: 8px; margin-top: 12px; font-size: 10px; }
+
+  .fund-section { margin-bottom: 24px; }
+  .fund-section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 10px; flex-wrap: wrap; }
+
+  .investor-pipeline-row { display: grid; grid-template-columns: 1fr 96px 1fr 120px 70px; gap: 10px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--border); transition: background 0.15s; }
+  .investor-pipeline-row:hover { background: rgba(255,255,255,0.025); }
+  .inv-name { font-weight: 600; font-size: 13px; }
+  .inv-email { font-size: 11px; color: var(--muted); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .inv-amount { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 13px; }
+
+  .stage-dots-row { display: flex; gap: 3px; align-items: flex-start; }
+  .sdot-btn { background: none; border: none; padding: 0; cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  .sdot { width: 18px; height: 18px; border-radius: 50%; border: 2px solid rgba(107,114,128,0.4); background: transparent; transition: all 0.2s; }
+  .sdot.filled { background: rgba(154,122,53,0.6); border-color: var(--gold-dim); }
+  .sdot.current { background: var(--gold); border-color: var(--gold); box-shadow: 0 0 8px rgba(201,168,76,0.6); animation: sdot-pulse 2s infinite; }
+  .sdot.wired-dot { background: #22c55e; border-color: #22c55e; box-shadow: 0 0 8px rgba(34,197,94,0.5); }
+  .sdot-label { font-size: 8px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.02em; white-space: nowrap; }
+  @keyframes sdot-pulse { 0%,100% { box-shadow: 0 0 4px rgba(201,168,76,0.4); } 50% { box-shadow: 0 0 14px rgba(201,168,76,0.9); } }
+
+  .add-fund-form { background: rgba(201,168,76,0.04); border: 1px solid rgba(201,168,76,0.18); border-radius: 10px; padding: 16px; margin-bottom: 14px; }
+  .add-fund-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+
+  .deal-badge { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 600; text-transform: capitalize; }
+  .deal-badge.identified,.deal-badge.evaluating { background: rgba(107,114,128,0.15); color: #9ca3af; border: 1px solid rgba(107,114,128,0.3); }
+  .deal-badge.offer_made,.deal-badge.negotiating { background: rgba(59,130,246,0.12); color: #60a5fa; border: 1px solid rgba(59,130,246,0.3); }
+  .deal-badge.acquired { background: rgba(249,115,22,0.12); color: #fb923c; border: 1px solid rgba(249,115,22,0.3); }
+  .deal-badge.listed { background: rgba(201,168,76,0.12); color: var(--gold); border: 1px solid rgba(201,168,76,0.3); }
+  .deal-badge.sold { background: rgba(34,197,94,0.12); color: #4ade80; border: 1px solid rgba(34,197,94,0.3); }
+  .deal-badge.lost { background: rgba(239,68,68,0.1); color: #f87171; border: 1px solid rgba(239,68,68,0.25); }
+
+  .deal-math-preview { display: flex; gap: 16px; flex-wrap: wrap; padding: 10px 14px; background: rgba(0,0,0,0.2); border-radius: 8px; margin-top: 12px; }
+  .dmp-item { font-size: 12px; color: var(--muted); }
+  .dmp-item strong { color: var(--text); }
+
+  .hot-alert-band { background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.35); border-radius: 8px; padding: 8px 14px; font-size: 12px; color: #f87171; display: flex; align-items: center; gap: 10px; margin-bottom: 8px; animation: hot-pulse 3s infinite; }
+  @keyframes hot-pulse { 0%,100% { box-shadow: none; } 50% { box-shadow: 0 0 16px rgba(239,68,68,0.2); } }
+
+  .perf-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .perf-card { background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 14px; }
+  .perf-card .pc-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 6px; }
+  .perf-card .pc-value { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 22px; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
@@ -700,11 +777,21 @@ let _radarSearch = '';
 let _prospects = [];
 let _chains = [];
 let _fundEntries = [];
+let _fundDeals = [];
+let _yachtsForFund = [];
 let _signals = [];
 let _refreshInterval = null;
 let _stepMenuTarget = null;
 
 const FUND_TARGET = 30_000_000;
+const FUND_STAGES = [
+  { key: 'contacted',   label: 'Contacted',   short: 'CONT' },
+  { key: 'deck_sent',   label: 'Deck Sent',   short: 'DECK' },
+  { key: 'meeting',     label: 'Meeting',     short: 'MTG'  },
+  { key: 'soft_commit', label: 'Soft Commit', short: 'SOFT' },
+  { key: 'hard_commit', label: 'Hard Commit', short: 'HARD' },
+  { key: 'wired',       label: 'Wired',       short: 'WIRE' }
+];
 
 // ═══ ROUTER ═════════════════════════════════════════════════════════════════
 function getPath() {
@@ -1367,166 +1454,476 @@ async function submitChain() {
   } catch(e) { console.error(e); alert('Failed to create chain'); }
 }
 
-// ═══ FUND PANEL ══════════════════════════════════════════════════════════════
+// ═══ FUND PANEL 3 — FUND RAISING PROGRESS TRACKER ═══════════════════════════
 async function renderFund(container) {
   container.innerHTML = '<div class="loading"><div class="spin">⏳</div></div>';
-  await loadFundEntries();
+  await Promise.all([loadFundEntries(), loadFundDeals(), loadYachtsForFund()]);
 
+  // ── Thermometer calcs
+  const pipeline = _fundEntries
+    .filter(e => (e.stage || e.status) !== 'withdrawn')
+    .reduce((s, e) => s + (parseFloat(e.amount_eur) || 0), 0);
   const confirmed = _fundEntries
-    .filter(e => e.status === 'hard_commit' || e.status === 'wired')
-    .reduce((s, e) => s + parseFloat(e.amount_eur), 0);
-  const softTotal = _fundEntries
-    .filter(e => e.status === 'soft_commit')
-    .reduce((s, e) => s + parseFloat(e.amount_eur), 0);
-  const pct = Math.min((confirmed / FUND_TARGET) * 100, 100);
+    .filter(e => ['hard_commit','wired'].includes(e.stage || e.status))
+    .reduce((s, e) => s + (parseFloat(e.amount_eur) || 0), 0);
+  const pipelinePct = Math.min((pipeline / FUND_TARGET) * 100, 100);
+  const confirmedPct = Math.min((confirmed / FUND_TARGET) * 100, 100);
+
+  // ── Stage counts
+  const sc = {};
+  FUND_STAGES.forEach(s => sc[s.key] = 0);
+  _fundEntries.forEach(e => {
+    const stg = e.stage || e.status || 'contacted';
+    if (sc[stg] !== undefined) sc[stg]++;
+  });
+
+  // ── Runway
+  const dealsWithAcq = _fundDeals.filter(d => parseFloat(d.acquisition_price) > 0);
+  const avgAcq = dealsWithAcq.length
+    ? dealsWithAcq.reduce((s, d) => s + parseFloat(d.acquisition_price), 0) / dealsWithAcq.length
+    : 2_500_000;
+  const runway = confirmed / avgAcq;
+  const runwayColor = runway >= 3 ? 'green' : runway >= 1 ? 'yellow' : 'red';
+
+  // ── Cross-panel: investors who are also hot prospects
+  const hotAlerts = _fundEntries.filter(fe => {
+    if (!fe.prospect_id) return false;
+    const p = _prospects.find(p => p.id === parseInt(fe.prospect_id));
+    return p && p.heat_tier === 'hot';
+  });
 
   container.innerHTML = `
-    <div class="fund-progress-card">
-      <div style="font-family:Syne;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.1em;color:var(--muted);margin-bottom:12px">
-        Yacht Trade-In Arbitrage Fund · €30M Target
-      </div>
-      <div class="fund-headline">
-        <div class="fund-total">€${(confirmed/1_000_000).toFixed(2)}M</div>
-        <div class="fund-target">of €30M</div>
-        <div class="fund-pct">${pct.toFixed(1)}%</div>
-      </div>
-      <div class="progress-track">
-        <div class="progress-fill" style="width:${pct}%"></div>
-      </div>
-      <div class="fund-stats">
-        <div class="fund-stat">
-          <div class="fund-stat-label">💸 Wired</div>
-          <div class="fund-stat-value green">€${(_fundEntries.filter(e=>e.status==='wired').reduce((s,e)=>s+parseFloat(e.amount_eur),0)/1_000_000).toFixed(2)}M</div>
-        </div>
-        <div class="fund-stat">
-          <div class="fund-stat-label">🤝 Hard Commit</div>
-          <div class="fund-stat-value gold">€${(_fundEntries.filter(e=>e.status==='hard_commit').reduce((s,e)=>s+parseFloat(e.amount_eur),0)/1_000_000).toFixed(2)}M</div>
-        </div>
-        <div class="fund-stat">
-          <div class="fund-stat-label">🔮 Soft Commit</div>
-          <div class="fund-stat-value muted">€${(softTotal/1_000_000).toFixed(2)}M</div>
-        </div>
-      </div>
-    </div>
+    <div style="max-width:1200px">
 
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
-      <div class="section-title">Investor Commitments</div>
-      <button class="btn btn-primary" onclick="toggleAddEntry()" style="font-size:12px;padding:6px 14px;">+ Add Entry</button>
-    </div>
+      ${hotAlerts.length ? `
+      <div style="margin-bottom:16px">
+        ${hotAlerts.map(fi => {
+          const p = _prospects.find(p => p.id === parseInt(fi.prospect_id));
+          return `<div class="hot-alert-band">🔴 <strong>${esc(p ? p.name : 'Unknown')}</strong> just triggered a hot signal — also in fund pipeline at <strong>${fundStageLabel(fi.stage || fi.status)}</strong></div>`;
+        }).join('')}
+      </div>` : ''}
 
-    <div id="add-entry-form" class="hidden">
-      <div class="add-form-grid">
-        <div class="form-field"><label>Investor Name</label><input class="form-input" id="fe-name" placeholder="e.g. Jean-Marc Durand"/></div>
-        <div class="form-field"><label>Amount (€)</label><input class="form-input" id="fe-amount" type="number" placeholder="500000"/></div>
-        <div class="form-field"><label>Status</label>
-          <select class="form-select" id="fe-status">
-            <option value="soft_commit">Soft Commit</option>
-            <option value="hard_commit">Hard Commit</option>
-            <option value="wired">Wired</option>
-          </select>
+      <!-- SECTION 1: Thermometer + Runway -->
+      <div class="fund-grid">
+
+        <!-- Dual-Layer Thermometer -->
+        <div class="thermometer-card">
+          <div class="therm-header">
+            <div>
+              <div class="therm-title">Yacht Trade-In Arbitrage Fund · €30M Target</div>
+            </div>
+            <div class="therm-readout">
+              €${(pipeline/1e6).toFixed(1)}M pipeline
+              <span>/</span>
+              €${(confirmed/1e6).toFixed(1)}M confirmed
+            </div>
+          </div>
+
+          <div class="therm-sublabel">Total Pipeline</div>
+          <div class="therm-track-wrap">
+            <div class="therm-fill-pipeline" id="tp-pipeline" style="width:${pipelinePct}%"></div>
+            <div class="therm-fill-confirmed" id="tp-confirmed" style="width:${confirmedPct}%"></div>
+          </div>
+          <div class="therm-tick-row">
+            <span>€0</span><span>€7.5M</span><span>€15M</span><span>€22.5M</span><span>€30M</span>
+          </div>
+
+          <div class="therm-legend">
+            <div class="therm-legend-item"><div class="therm-legend-dot pipeline"></div> Pipeline (${pipelinePct.toFixed(1)}%)</div>
+            <div class="therm-legend-item"><div class="therm-legend-dot confirmed"></div> Confirmed (${confirmedPct.toFixed(1)}%)</div>
+          </div>
+
+          <div class="therm-stage-grid">
+            <div class="therm-stage-chip">
+              <div class="sc-count">${(sc.contacted||0) + (sc.deck_sent||0) + (sc.meeting||0)}</div>
+              <div class="sc-label">Early Stage</div>
+            </div>
+            <div class="therm-stage-chip">
+              <div class="sc-count">${sc.soft_commit||0}</div>
+              <div class="sc-label">Soft Commit</div>
+            </div>
+            <div class="therm-stage-chip confirmed-chip">
+              <div class="sc-count">${(sc.hard_commit||0) + (sc.wired||0)}</div>
+              <div class="sc-label">Confirmed ✓</div>
+            </div>
+          </div>
         </div>
-        <div class="form-field"><label>Date</label><input class="form-input" id="fe-date" type="date" value="${new Date().toISOString().split('T')[0]}"/></div>
-      </div>
-      <div class="form-field" style="margin-top:8px"><label>Notes</label><input class="form-input" id="fe-notes" placeholder="Optional notes…"/></div>
-      <div class="btn-row" style="margin-top:10px">
-        <button class="btn btn-secondary" onclick="toggleAddEntry()">Cancel</button>
-        <button class="btn btn-primary" onclick="submitFundEntry()">Save Entry</button>
-      </div>
-    </div>
 
-    <div class="card" style="padding:0;overflow:hidden;">
-      <div class="table-wrap">
-        <table>
-          <thead><tr>
-            <th>Investor</th>
-            <th>Amount</th>
-            <th>Status</th>
-            <th>Date</th>
-            <th>Notes</th>
-            <th></th>
-          </tr></thead>
-          <tbody id="fund-table-body"></tbody>
-        </table>
+        <!-- Runway Indicator -->
+        <div class="runway-card">
+          <div class="runway-label">Capital Runway</div>
+          <div class="runway-number ${runwayColor}">${runway.toFixed(1)}</div>
+          <div class="runway-unit">deals ready to deploy</div>
+          <div class="runway-formula">
+            €${(confirmed/1e6).toFixed(1)}M confirmed<br>÷ €${(avgAcq/1e6).toFixed(1)}M avg acquisition
+          </div>
+          <div class="runway-scale">
+            <span style="color:var(--green)">● ≥3</span>
+            <span style="color:var(--orange)">● 1–2</span>
+            <span style="color:var(--red)">● &lt;1</span>
+          </div>
+        </div>
+
       </div>
+
+      <!-- SECTION 2: Investor Deal Pipeline -->
+      <div class="fund-section">
+        <div class="fund-section-header">
+          <div class="section-title">Investor Deal Pipeline</div>
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <select class="form-select" id="inv-filter-sel" style="font-size:12px;padding:4px 10px;height:32px" onchange="renderInvestorsList()">
+              <option value="all">All Stages</option>
+              ${FUND_STAGES.map(s => `<option value="${s.key}">${s.label}</option>`).join('')}
+            </select>
+            <button class="btn btn-primary" onclick="toggleAddInvestor()" style="font-size:12px;padding:5px 12px">+ Add Investor</button>
+          </div>
+        </div>
+
+        <!-- Add Investor Form -->
+        <div id="add-investor-form" class="add-fund-form hidden">
+          <div class="add-fund-grid">
+            <div class="form-field"><label>Investor Name *</label><input class="form-input" id="inv-name" placeholder="e.g. Jean-Marc Durand"/></div>
+            <div class="form-field"><label>Email</label><input class="form-input" id="inv-email" type="email" placeholder="investor@example.com"/></div>
+            <div class="form-field"><label>Commitment (€) *</label><input class="form-input" id="inv-amount" type="number" placeholder="500000"/></div>
+            <div class="form-field"><label>Starting Stage</label>
+              <select class="form-select" id="inv-stage">
+                ${FUND_STAGES.map(s => `<option value="${s.key}">${s.label}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-field"><label>Date</label><input class="form-input" id="inv-date" type="date" value="${new Date().toISOString().split('T')[0]}"/></div>
+          </div>
+          <div class="form-field" style="margin-top:8px"><label>Notes</label><input class="form-input" id="inv-notes" placeholder="How we connected, context…"/></div>
+          <div class="btn-row" style="margin-top:10px">
+            <button class="btn btn-secondary" onclick="toggleAddInvestor()">Cancel</button>
+            <button class="btn btn-primary" onclick="submitInvestor()">Add Investor</button>
+          </div>
+        </div>
+
+        <div class="card" style="padding:0;overflow:hidden">
+          <div style="display:grid;grid-template-columns:1fr 96px 1fr 120px 70px;gap:10px;padding:9px 16px;background:rgba(0,0,0,0.2);border-bottom:1px solid var(--border);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted)">
+            <div>Investor</div><div>Commitment</div><div>Stage Progression</div><div>Last Updated</div><div></div>
+          </div>
+          <div id="investors-list"></div>
+        </div>
+      </div>
+
+      <!-- SECTION 3: Trade-In Deal Pipeline -->
+      <div class="fund-section">
+        <div class="fund-section-header">
+          <div class="section-title">Trade-In Deal Pipeline</div>
+          <button class="btn btn-primary" onclick="toggleAddDeal()" style="font-size:12px;padding:5px 12px">+ New Deal</button>
+        </div>
+
+        <!-- Add Deal Form -->
+        <div id="add-deal-form" class="add-fund-form hidden">
+          <div class="add-fund-grid">
+            <div class="form-field"><label>Shipyard Source</label>
+              <select class="form-select" id="deal-shipyard">
+                <option value="">Select shipyard…</option>
+                <option>Sanlorenzo</option><option>Azimut</option><option>Benetti</option>
+                <option>Ferretti Group</option><option>Riva</option><option>Pershing</option><option>Other</option>
+              </select>
+            </div>
+            <div class="form-field"><label>Linked Yacht (Inventory)</label>
+              <select class="form-select" id="deal-yacht">
+                <option value="">Select from inventory…</option>
+                ${_yachtsForFund.slice(0,60).map(y => `<option value="${y.id}">${esc(y.brand)} ${esc(y.model||'')} ${y.length_m?y.length_m+'m':''} ${y.price_eur?'€'+(y.price_eur/1e6).toFixed(1)+'M':''}</option>`).join('')}
+              </select>
+            </div>
+            <div class="form-field"><label>Trade-In Stated Value (€)</label><input class="form-input" id="deal-tradein" type="number" placeholder="2000000" oninput="calcDealMath()"/></div>
+            <div class="form-field"><label>Acquisition Price (€) <span style="font-size:10px;color:var(--muted)">target 50%</span></label><input class="form-input" id="deal-acq" type="number" placeholder="1000000" oninput="calcDealMath()"/></div>
+            <div class="form-field"><label>Est. Asset Value (€) <span style="font-size:10px;color:var(--muted)">resale</span></label><input class="form-input" id="deal-asset" type="number" placeholder="1800000" oninput="calcDealMath()"/></div>
+            <div class="form-field"><label>Seller Name</label><input class="form-input" id="deal-seller" placeholder="Seller name"/></div>
+          </div>
+          <div id="deal-math-preview" class="deal-math-preview" style="display:none"></div>
+          <div class="form-field" style="margin-top:8px"><label>Notes</label><input class="form-input" id="deal-notes" placeholder="Deal context…"/></div>
+          <div class="btn-row" style="margin-top:10px">
+            <button class="btn btn-secondary" onclick="toggleAddDeal()">Cancel</button>
+            <button class="btn btn-primary" onclick="submitDeal()">Create Deal</button>
+          </div>
+        </div>
+
+        <div id="deals-summary-row" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px"></div>
+
+        <div class="card" style="padding:0;overflow:hidden">
+          <div style="display:grid;grid-template-columns:150px 95px 95px 110px 90px 90px 70px;gap:8px;padding:9px 16px;background:rgba(0,0,0,0.2);border-bottom:1px solid var(--border);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted)">
+            <div>Yacht</div><div>Trade-In Val</div><div>Acquisition</div><div>Est. Spread</div><div>Margin</div><div>Status</div><div></div>
+          </div>
+          <div id="deals-list"></div>
+        </div>
+      </div>
+
+      <!-- SECTION 4: Fund Performance -->
+      <div class="fund-section">
+        <div class="section-title" style="margin-bottom:14px">Fund Performance</div>
+        <div id="fund-performance"></div>
+      </div>
+
     </div>
   `;
 
-  renderFundTable();
+  renderInvestorsList();
+  renderDealsList();
+  renderDealsSummary();
+  renderFundPerformance();
 }
 
-function renderFundTable() {
-  const tbody = document.getElementById('fund-table-body');
-  if (!tbody) return;
-  if (_fundEntries.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;padding:32px;color:var(--muted)">No entries yet. Add your first investor.</td></tr>';
+// ── Investor stage helpers
+function fundStageLabel(s) {
+  const m = { contacted:'Contacted', deck_sent:'Deck Sent', meeting:'Meeting',
+    soft_commit:'Soft Commit', hard_commit:'Hard Commit', wired:'Wired', withdrawn:'Withdrawn' };
+  return m[s] || s || '—';
+}
+function fundStageIdx(s) { return FUND_STAGES.findIndex(x => x.key === s); }
+
+// ── Render investor pipeline table
+function renderInvestorsList() {
+  const el = document.getElementById('investors-list');
+  if (!el) return;
+  const filter = document.getElementById('inv-filter-sel')?.value || 'all';
+  const entries = filter === 'all' ? _fundEntries
+    : _fundEntries.filter(e => (e.stage || e.status) === filter);
+
+  if (entries.length === 0) {
+    el.innerHTML = `<div style="text-align:center;padding:32px;color:var(--muted)">${_fundEntries.length === 0 ? 'No investors yet. Add your first investor.' : 'No investors at this stage.'}</div>`;
     return;
   }
-  tbody.innerHTML = _fundEntries.map(e => `
-    <tr>
-      <td style="font-weight:600">${esc(e.investor_name)}</td>
-      <td style="font-family:Syne;font-weight:700;color:${e.status==='wired'?'var(--green)':e.status==='hard_commit'?'var(--gold)':'var(--text)'}">
-        €${parseFloat(e.amount_eur).toLocaleString('fr-FR')}
-      </td>
-      <td><span class="status-pill ${e.status}">${statusLabel(e.status)}</span></td>
-      <td style="color:var(--muted)">${e.committed_at ? new Date(e.committed_at).toLocaleDateString('en-GB') : '—'}</td>
-      <td style="color:var(--muted);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(e.notes || '')}</td>
-      <td>
-        <div class="row-actions">
-          <button class="action-btn" onclick="promptEditEntry(${e.id})">Edit</button>
-          <button class="action-btn danger" onclick="deleteEntry(${e.id})">Delete</button>
-        </div>
-      </td>
-    </tr>`).join('');
+
+  el.innerHTML = entries.map(e => {
+    const stage = e.stage || e.status || 'contacted';
+    const idx = fundStageIdx(stage);
+    const isConfirmed = ['hard_commit','wired'].includes(stage);
+    const amtColor = stage === 'wired' ? 'var(--green)' : stage === 'hard_commit' ? 'var(--gold)' : 'var(--text)';
+
+    const dots = FUND_STAGES.map((s, i) => {
+      let cls = 'sdot';
+      if (i < idx) cls += ' filled';
+      else if (i === idx) cls += s.key === 'wired' ? ' wired-dot' : ' current';
+      const isAdvanceable = i === idx && idx < FUND_STAGES.length - 1;
+      return `<div class="sdot-btn" ${isAdvanceable ? `onclick="advanceInvestorStage(${e.id}, event)"` : ''} title="${s.label}${isAdvanceable ? ' (click to advance)' : ''}">
+        <div class="${cls}"></div>
+        <div class="sdot-label">${s.short}</div>
+      </div>`;
+    }).join('');
+
+    return `<div class="investor-pipeline-row">
+      <div>
+        <div class="inv-name">${esc(e.investor_name)}</div>
+        ${e.email ? `<div class="inv-email">${esc(e.email)}</div>` : ''}
+      </div>
+      <div class="inv-amount" style="color:${amtColor}">€${(parseFloat(e.amount_eur)/1e3).toFixed(0)}k</div>
+      <div class="stage-dots-row">${dots}</div>
+      <div style="font-size:11px;color:var(--muted)">${timeAgo(e.updated_at)}</div>
+      <div class="row-actions">
+        <button class="action-btn danger" onclick="deleteEntry(${e.id})" title="Remove">✕</button>
+      </div>
+    </div>`;
+  }).join('');
 }
 
-function toggleAddEntry() {
-  const f = document.getElementById('add-entry-form');
-  f.classList.toggle('hidden');
-}
+// ── Advance investor to next stage (single click + confirm)
+async function advanceInvestorStage(id, event) {
+  event?.stopPropagation();
+  const e = _fundEntries.find(x => x.id === id);
+  if (!e) return;
+  const stage = e.stage || e.status || 'contacted';
+  const idx = fundStageIdx(stage);
+  if (idx >= FUND_STAGES.length - 1) { alert('Already at final stage: Wired'); return; }
+  const next = FUND_STAGES[idx + 1];
+  if (!confirm(`Advance "${e.investor_name}"\n${fundStageLabel(stage)} → ${next.label}?`)) return;
 
-async function submitFundEntry() {
-  const name = document.getElementById('fe-name').value.trim();
-  const amount = document.getElementById('fe-amount').value;
-  const status = document.getElementById('fe-status').value;
-  const date = document.getElementById('fe-date').value;
-  const notes = document.getElementById('fe-notes').value.trim();
-  if (!name || !amount) { alert('Investor name and amount required'); return; }
-  const r = await fetch('/api/fund/entries', {
-    method: 'POST', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ investor_name: name, amount_eur: parseFloat(amount), status, committed_at: date, notes })
+  const r = await fetch(`/api/fund/entries/${id}/advance-stage`, {
+    method: 'PUT', headers: {'Content-Type':'application/json'}
   });
   const data = await r.json();
   if (!data.success) { alert('Error: ' + data.message); return; }
-  document.getElementById('add-entry-form').classList.add('hidden');
-  await loadFundEntries();
+  const i = _fundEntries.findIndex(x => x.id === id);
+  if (i >= 0) _fundEntries[i] = data.entry;
   renderFund(document.getElementById('main'));
   await loadStats();
   if (_stats) renderTopBar(_stats);
 }
 
-async function promptEditEntry(id) {
-  const e = _fundEntries.find(x => x.id === id);
-  if (!e) return;
-  const name = prompt('Investor name:', e.investor_name); if (name === null) return;
-  const amount = prompt('Amount (€):', e.amount_eur); if (amount === null) return;
-  const status = prompt('Status (soft_commit/hard_commit/wired/withdrawn):', e.status); if (status === null) return;
-  await fetch('/api/fund/entries/' + id, {
-    method: 'PUT', headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({ investor_name: name, amount_eur: parseFloat(amount), status })
+function toggleAddInvestor() {
+  document.getElementById('add-investor-form')?.classList.toggle('hidden');
+}
+
+async function submitInvestor() {
+  const name = document.getElementById('inv-name')?.value.trim();
+  const email = document.getElementById('inv-email')?.value.trim();
+  const amount = document.getElementById('inv-amount')?.value;
+  const stage = document.getElementById('inv-stage')?.value || 'contacted';
+  const date = document.getElementById('inv-date')?.value;
+  const notes = document.getElementById('inv-notes')?.value.trim();
+  if (!name || !amount) { alert('Name and commitment amount required'); return; }
+  const r = await fetch('/api/fund/entries', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ investor_name: name, email: email||null, amount_eur: parseFloat(amount),
+      stage, status: stage, committed_at: date, notes: notes||null })
   });
+  const data = await r.json();
+  if (!data.success) { alert('Error: ' + data.message); return; }
+  document.getElementById('add-investor-form')?.classList.add('hidden');
   await loadFundEntries();
   renderFund(document.getElementById('main'));
   await loadStats();
   if (_stats) renderTopBar(_stats);
 }
 
+// ── Delete investor entry
 async function deleteEntry(id) {
-  if (!confirm('Delete this entry?')) return;
+  if (!confirm('Delete this investor entry?')) return;
   await fetch('/api/fund/entries/' + id, { method: 'DELETE' });
   await loadFundEntries();
   renderFund(document.getElementById('main'));
   await loadStats();
   if (_stats) renderTopBar(_stats);
+}
+
+// ── Legacy aliases
+function toggleAddEntry() { toggleAddInvestor(); }
+async function submitFundEntry() { await submitInvestor(); }
+
+// ── Trade-In Deal Pipeline
+function toggleAddDeal() {
+  document.getElementById('add-deal-form')?.classList.toggle('hidden');
+}
+
+function calcDealMath() {
+  const acq = parseFloat(document.getElementById('deal-acq')?.value) || 0;
+  const asset = parseFloat(document.getElementById('deal-asset')?.value) || 0;
+  const tradein = parseFloat(document.getElementById('deal-tradein')?.value) || 0;
+  const preview = document.getElementById('deal-math-preview');
+  if (!preview) return;
+  if (acq > 0 || asset > 0) {
+    const spread = asset - acq;
+    const margin = acq > 0 ? (spread / acq * 100).toFixed(1) : '—';
+    const pct = tradein > 0 ? (acq / tradein * 100).toFixed(1) : '—';
+    preview.style.display = 'flex';
+    preview.innerHTML = `
+      <div class="dmp-item">Acq Rate: <strong>${pct !== '—' ? pct + '%' : '—'}</strong></div>
+      <div class="dmp-item">Est. Spread: <strong style="color:${spread>0?'var(--green)':'var(--red)'}">€${(spread/1e3).toFixed(0)}k</strong></div>
+      <div class="dmp-item">Gross Margin: <strong style="color:${spread>0?'var(--green)':'var(--red)'}">${margin !== '—' ? margin + '%' : '—'}</strong></div>
+      <div class="dmp-item">12% Yield: <strong>€${(acq * 0.12 / 1e3).toFixed(0)}k/yr</strong></div>
+    `;
+  } else {
+    preview.style.display = 'none';
+  }
+}
+
+async function submitDeal() {
+  const shipyard = document.getElementById('deal-shipyard')?.value;
+  const yachtId = document.getElementById('deal-yacht')?.value;
+  const tradein = parseFloat(document.getElementById('deal-tradein')?.value) || 0;
+  const acq = parseFloat(document.getElementById('deal-acq')?.value) || 0;
+  const assetVal = parseFloat(document.getElementById('deal-asset')?.value) || 0;
+  const seller = document.getElementById('deal-seller')?.value.trim();
+  const notes = document.getElementById('deal-notes')?.value.trim();
+  const yacht = _yachtsForFund.find(y => y.id == yachtId);
+  const r = await fetch('/api/deals', {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({
+      yacht_brand: yacht?.brand || 'Unknown', yacht_model: yacht?.model || null,
+      yacht_id: yachtId || null, shipyard_name: shipyard || null,
+      trade_in_value: tradein || null, acquisition_price: acq || null,
+      estimated_asset_value: assetVal || null,
+      seller_name: seller || null, notes: notes || null
+    })
+  });
+  const data = await r.json();
+  if (!data.success) { alert('Error: ' + data.message); return; }
+  document.getElementById('add-deal-form')?.classList.add('hidden');
+  await loadFundDeals();
+  renderFund(document.getElementById('main'));
+}
+
+function renderDealsList() {
+  const el = document.getElementById('deals-list');
+  if (!el) return;
+  if (_fundDeals.length === 0) {
+    el.innerHTML = '<div style="text-align:center;padding:28px;color:var(--muted)">No trade-in deals yet. Add your first deal above.</div>';
+    return;
+  }
+  el.innerHTML = _fundDeals.map(d => {
+    const acq = parseFloat(d.acquisition_price) || 0;
+    const asset = parseFloat(d.estimated_asset_value) || parseFloat(d.listing_price) || 0;
+    const tradein = parseFloat(d.trade_in_value) || 0;
+    const spread = asset > 0 && acq > 0 ? asset - acq : 0;
+    const margin = acq > 0 && spread !== 0 ? (spread / acq * 100).toFixed(1) : '—';
+    const status = d.status || 'evaluating';
+    return `<div style="display:grid;grid-template-columns:150px 95px 95px 110px 90px 90px 70px;gap:8px;align-items:center;padding:11px 16px;border-bottom:1px solid var(--border);transition:background 0.12s"
+      onmouseover="this.style.background='rgba(255,255,255,0.02)'" onmouseout="this.style.background=''">
+      <div>
+        <div style="font-weight:600;font-size:13px">${esc(d.yacht_brand||'—')} ${esc(d.yacht_model||'')}</div>
+        ${d.shipyard_name ? `<div style="font-size:11px;color:var(--muted)">${esc(d.shipyard_name)}</div>` : ''}
+      </div>
+      <div style="font-size:13px">${tradein > 0 ? '€'+(tradein/1e6).toFixed(2)+'M' : '—'}</div>
+      <div style="font-family:Syne;font-weight:700;font-size:13px;color:var(--orange)">${acq > 0 ? '€'+(acq/1e6).toFixed(2)+'M' : '—'}</div>
+      <div style="font-family:Syne;font-weight:700;font-size:13px;color:${spread>0?'var(--green)':spread<0?'var(--red)':'var(--muted)'}">${spread !== 0 ? '€'+(spread/1e3).toFixed(0)+'k' : '—'}</div>
+      <div style="font-size:13px;color:${parseFloat(margin)>0?'var(--green)':parseFloat(margin)<0?'var(--red)':'var(--muted)'}">${margin !== '—' ? margin + '%' : '—'}</div>
+      <div><span class="deal-badge ${status}">${status.replace(/_/g,' ')}</span></div>
+      <div><a href="/deals" class="action-btn" style="text-decoration:none;display:inline-flex">View</a></div>
+    </div>`;
+  }).join('');
+}
+
+function renderDealsSummary() {
+  const el = document.getElementById('deals-summary-row');
+  if (!el) return;
+  const total = _fundDeals.length;
+  const deployed = _fundDeals.reduce((s, d) => s + (parseFloat(d.acquisition_price)||0), 0);
+  const dealsWithSpread = _fundDeals.filter(d => d.estimated_asset_value && d.acquisition_price);
+  const avgSpread = dealsWithSpread.length
+    ? dealsWithSpread.reduce((s, d) => s + (parseFloat(d.estimated_asset_value) - parseFloat(d.acquisition_price)), 0) / dealsWithSpread.length
+    : 0;
+  const active = _fundDeals.filter(d => ['acquired','listed'].includes(d.status)).length;
+  const cards = [
+    { label: 'Total Deals',      value: total,                                             color: 'var(--text)'   },
+    { label: 'Capital Deployed', value: deployed > 0 ? '€'+(deployed/1e6).toFixed(2)+'M' : '€0', color: 'var(--orange)' },
+    { label: 'Avg. Spread',      value: avgSpread > 0 ? '€'+(avgSpread/1e3).toFixed(0)+'k' : '—', color: 'var(--green)'  },
+    { label: 'Active/Listed',    value: active,                                            color: 'var(--gold)'   }
+  ];
+  el.innerHTML = cards.map(c => `
+    <div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:13px">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted);margin-bottom:5px">${c.label}</div>
+      <div style="font-family:Syne;font-weight:700;font-size:22px;color:${c.color}">${c.value}</div>
+    </div>`).join('');
+}
+
+function renderFundPerformance() {
+  const el = document.getElementById('fund-performance');
+  if (!el) return;
+  const sold = _fundDeals.filter(d => d.status === 'sold');
+  const active = _fundDeals.filter(d => ['acquired','listed'].includes(d.status));
+  const deployed = _fundDeals.reduce((s, d) => s + (parseFloat(d.acquisition_price)||0), 0);
+  const projYield = deployed * 0.12;
+  const realizedProfit = sold.reduce((s, d) => s + (parseFloat(d.profit)||0), 0);
+  const carriedInterest = realizedProfit * 0.05;
+  el.innerHTML = `
+    <div class="perf-grid">
+      <div class="perf-card"><div class="pc-label">Capital Deployed</div><div class="pc-value" style="color:var(--orange)">€${(deployed/1e6).toFixed(2)}M</div></div>
+      <div class="perf-card"><div class="pc-label">Proj. 12% Yield / yr</div><div class="pc-value" style="color:var(--gold)">€${(projYield/1e3).toFixed(0)}k</div><div style="font-size:11px;color:var(--muted);margin-top:3px">on deployed capital</div></div>
+      <div class="perf-card"><div class="pc-label">Realized Profit</div><div class="pc-value" style="color:${realizedProfit>0?'var(--green)':'var(--muted)'}">€${(realizedProfit/1e3).toFixed(0)}k</div></div>
+      <div class="perf-card"><div class="pc-label">Carried Interest (5%)</div><div class="pc-value" style="color:${carriedInterest>0?'var(--green)':'var(--muted)'}">€${(carriedInterest/1e3).toFixed(0)}k</div></div>
+    </div>
+    ${[...active,...sold].length === 0
+      ? `<div style="background:var(--card);border:1px solid var(--border);border-radius:8px;padding:24px;text-align:center;color:var(--muted)">No active or sold deals yet. Add trade-in deals above.</div>`
+      : `<div class="card" style="padding:0;overflow:hidden">
+          <div style="display:grid;grid-template-columns:150px 95px 95px 95px 80px 80px;gap:8px;padding:9px 16px;background:rgba(0,0,0,0.2);border-bottom:1px solid var(--border);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--muted)">
+            <div>Yacht</div><div>Acquired</div><div>Listed/Sold</div><div>Profit</div><div>ROI</div><div>Status</div>
+          </div>
+          ${[...active,...sold].map(d => `
+            <div style="display:grid;grid-template-columns:150px 95px 95px 95px 80px 80px;gap:8px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--border)">
+              <div style="font-weight:600;font-size:13px">${esc(d.yacht_brand||'—')} ${esc(d.yacht_model||'')}</div>
+              <div>${d.acquisition_price?'€'+(parseFloat(d.acquisition_price)/1e6).toFixed(2)+'M':'—'}</div>
+              <div>${(d.final_sale_price||d.listing_price)?'€'+(parseFloat(d.final_sale_price||d.listing_price)/1e6).toFixed(2)+'M':'—'}</div>
+              <div style="color:${parseFloat(d.profit)>0?'var(--green)':'var(--muted)'}">${d.profit?'€'+(parseFloat(d.profit)/1e3).toFixed(0)+'k':'—'}</div>
+              <div>${d.roi_pct?parseFloat(d.roi_pct).toFixed(1)+'%':'—'}</div>
+              <div><span class="deal-badge ${d.status}">${(d.status||'').replace(/_/g,' ')}</span></div>
+            </div>`).join('')}
+        </div>`
+    }
+  `;
 }
 
 // ═══ DATA LOADERS ════════════════════════════════════════════════════════════
@@ -1568,6 +1965,23 @@ async function loadFundEntries() {
   } catch(e) { console.warn(e); }
 }
 
+async function loadFundDeals() {
+  try {
+    const r = await fetch('/api/deals');
+    const data = await r.json();
+    if (data.success) _fundDeals = data.deals;
+  } catch(e) { console.warn(e); }
+}
+
+async function loadYachtsForFund() {
+  try {
+    if (_yachtsForFund.length > 0) return; // cached
+    const r = await fetch('/api/yachts?limit=200');
+    const data = await r.json();
+    if (data.success) _yachtsForFund = data.yachts;
+  } catch(e) { console.warn(e); }
+}
+
 // ═══ UTILS ══════════════════════════════════════════════════════════════════
 function esc(s) {
   if (s == null) return '';
@@ -1590,7 +2004,10 @@ function formatSignalType(t) {
 }
 
 function statusLabel(s) {
-  const labels = { soft_commit: 'Soft Commit', hard_commit: 'Hard Commit', wired: 'Wired', withdrawn: 'Withdrawn' };
+  const labels = {
+    contacted: 'Contacted', deck_sent: 'Deck Sent', meeting: 'Meeting',
+    soft_commit: 'Soft Commit', hard_commit: 'Hard Commit', wired: 'Wired', withdrawn: 'Withdrawn'
+  };
   return labels[s] || s;
 }
 

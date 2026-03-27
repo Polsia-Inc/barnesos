@@ -1,0 +1,22 @@
+[
+  {
+    "content": "Create migration file for Panel 3 schema (add stage/email to fund_entries, yacht_id/estimated_asset_value to deals)",
+    "status": "completed",
+    "activeForm": "Creating migration file"
+  },
+  {
+    "content": "Add new server routes: thermometer, runway, advance-stage, performance",
+    "status": "completed",
+    "activeForm": "Adding server routes"
+  },
+  {
+    "content": "Rewrite fund panel in cockpit.html with thermometer, pipeline, runway, deals",
+    "status": "completed",
+    "activeForm": "Rewriting fund panel"
+  },
+  {
+    "content": "Push to remote and verify deploy",
+    "status": "in_progress",
+    "activeForm": "Pushing to remote and verifying deploy"
+  }
+]

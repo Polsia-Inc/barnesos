@@ -1668,10 +1668,10 @@ app.post('/api/deals', async (req, res) => {
   try {
     const {
       yacht_brand, yacht_model, yacht_year, yacht_length_m, yacht_type,
-      trade_in_value, acquisition_price,
+      trade_in_value, acquisition_price, estimated_asset_value,
       seller_name, seller_email, seller_phone, seller_notes,
       new_boat_brand, new_boat_model, new_boat_price,
-      shipyard_id, shipyard_name, notes
+      shipyard_id, shipyard_name, yacht_id, notes
     } = req.body;
 
     if (!yacht_brand) {
@@ -1686,18 +1686,18 @@ app.post('/api/deals', async (req, res) => {
     const { rows } = await pool.query(
       `INSERT INTO deals (
         yacht_brand, yacht_model, yacht_year, yacht_length_m, yacht_type,
-        trade_in_value, acquisition_price, acquisition_pct,
+        trade_in_value, acquisition_price, acquisition_pct, estimated_asset_value,
         seller_name, seller_email, seller_phone, seller_notes,
         new_boat_brand, new_boat_model, new_boat_price,
-        shipyard_id, shipyard_name, notes, status
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'identified')
+        shipyard_id, shipyard_name, yacht_id, notes, status
+      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,'evaluating')
       RETURNING *`,
       [
         yacht_brand, yacht_model || null, yacht_year || null, yacht_length_m || null, yacht_type || 'motor',
-        trade_in_value || null, acquisition_price || null, acq_pct,
+        trade_in_value || null, acquisition_price || null, acq_pct, estimated_asset_value || null,
         seller_name || null, seller_email || null, seller_phone || null, seller_notes || null,
         new_boat_brand || null, new_boat_model || null, new_boat_price || null,
-        shipyard_id || null, shipyard_name || null, notes || null
+        shipyard_id || null, shipyard_name || null, yacht_id || null, notes || null
       ]
     );
 
@@ -1729,10 +1729,10 @@ app.put('/api/deals/:id', async (req, res) => {
 
     const allowedFields = [
       'yacht_brand', 'yacht_model', 'yacht_year', 'yacht_length_m', 'yacht_type',
-      'trade_in_value', 'acquisition_price',
+      'trade_in_value', 'acquisition_price', 'estimated_asset_value',
       'seller_name', 'seller_email', 'seller_phone', 'seller_notes',
       'new_boat_brand', 'new_boat_model', 'new_boat_price',
-      'shipyard_id', 'shipyard_name',
+      'shipyard_id', 'shipyard_name', 'yacht_id',
       'listing_price', 'final_sale_price', 'buyer_name', 'buyer_notes',
       'notes', 'status'
     ];
@@ -3598,10 +3598,10 @@ app.get('/api/cockpit/stats', async (req, res) => {
         )
       `),
 
-      // 3. Fund confirmed capital (hard_commit + wired)
+      // 3. Fund confirmed capital (hard_commit + wired) — check both stage and status columns
       pool.query(`
         SELECT COALESCE(SUM(amount_eur), 0) AS total
-        FROM fund_entries WHERE status IN ('hard_commit','wired')
+        FROM fund_entries WHERE COALESCE(stage, status) IN ('hard_commit','wired')
       `),
 
       // 4. Most recent signal
@@ -3647,7 +3647,10 @@ app.get('/api/fund/entries', async (req, res) => {
     );
     const total = rows.reduce((s, r) => s + (parseFloat(r.amount_eur) || 0), 0);
     const confirmed = rows
-      .filter(r => r.status === 'hard_commit' || r.status === 'wired')
+      .filter(r => {
+        const s = r.stage || r.status;
+        return s === 'hard_commit' || s === 'wired';
+      })
       .reduce((s, r) => s + (parseFloat(r.amount_eur) || 0), 0);
     res.json({ success: true, entries: rows, total_eur: total, confirmed_eur: confirmed });
   } catch (err) {
@@ -3657,15 +3660,16 @@ app.get('/api/fund/entries', async (req, res) => {
 
 app.post('/api/fund/entries', async (req, res) => {
   try {
-    const { investor_name, amount_eur, status = 'soft_commit', notes, committed_at } = req.body;
+    const { investor_name, amount_eur, status = 'contacted', stage, email, notes, committed_at, prospect_id } = req.body;
     if (!investor_name || !amount_eur) {
       return res.status(400).json({ success: false, message: 'investor_name and amount_eur required' });
     }
+    const resolvedStage = stage || status || 'contacted';
     const { rows } = await pool.query(
-      `INSERT INTO fund_entries (investor_name, amount_eur, status, notes, committed_at)
-       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
-      [investor_name, parseFloat(amount_eur), status, notes || null,
-       committed_at || new Date().toISOString().split('T')[0]]
+      `INSERT INTO fund_entries (investor_name, amount_eur, status, stage, email, notes, committed_at, prospect_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [investor_name, parseFloat(amount_eur), resolvedStage, resolvedStage, email || null,
+       notes || null, committed_at || new Date().toISOString().split('T')[0], prospect_id || null]
     );
     res.json({ success: true, entry: rows[0] });
   } catch (err) {
@@ -3675,19 +3679,24 @@ app.post('/api/fund/entries', async (req, res) => {
 
 app.put('/api/fund/entries/:id', async (req, res) => {
   try {
-    const { investor_name, amount_eur, status, notes, committed_at } = req.body;
+    const { investor_name, amount_eur, status, stage, email, notes, committed_at, prospect_id } = req.body;
+    const resolvedStage = stage || status || null;
     const { rows } = await pool.query(
       `UPDATE fund_entries SET
          investor_name = COALESCE($1, investor_name),
          amount_eur    = COALESCE($2, amount_eur),
          status        = COALESCE($3, status),
-         notes         = COALESCE($4, notes),
-         committed_at  = COALESCE($5, committed_at),
+         stage         = COALESCE($3, stage),
+         email         = COALESCE($4, email),
+         notes         = COALESCE($5, notes),
+         committed_at  = COALESCE($6, committed_at),
+         prospect_id   = COALESCE($7, prospect_id),
          updated_at    = NOW()
-       WHERE id = $6 RETURNING *`,
+       WHERE id = $8 RETURNING *`,
       [investor_name || null, amount_eur ? parseFloat(amount_eur) : null,
-       status || null, notes !== undefined ? notes : null,
-       committed_at || null, req.params.id]
+       resolvedStage, email !== undefined ? (email || null) : null,
+       notes !== undefined ? notes : null, committed_at || null,
+       prospect_id || null, req.params.id]
     );
     if (rows.length === 0) return res.status(404).json({ success: false, message: 'Entry not found' });
     res.json({ success: true, entry: rows[0] });
@@ -3701,6 +3710,126 @@ app.delete('/api/fund/entries/:id', async (req, res) => {
     const { rowCount } = await pool.query('DELETE FROM fund_entries WHERE id = $1', [req.params.id]);
     if (rowCount === 0) return res.status(404).json({ success: false, message: 'Entry not found' });
     res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─── API: Fund Panel 3 — Advance Investor Stage ───────────────────────────────
+const FUND_STAGES_LIST = ['contacted','deck_sent','meeting','soft_commit','hard_commit','wired'];
+
+app.put('/api/fund/entries/:id/advance-stage', async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM fund_entries WHERE id = $1', [req.params.id]);
+    if (rows.length === 0) return res.status(404).json({ success: false, message: 'Entry not found' });
+    const current = rows[0].stage || rows[0].status || 'contacted';
+    const currentIdx = FUND_STAGES_LIST.indexOf(current);
+    if (currentIdx === -1 || currentIdx >= FUND_STAGES_LIST.length - 1) {
+      return res.status(400).json({ success: false, message: 'Already at final stage (Wired)' });
+    }
+    const nextStage = FUND_STAGES_LIST[currentIdx + 1];
+    const { rows: updated } = await pool.query(
+      `UPDATE fund_entries SET stage = $1, status = $1, updated_at = NOW() WHERE id = $2 RETURNING *`,
+      [nextStage, req.params.id]
+    );
+    res.json({ success: true, entry: updated[0] });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─── API: Fund Thermometer (dual-layer) ───────────────────────────────────────
+app.get('/api/fund/thermometer', async (req, res) => {
+  try {
+    const FUND_TARGET = 30_000_000;
+    const { rows } = await pool.query(`
+      SELECT
+        COALESCE(SUM(amount_eur), 0) AS total_pipeline,
+        COALESCE(SUM(CASE WHEN COALESCE(stage, status) IN ('hard_commit','wired') THEN amount_eur ELSE 0 END), 0) AS confirmed_capital,
+        COUNT(*) AS total_investors,
+        COUNT(CASE WHEN COALESCE(stage, status) IN ('hard_commit','wired') THEN 1 END) AS confirmed_investors,
+        COUNT(CASE WHEN COALESCE(stage, status) = 'contacted' THEN 1 END) AS stage_contacted,
+        COUNT(CASE WHEN COALESCE(stage, status) = 'deck_sent' THEN 1 END) AS stage_deck_sent,
+        COUNT(CASE WHEN COALESCE(stage, status) = 'meeting' THEN 1 END) AS stage_meeting,
+        COUNT(CASE WHEN COALESCE(stage, status) = 'soft_commit' THEN 1 END) AS stage_soft_commit,
+        COUNT(CASE WHEN COALESCE(stage, status) = 'hard_commit' THEN 1 END) AS stage_hard_commit,
+        COUNT(CASE WHEN COALESCE(stage, status) = 'wired' THEN 1 END) AS stage_wired
+      FROM fund_entries
+      WHERE COALESCE(stage, status) != 'withdrawn'
+    `);
+    const r = rows[0];
+    const pipeline = parseFloat(r.total_pipeline);
+    const confirmed = parseFloat(r.confirmed_capital);
+    res.json({
+      success: true,
+      total_pipeline: pipeline,
+      confirmed_capital: confirmed,
+      pipeline_pct: Math.min((pipeline / FUND_TARGET) * 100, 100),
+      confirmed_pct: Math.min((confirmed / FUND_TARGET) * 100, 100),
+      target: FUND_TARGET,
+      total_investors: parseInt(r.total_investors),
+      confirmed_investors: parseInt(r.confirmed_investors),
+      stages: {
+        contacted: parseInt(r.stage_contacted),
+        deck_sent: parseInt(r.stage_deck_sent),
+        meeting: parseInt(r.stage_meeting),
+        soft_commit: parseInt(r.stage_soft_commit),
+        hard_commit: parseInt(r.stage_hard_commit),
+        wired: parseInt(r.stage_wired)
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─── API: Fund Runway ─────────────────────────────────────────────────────────
+app.get('/api/fund/runway', async (req, res) => {
+  try {
+    const DEFAULT_AVG_ACQ = 2_500_000;
+    const [confirmedRes, dealsRes] = await Promise.all([
+      pool.query(`
+        SELECT COALESCE(SUM(amount_eur), 0) AS confirmed
+        FROM fund_entries
+        WHERE COALESCE(stage, status) IN ('hard_commit','wired')
+      `),
+      pool.query(`
+        SELECT COALESCE(AVG(acquisition_price), 0) AS avg_acq,
+               COUNT(CASE WHEN acquisition_price > 0 THEN 1 END) AS deal_count
+        FROM deals
+        WHERE acquisition_price > 0
+      `)
+    ]);
+    const confirmed = parseFloat(confirmedRes.rows[0].confirmed) || 0;
+    const avgAcqRaw = parseFloat(dealsRes.rows[0].avg_acq) || 0;
+    const avgAcq = avgAcqRaw > 0 ? avgAcqRaw : DEFAULT_AVG_ACQ;
+    const runway = confirmed / avgAcq;
+    res.json({
+      success: true,
+      confirmed_capital: confirmed,
+      avg_acquisition_cost: avgAcq,
+      runway_deals: parseFloat(runway.toFixed(2)),
+      color: runway >= 3 ? 'green' : runway >= 1 ? 'yellow' : 'red',
+      deal_count: parseInt(dealsRes.rows[0].deal_count) || 0
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─── API: Fund Cross-Panel (prospect + investor links) ────────────────────────
+app.get('/api/fund/cross-panel', async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT fe.id, fe.investor_name, fe.amount_eur, fe.stage, fe.status,
+             p.id AS prospect_id, p.name AS prospect_name, p.heat_tier, p.heat_score,
+             p.last_signal_at
+      FROM fund_entries fe
+      JOIN prospects p ON p.id = fe.prospect_id
+      WHERE fe.prospect_id IS NOT NULL
+      ORDER BY p.heat_score DESC NULLS LAST
+    `);
+    res.json({ success: true, linked: rows });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
