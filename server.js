@@ -4109,9 +4109,9 @@ app.get('/broker/matchmaker', async (req, res) => {
     .topbar { position: fixed; top: 0; left: 0; right: 0; z-index: 100; background: rgba(10,15,30,0.95); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); height: 54px; display: flex; align-items: center; padding: 0 28px; gap: 0; }
     .topbar-brand { font-size: 15px; font-weight: 700; color: var(--gold); letter-spacing: 0.5px; white-space: nowrap; margin-right: 32px; }
     .topbar-nav { display: flex; align-items: center; gap: 4px; flex: 1; }
-    .topbar-nav a { color: var(--text2); text-decoration: none; font-size: 13px; font-weight: 500; padding: 6px 14px; border-radius: 6px; transition: all 0.15s; white-space: nowrap; }
+    .topbar-nav a { color: var(--text); text-decoration: none; font-size: 13px; font-weight: 500; padding: 6px 14px; border-radius: 6px; transition: all 0.15s; white-space: nowrap; }
     .topbar-nav a:hover { color: var(--text); background: var(--surface2); }
-    .topbar-nav a.active { color: var(--text); background: var(--surface2); }
+    .topbar-nav a.active { color: var(--gold); background: var(--surface2); }
     .topbar-right { display: flex; align-items: center; gap: 16px; font-size: 12px; color: var(--text3); white-space: nowrap; }
     .topbar-right a { color: var(--text3); text-decoration: none; transition: color 0.15s; }
     .topbar-right a:hover { color: var(--text2); }
@@ -5192,9 +5192,9 @@ app.get('/broker/signal-radar', (req, res) => {
     .topbar { position: fixed; top: 0; left: 0; right: 0; z-index: 100; background: rgba(10,15,30,0.95); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); height: 54px; display: flex; align-items: center; padding: 0 28px; gap: 0; }
     .topbar-brand { font-size: 15px; font-weight: 700; color: var(--gold); letter-spacing: 0.5px; white-space: nowrap; margin-right: 32px; }
     .topbar-nav { display: flex; align-items: center; gap: 4px; flex: 1; }
-    .topbar-nav a { color: var(--text2); text-decoration: none; font-size: 13px; font-weight: 500; padding: 6px 14px; border-radius: 6px; transition: all 0.15s; white-space: nowrap; }
+    .topbar-nav a { color: var(--text); text-decoration: none; font-size: 13px; font-weight: 500; padding: 6px 14px; border-radius: 6px; transition: all 0.15s; white-space: nowrap; }
     .topbar-nav a:hover { color: var(--text); background: var(--surface2); }
-    .topbar-nav a.active { color: var(--text); background: var(--surface2); }
+    .topbar-nav a.active { color: var(--gold); background: var(--surface2); }
     .topbar-right { display: flex; align-items: center; gap: 16px; font-size: 12px; color: var(--text3); white-space: nowrap; }
     .topbar-right a { color: var(--text3); text-decoration: none; transition: color 0.15s; }
     .topbar-right a:hover { color: var(--text2); }
@@ -6532,9 +6532,9 @@ app.get('/broker/settings/branding', async (req, res) => {
 
     .topbar { position: fixed; top: 0; left: 0; right: 0; z-index: 100; background: rgba(10,15,30,0.95); backdrop-filter: blur(12px); border-bottom: 1px solid var(--border); height: 54px; display: flex; align-items: center; padding: 0 28px; gap: 0; }
     .topbar-nav { display: flex; align-items: center; gap: 4px; flex: 1; margin-left: 16px; }
-    .topbar-nav a { color: var(--text2); text-decoration: none; font-size: 13px; font-weight: 500; padding: 6px 14px; border-radius: 6px; transition: all 0.15s; }
+    .topbar-nav a { color: var(--text); text-decoration: none; font-size: 13px; font-weight: 500; padding: 6px 14px; border-radius: 6px; transition: all 0.15s; }
     .topbar-nav a:hover { color: var(--text); background: var(--surface2); }
-    .topbar-nav a.active { color: var(--text); background: var(--surface2); }
+    .topbar-nav a.active { color: var(--gold); background: var(--surface2); }
     .topbar-right { display: flex; align-items: center; gap: 16px; font-size: 12px; color: var(--text3); }
     .topbar-right a { color: var(--text3); text-decoration: none; }
     .topbar-right a:hover { color: var(--text2); }
