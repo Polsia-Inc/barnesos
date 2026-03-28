@@ -1,0 +1,22 @@
+[
+  {
+    "content": "Investigate root cause of broken Matchmaker + Signal Radar",
+    "status": "completed",
+    "activeForm": "Investigating root cause"
+  },
+  {
+    "content": "Fix Signal Radar: add no-store header + server-side render prospects + BFCache handler",
+    "status": "completed",
+    "activeForm": "Fixing Signal Radar"
+  },
+  {
+    "content": "Fix Matchmaker: add BFCache handler + server-side chip rendering",
+    "status": "completed",
+    "activeForm": "Fixing Matchmaker"
+  },
+  {
+    "content": "Deploy and verify on live site (all 5 checks)",
+    "status": "in_progress",
+    "activeForm": "Deploying and verifying"
+  }
+]
