@@ -4588,6 +4588,14 @@ app.get('/broker/matchmaker', async (req, res) => {
   }
 
   init();
+
+  // BFCache fix: reload filter data when page is restored from browser back/forward cache
+  // (iOS Chrome and Safari can restore pages from cache even with no-store header)
+  window.addEventListener('pageshow', function(event) {
+    if (event.persisted) {
+      init();
+    }
+  });
 </script>
 </body>
 </html>`);
@@ -5298,7 +5306,7 @@ app.get('/broker/dashboard', (req, res) => {
 });
 
 // GET /broker/signal-radar — Signal Radar dashboard (tenant-scoped)
-app.get('/broker/signal-radar', (req, res) => {
+app.get('/broker/signal-radar', async (req, res) => {
   if (!req.session || !req.session.brokerUser) return res.redirect('/broker/login');
   const user = req.session.brokerUser;
   const tenant = req.session.brokerTenant;
@@ -5316,6 +5324,30 @@ app.get('/broker/signal-radar', (req, res) => {
   const radarBrandColor = getBrandColor(tenant);
   const radarDisplayName = getDisplayName(tenant);
 
+  // Pre-load prospects server-side so tier columns render instantly (no spinner)
+  let preloadedProspects = [];
+  let preloadedDemoCount = 0;
+  try {
+    const tid = req.session.brokerTenant.id;
+    const { rows: pRows } = await pool.query(
+      `SELECT p.*,
+        (SELECT COUNT(*) FROM prospect_signals ps WHERE ps.prospect_id = p.id) as signal_count,
+        (SELECT ps.title FROM prospect_signals ps WHERE ps.prospect_id = p.id ORDER BY ps.score DESC, ps.detected_at DESC LIMIT 1) as latest_signal_title
+       FROM prospects p WHERE p.tenant_id = $1
+       ORDER BY p.heat_score DESC, p.name ASC`,
+      [tid]
+    );
+    preloadedProspects = pRows;
+    const { rows: dRows } = await pool.query(
+      'SELECT COUNT(*) AS cnt FROM prospects WHERE tenant_id = $1 AND is_demo = TRUE', [tid]
+    );
+    preloadedDemoCount = parseInt(dRows[0].cnt, 10);
+    console.log(`[Signal Radar] Pre-loaded ${pRows.length} prospects for tenant ${tid}`);
+  } catch (e) {
+    console.error('[Signal Radar] Failed to preload prospects:', e.message);
+  }
+
+  res.setHeader('Cache-Control', 'no-store');
   res.send(`<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -5819,21 +5851,21 @@ app.get('/broker/signal-radar', (req, res) => {
             <span class="tier-title hot">🔴 HOT</span>
             <span class="tier-count" id="tier-hot-cnt">—</span>
           </div>
-          <div class="tier-body" id="tier-hot-body"><div class="loading"><div class="spinner"></div></div></div>
+          <div class="tier-body" id="tier-hot-body"></div>
         </div>
         <div class="tier-column">
           <div class="tier-column-header warm">
             <span class="tier-title warm">🟠 WARM</span>
             <span class="tier-count" id="tier-warm-cnt">—</span>
           </div>
-          <div class="tier-body" id="tier-warm-body"><div class="loading"><div class="spinner"></div></div></div>
+          <div class="tier-body" id="tier-warm-body"></div>
         </div>
         <div class="tier-column">
           <div class="tier-column-header cold">
             <span class="tier-title cold">🔵 COLD</span>
             <span class="tier-count" id="tier-cold-cnt">—</span>
           </div>
-          <div class="tier-body" id="tier-cold-body"><div class="loading"><div class="spinner"></div></div></div>
+          <div class="tier-body" id="tier-cold-body"></div>
         </div>
       </div>
     </div>
@@ -5950,6 +5982,9 @@ app.get('/broker/signal-radar', (req, res) => {
 <script>
   const IS_READONLY = ${JSON.stringify(isReadOnly)};
   const IS_ADMIN = ${JSON.stringify(user.role === 'admin')};
+  // Server-preloaded prospects — tier columns render instantly without waiting for fetch
+  const PRELOADED_PROSPECTS = ${JSON.stringify(preloadedProspects)};
+  const PRELOADED_DEMO_COUNT = ${preloadedDemoCount};
   let allSignals = [], allProspects = [], currentPid = null, csvRows = [];
 
   const SIGNAL_ICONS = {
@@ -6656,7 +6691,25 @@ app.get('/broker/signal-radar', (req, res) => {
   }
 
   // ── INIT ──────────────────────────────────────────────────────────────────────
-  Promise.all([loadStats(), loadSignalFeed(''), loadScannerStatus(), loadProspects(''), loadAlertEmail()]);
+  // Use server-preloaded prospects for instant render — no spinner, no waiting for fetch
+  if (PRELOADED_PROSPECTS && PRELOADED_PROSPECTS.length >= 0) {
+    allProspects = PRELOADED_PROSPECTS;
+    updateDemoBanner(PRELOADED_DEMO_COUNT);
+    renderTierView('');
+  }
+  // Load stats, signals, scanner and alert email async (these can't be preloaded cheaply)
+  Promise.all([loadStats(), loadSignalFeed(''), loadScannerStatus(), loadAlertEmail()]);
+  // Refresh prospects in background after 2s to pick up any real-time updates
+  setTimeout(() => loadProspects(''), 2000);
+
+  // BFCache fix: when page is restored from browser back/forward cache, reload data
+  // (iOS Chrome and Safari can restore pages from cache even with no-store header)
+  window.addEventListener('pageshow', function(event) {
+    if (event.persisted) {
+      // Page was restored from BFCache — refresh all data
+      Promise.all([loadStats(), loadSignalFeed(''), loadScannerStatus(), loadProspects(''), loadAlertEmail()]);
+    }
+  });
 </script>
 <script src="/js/globe-radar.js"></script>
 </body>
