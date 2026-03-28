@@ -484,6 +484,56 @@
     .btn-secondary:hover { color: var(--text); border-color: var(--muted); }
     .btn-row { display: flex; gap: 8px; justify-content: flex-end; }
 
+    /* ─── PANEL 1: MATCH SUMMARY WIDGET ──────────────────────────────────── */
+    .panel1-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .panel1-title {
+      font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.08em; color: var(--gold);
+      display: flex; align-items: center; gap: 8px;
+    }
+    .panel1-view-all {
+      font-size: 12px; color: var(--gold); text-decoration: none; opacity: 0.8;
+      padding: 4px 10px; border-radius: 4px; border: 1px solid var(--gold-dim);
+      transition: all 0.15s;
+    }
+    .panel1-view-all:hover { opacity: 1; background: var(--gold-dim); }
+    .match-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 28px; }
+    .match-row {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 14px;
+      background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+      transition: border-color 0.15s;
+    }
+    .match-row:hover { border-color: rgba(201,168,76,0.3); }
+    .match-score-badge {
+      display: flex; align-items: center; justify-content: center;
+      width: 42px; height: 42px; border-radius: 8px; flex-shrink: 0;
+      font-family: 'Syne', sans-serif; font-size: 13px; font-weight: 800;
+      background: rgba(201,168,76,0.12); color: var(--gold); border: 1px solid rgba(201,168,76,0.25);
+    }
+    .match-score-badge.high { background: rgba(34,197,94,0.12); color: var(--green); border-color: rgba(34,197,94,0.25); }
+    .match-score-badge.med  { background: rgba(201,168,76,0.12); color: var(--gold);  border-color: rgba(201,168,76,0.25); }
+    .match-score-badge.low  { background: rgba(107,114,128,0.12); color: var(--muted); border-color: rgba(107,114,128,0.2); }
+    .match-body { flex: 1; min-width: 0; }
+    .match-client { font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .match-yacht { font-size: 12px; color: var(--gold); opacity: 0.85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+    .match-reason { font-size: 11px; color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .match-tier { flex-shrink: 0; }
+    .match-activate-btn {
+      flex-shrink: 0;
+      padding: 5px 12px; border-radius: 5px; font-size: 11px; font-weight: 600;
+      cursor: pointer; border: 1px solid var(--gold-dim);
+      background: rgba(201,168,76,0.1); color: var(--gold);
+      transition: all 0.15s; white-space: nowrap;
+    }
+    .match-activate-btn:hover { background: rgba(201,168,76,0.2); border-color: var(--gold); }
+    .match-activate-btn.done { background: rgba(34,197,94,0.1); color: var(--green); border-color: rgba(34,197,94,0.3); cursor: default; }
+    .match-empty { text-align: center; padding: 32px 20px; color: var(--muted); font-size: 13px; }
+    .match-loading { text-align: center; padding: 20px; color: var(--muted); font-size: 12px; }
+
     /* ─── FUND PANEL ──────────────────────────────────────────────────────── */
     .fund-progress-card {
       background: var(--card); border: 1px solid var(--border); border-radius: 8px;
@@ -1225,10 +1275,26 @@ function closeProspectModal(e) {
   }
 }
 
-// ═══ MATCHMAKER PANEL ════════════════════════════════════════════════════════
+// ═══ MATCHMAKER PANEL (Panel 1) ══════════════════════════════════════════════
+let _matchSummary = [];
+let _activatedMatches = new Set(); // track which pairs have been activated this session
+
+async function loadMatchSummary() {
+  try {
+    const r = await fetch('/api/cockpit/match-summary');
+    const data = await r.json();
+    if (data.success) _matchSummary = data.matches || [];
+  } catch(e) {
+    console.warn('Match summary error:', e);
+    _matchSummary = [];
+  }
+}
+
 async function renderMatchmaker(container, statusFilter = 'all') {
   container.innerHTML = '<div class="loading"><div class="spin">⏳</div></div>';
-  await loadChains();
+
+  // Load match summary and chains in parallel
+  await Promise.all([loadMatchSummary(), loadChains()]);
 
   let filtered = _chains;
   if (statusFilter === 'active') {
@@ -1246,21 +1312,115 @@ async function renderMatchmaker(container, statusFilter = 'all') {
     pending: _chains.filter(c => parseInt(c.sent_count) === 0).length
   };
 
+  // Build match summary widget HTML
+  const matchWidgetHtml = buildMatchSummaryHtml();
+
   container.innerHTML = `
-    <div class="filter-bar">
-      <div class="filter-tabs">
-        ${['all','active','replied','pending'].map(s => `
-          <button class="filter-tab ${s === 'all' ? 'all' : ''} ${statusFilter === s ? 'active' : ''}"
-            onclick="setMatchmakerFilter('${s}')">
-            ${s.charAt(0).toUpperCase()+s.slice(1)} (${counts[s]})
-          </button>`).join('')}
+    ${matchWidgetHtml}
+
+    <div class="panel1-header" style="margin-top:8px">
+      <div class="panel1-title" style="color:var(--text-secondary,#94a3b8);font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;">
+        ✉️ Outreach Chains
       </div>
-      <button class="btn btn-primary ml-auto" onclick="openChainModal()" style="font-size:12px;padding:6px 14px;">+ New Chain</button>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="filter-tabs" style="display:flex;gap:4px">
+          ${['all','active','replied','pending'].map(s => `
+            <button class="filter-tab ${s === 'all' ? 'all' : ''} ${statusFilter === s ? 'active' : ''}"
+              onclick="setMatchmakerFilter('${s}')" style="padding:4px 10px;font-size:11px">
+              ${s.charAt(0).toUpperCase()+s.slice(1)} (${counts[s]})
+            </button>`).join('')}
+        </div>
+        <button class="btn btn-primary" onclick="openChainModal()" style="font-size:11px;padding:5px 12px;">+ New Chain</button>
+      </div>
     </div>
     <div id="chain-list" class="chain-list"></div>
   `;
 
   renderChainList(filtered);
+}
+
+function buildMatchSummaryHtml() {
+  let rowsHtml;
+  if (_matchSummary.length === 0) {
+    rowsHtml = `<div class="match-empty">
+      <div style="font-size:28px;margin-bottom:8px">🛥</div>
+      No matches yet — add prospects with yacht brand preferences on Signal Radar.
+    </div>`;
+  } else {
+    rowsHtml = _matchSummary.map((m, idx) => {
+      const pairKey = `${m.prospect_id}:${m.yacht_id}`;
+      const alreadyActivated = _activatedMatches.has(pairKey);
+      // Check if a chain already exists for this pair in loaded chains
+      const existingChain = _chains.find(c =>
+        c.prospect_id === m.prospect_id &&
+        c.yacht_id == m.yacht_id
+      );
+      const isDone = alreadyActivated || !!existingChain;
+
+      const tierColor = m.heat_tier === 'hot' ? 'var(--red)' : m.heat_tier === 'warm' ? 'var(--orange)' : 'var(--muted)';
+      const scoreClass = m.match_score >= 70 ? 'high' : m.match_score >= 40 ? 'med' : 'low';
+      const yachtLabel = [m.yacht_builder, m.yacht_model].filter(Boolean).join(' ');
+
+      return `<div class="match-row" id="match-row-${m.prospect_id}-${m.yacht_id}">
+        <div class="match-score-badge ${scoreClass}">${m.match_score}%</div>
+        <div class="match-body">
+          <div class="match-client">
+            <span style="color:${tierColor};font-size:9px;font-weight:800;text-transform:uppercase;margin-right:5px;vertical-align:1px">${m.heat_tier}</span>${esc(m.prospect_name)}${m.prospect_company ? ` <span style="color:var(--muted);font-weight:400;font-size:11px">· ${esc(m.prospect_company)}</span>` : ''}
+          </div>
+          <div class="match-yacht">🛥 ${esc(yachtLabel || 'Unknown yacht')}</div>
+          ${m.match_reason ? `<div class="match-reason">💡 ${esc(m.match_reason)}</div>` : ''}
+        </div>
+        ${isDone
+          ? `<button class="match-activate-btn done" disabled>Draft Created ✓</button>`
+          : `<button class="match-activate-btn" onclick="activateMatch(${m.prospect_id},${m.yacht_id},${m.match_score},'${esc(m.match_reason)}',this)">Activate</button>`
+        }
+      </div>`;
+    }).join('');
+  }
+
+  return `
+    <div class="panel1-header">
+      <div class="panel1-title">🛥 Panel 1 — Matchmaker <span style="font-size:10px;opacity:0.6;font-weight:400;text-transform:none">Top matches</span></div>
+      <a class="panel1-view-all" href="/matchmaker" onclick="event.preventDefault();window.location.href='/matchmaker'">View All →</a>
+    </div>
+    <div class="match-list" id="match-summary-list">${rowsHtml}</div>
+  `;
+}
+
+async function activateMatch(prospectId, yachtId, score, reason, btn) {
+  btn.disabled = true;
+  btn.textContent = 'Creating…';
+  try {
+    const r = await fetch('/api/cockpit/activate-match', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prospect_id: prospectId, yacht_id: yachtId, match_score: score, match_reason: reason })
+    });
+    const data = await r.json();
+    if (data.success) {
+      _activatedMatches.add(`${prospectId}:${yachtId}`);
+      btn.textContent = 'Draft Created ✓';
+      btn.className = 'match-activate-btn done';
+      // Refresh chains in background
+      loadChains().then(() => {
+        renderChainList(_chains.filter(c => {
+          const f = _activeFilter.matchmaker;
+          if (f === 'active') return parseInt(c.sent_count) > 0 && parseInt(c.replied_count) === 0 && parseInt(c.pending_count) > 0;
+          if (f === 'replied') return parseInt(c.replied_count) > 0;
+          if (f === 'pending') return parseInt(c.sent_count) === 0;
+          return true;
+        }));
+        loadStats().then(d => { if (_stats) renderTopBar(_stats); });
+      });
+    } else {
+      btn.textContent = 'Activate';
+      btn.disabled = false;
+    }
+  } catch(e) {
+    btn.textContent = 'Activate';
+    btn.disabled = false;
+    console.error('Activate match error:', e);
+  }
 }
 
 function setMatchmakerFilter(status) {

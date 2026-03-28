@@ -3639,6 +3639,169 @@ app.get('/api/cockpit/stats', async (req, res) => {
   }
 });
 
+// ─── API: Cockpit Panel 1 — Matchmaker match summary ─────────────────────────
+app.get('/api/cockpit/match-summary', async (req, res) => {
+  try {
+    // Get top prospects (hot first, then warm), ordered by heat_score
+    const { rows: prospects } = await pool.query(`
+      SELECT id, name, company, heat_tier, heat_score, score,
+             yacht_brand, yacht_model, current_yacht_interest, location
+      FROM prospects
+      WHERE heat_tier IN ('hot', 'warm')
+      ORDER BY
+        CASE heat_tier WHEN 'hot' THEN 0 ELSE 1 END,
+        COALESCE(heat_score, score, 0) DESC
+      LIMIT 20
+    `);
+
+    // Get all active yachts
+    const { rows: yachts } = await pool.query(
+      `SELECT id, builder, model, length, price, year_built, location_text, is_approved
+       FROM yachts WHERE is_active = TRUE`
+    );
+
+    const matches = [];
+
+    for (const prospect of prospects) {
+      const brandPref = (prospect.yacht_brand || '').trim().toLowerCase();
+      const interest = (prospect.current_yacht_interest || '').toLowerCase();
+      if (!brandPref && !interest) continue;
+
+      let bestYacht = null;
+      let bestScore = -1;
+      let bestReasons = [];
+
+      for (const yacht of yachts) {
+        let score = 0;
+        const reasons = [];
+        const builder = (yacht.builder || '').toLowerCase();
+        const model = (yacht.model || '').toLowerCase();
+
+        // Brand / builder match (40 pts)
+        if (brandPref) {
+          if (builder.includes(brandPref) || brandPref.includes(builder)) {
+            score += 40;
+            reasons.push(`Preferred brand (${yacht.builder})`);
+          } else if (interest && (interest.includes(builder) || builder.includes(interest.split(' ')[0]))) {
+            // Partial interest text match
+            score += 20;
+            reasons.push(`Interest match (${yacht.builder})`);
+          }
+        } else if (interest) {
+          // Use interest text to fuzzy match builder
+          const builderWords = builder.split(' ');
+          if (builderWords.some(w => w.length > 3 && interest.includes(w))) {
+            score += 20;
+            reasons.push(`Interest match (${yacht.builder})`);
+          }
+        }
+
+        // Model match bonus (10 pts)
+        if (prospect.yacht_model) {
+          const modelPref = prospect.yacht_model.toLowerCase();
+          if (model.includes(modelPref) || modelPref.includes(model)) {
+            score += 10;
+            reasons.push(`Model match`);
+          }
+        }
+
+        // Location hint (8 pts) — soft match on country/region
+        if (prospect.location) {
+          const pLoc = prospect.location.toLowerCase();
+          const yLoc = (yacht.location_text || '').toLowerCase();
+          const pParts = pLoc.split(',').map(s => s.trim()).filter(Boolean);
+          if (yLoc && pParts.some(p => yLoc.includes(p) || p.includes(yLoc.split(',')[0].trim()))) {
+            score += 8;
+            reasons.push('Same region');
+          }
+        }
+
+        // Approved bonus (2 pts)
+        if (yacht.is_approved) {
+          score += 2;
+          reasons.push('Approved listing');
+        }
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestYacht = yacht;
+          bestReasons = reasons;
+        }
+      }
+
+      if (bestYacht && bestScore > 0) {
+        // Normalize to 0-100 (max possible: 40+10+8+2 = 60 pts)
+        const normalized = Math.min(100, Math.round((bestScore / 60) * 100));
+        const topReason = bestReasons[0] || 'Potential match';
+        matches.push({
+          prospect_id: prospect.id,
+          prospect_name: prospect.name,
+          prospect_company: prospect.company || '',
+          heat_tier: prospect.heat_tier,
+          yacht_id: bestYacht.id,
+          yacht_builder: bestYacht.builder,
+          yacht_model: bestYacht.model,
+          match_score: normalized,
+          match_reasons: bestReasons,
+          match_reason: bestReasons.slice(0, 2).join(' · ')
+        });
+      }
+    }
+
+    // Sort by match score desc, take top 5
+    matches.sort((a, b) => b.match_score - a.match_score);
+    const top5 = matches.slice(0, 5);
+
+    res.json({ success: true, matches: top5 });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// ─── API: Cockpit Panel 1 — Activate match (create outreach draft) ────────────
+app.post('/api/cockpit/activate-match', async (req, res) => {
+  try {
+    const { prospect_id, yacht_id, match_score, match_reason } = req.body;
+    if (!prospect_id || !yacht_id) {
+      return res.status(400).json({ success: false, message: 'prospect_id and yacht_id required' });
+    }
+
+    // Check for existing draft for this pairing
+    const existRes = await pool.query(
+      `SELECT id FROM outreach_chains WHERE prospect_id = $1 AND yacht_id = $2 AND status = 'draft' LIMIT 1`,
+      [prospect_id, yacht_id]
+    );
+    if (existRes.rows.length > 0) {
+      return res.json({ success: true, chain: existRes.rows[0], already_exists: true });
+    }
+
+    const [yachtRows, prospectRows] = await Promise.all([
+      pool.query(`SELECT builder, model FROM yachts WHERE id = $1`, [yacht_id]),
+      pool.query(`SELECT name FROM prospects WHERE id = $1`, [prospect_id])
+    ]);
+
+    const yachtLabel = yachtRows.rows[0]
+      ? `${yachtRows.rows[0].builder || ''} ${yachtRows.rows[0].model || ''}`.trim()
+      : 'Yacht';
+    const prospectName = prospectRows.rows[0]?.name || 'Prospect';
+
+    const title = `Matchmaker: ${prospectName} × ${yachtLabel}`;
+    const notes = match_reason
+      ? `Match score: ${match_score}%\nReason: ${match_reason}`
+      : `Match score: ${match_score || 0}%`;
+
+    const { rows } = await pool.query(
+      `INSERT INTO outreach_chains (prospect_id, yacht_id, title, notes, status)
+       VALUES ($1, $2, $3, $4, 'draft') RETURNING *`,
+      [prospect_id, yacht_id, title, notes]
+    );
+
+    res.json({ success: true, chain: rows[0] });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // ─── API: Fund entries ────────────────────────────────────────────────────────
 app.get('/api/fund/entries', async (req, res) => {
   try {
