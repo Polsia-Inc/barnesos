@@ -1,0 +1,22 @@
+[
+  {
+    "content": "Add /api/cockpit/match-summary endpoint to server.js",
+    "status": "completed",
+    "activeForm": "Adding match-summary API endpoint"
+  },
+  {
+    "content": "Add /api/cockpit/activate-match endpoint to server.js",
+    "status": "completed",
+    "activeForm": "Adding activate-match API endpoint"
+  },
+  {
+    "content": "Update renderMatchmaker in cockpit.html with Panel 1 widget",
+    "status": "completed",
+    "activeForm": "Updating renderMatchmaker with match summary widget"
+  },
+  {
+    "content": "Push to remote and verify",
+    "status": "in_progress",
+    "activeForm": "Pushing to remote and verifying"
+  }
+]
