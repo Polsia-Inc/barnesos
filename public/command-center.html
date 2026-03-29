@@ -74,10 +74,10 @@ input, textarea, select { font-family: inherit; }
 .gn-link {
   padding: 4px 14px; border-radius: 6px;
   font-size: 0.8rem; font-weight: 500; letter-spacing: 0.01em;
-  color: var(--text-secondary); text-decoration: none;
+  color: rgba(255,255,255,0.75); text-decoration: none;
   transition: all 0.2s ease;
 }
-.gn-link:hover { color: var(--text-primary); background: rgba(255,255,255,0.05); }
+.gn-link:hover { color: #ffffff; background: rgba(255,255,255,0.05); }
 .gn-link.active { color: var(--gold); background: var(--gold-dim); font-weight: 600; }
 .gn-logout {
   font-size: 0.75rem; color: var(--text-muted); opacity: 0.6;
@@ -110,10 +110,12 @@ input, textarea, select { font-family: inherit; }
 .nav-tab {
   padding: 8px 20px; border-radius: var(--radius-sm);
   font-size: 0.875rem; font-weight: 500;
-  color: var(--text-primary); background: transparent;
+  color: #f1f5f9; background: transparent;
   border: none; transition: all var(--transition);
+  -webkit-appearance: none; appearance: none;
+  cursor: pointer;
 }
-.nav-tab:hover { color: var(--text-primary); background: rgba(255,255,255,0.04); }
+.nav-tab:hover { color: #f1f5f9; background: rgba(255,255,255,0.04); }
 .nav-tab.active {
   color: var(--gold); background: var(--gold-dim);
   font-weight: 600;
@@ -1421,6 +1423,8 @@ input, textarea, select { font-family: inherit; }
   <div class="global-nav-links">
     <a href="/" class="gn-link active">⌘ Command Center</a>
     <a href="/matchmaker" class="gn-link">Matchmaker</a>
+    <a href="/cockpit/radar" class="gn-link">Signal Radar</a>
+    <a href="/cockpit/fund" class="gn-link">Fund</a>
   </div>
   <a href="/api/auth/logout" class="gn-logout">Logout</a>
 </nav>
